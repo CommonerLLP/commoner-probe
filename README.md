@@ -117,16 +117,9 @@ Each corpus directory contains:
 | `pdfs/rs/` | Downloaded RS PDFs |
 | `crawl.log` | Human-readable crawl progress log |
 
-### Manifest record schema (Q/A)
-
-```
-key, run_id, kind, house, uuid, handle, title, date, qtype, qno,
-session, loksabhanumber, ministry, askers, asker_entity_ids,
-uri, source, found_via_group, found_via_query, crawled_at,
-language_classified, pdf_url, pdf_path
-```
-
-Fields `matches`, `tags`, `score`, `classifier`, `label`, `fallback` from the old format are not produced — classification belongs downstream.
+For complete field-level documentation of every output stream — including all four
+manifest record shapes, controlled vocabularies, and join keys — see
+[`docs/SCHEMAS.md`](docs/SCHEMAS.md).
 
 ## Entity resolution (`--with-entities`)
 
