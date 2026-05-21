@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "sansad_crawler",
+  "project_id": "9b4a67c1-086b-4a80-a5a3-2fc31f79d705"
+}
