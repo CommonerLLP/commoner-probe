@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/sreeramramasubramanian/sansad-crawler/schemas/v1/runs.json",
+  "title": "_runs.jsonl — crawl run record",
+  "description": "One audit record per crawl invocation written to _runs.jsonl.",
+  "type": "object",
+  "required": ["run_id", "kind", "scope", "topic_name", "topic_path", "topic_hash", "classifier_mode", "classifier_config_redacted", "tool_version", "started_at", "added", "errors", "bucket_attempts", "elapsed_ms"],
+  "properties": {
+    "run_id": { "type": "string", "description": "UUID4 hex (32 chars)" },
+    "kind": { "type": "string", "enum": ["qa", "committee_report"] },
+    "scope": { "type": "object", "description": "Crawl parameters; free-form per crawler kind" },
+    "topic_name": { "type": "string" },
+    "topic_path": { "type": "string" },
+    "topic_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "classifier_mode": { "type": "string", "description": "Always empty string in current version" },
+    "classifier_config_redacted": { "type": "object", "description": "Always empty object in current version" },
+    "tool_version": { "type": "string" },
+    "started_at": { "type": "string" },
+    "ended_at": { "type": ["string", "null"] },
+    "added": { "type": "integer", "minimum": 0 },
+    "errors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "where": { "type": "string" },
+          "error": { "type": "string" }
+        },
+        "required": ["where", "error"]
+      }
+    },
+    "bucket_attempts": {
+      "type": "array",
+      "items": { "type": "object" },
+      "description": "Per-bucket attempt log; individual item schema is free-form"
+    },
+    "elapsed_ms": { "type": "number", "minimum": 0 }
+  }
+}

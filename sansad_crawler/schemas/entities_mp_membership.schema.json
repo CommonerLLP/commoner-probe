@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/sreeramramasubramanian/sansad-crawler/schemas/v1/entities_mp_membership.json",
+  "title": "entities/mp_memberships.jsonl record",
+  "description": "Temporal MP role data: one row per (entity_id, house, term).",
+  "type": "object",
+  "required": ["entity_id", "house", "term", "party", "party_name", "state", "constituency", "start", "end", "fetched_at"],
+  "properties": {
+    "entity_id": { "type": "string" },
+    "house": { "type": "string", "enum": ["ls", "rs"] },
+    "term": { "type": ["integer", "null"] },
+    "party": { "type": "string" },
+    "party_name": { "type": "string" },
+    "state": { "type": ["string", "null"] },
+    "constituency": { "type": ["string", "null"] },
+    "start": { "type": ["string", "null"] },
+    "end": { "type": ["string", "null"], "description": "null = currently sitting" },
+    "fetched_at": { "type": "string" }
+  }
+}

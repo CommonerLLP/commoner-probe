@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/sreeramramasubramanian/sansad-crawler/schemas/v1/answers_dfg_recommendation.json",
+  "title": "answers.jsonl — dfg_recommendation record",
+  "description": "One numbered observation/recommendation paragraph from a non-ATR committee report PDF (DFG, bill, or subject report). The source_report_type field distinguishes the three sub-types.",
+  "type": "object",
+  "required": ["key", "run_id", "source_pdf", "extracted_at", "language_classified", "source_report_type", "kind", "recommendation_no", "recommendation_text", "confidence", "extractor"],
+  "properties": {
+    "key": { "type": "string" },
+    "run_id": { "type": "string" },
+    "source_pdf": { "type": "string" },
+    "extracted_at": { "type": "string" },
+    "language_classified": { "type": "array", "items": { "type": "string" } },
+    "source_report_type": { "type": ["string", "null"] },
+    "kind": { "type": "string", "const": "dfg_recommendation" },
+    "recommendation_no": { "type": "integer" },
+    "recommendation_text": { "type": "string" },
+    "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "extractor": { "type": "string" }
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/sreeramramasubramanian/sansad-crawler/schemas/v1/manifest_committee_report.json",
+  "title": "manifest.jsonl — committee report record",
+  "description": "One committee report record (kind=committee_report) from manifest.jsonl. Comes in two shapes depending on house.",
+  "type": "object",
+  "required": ["key", "run_id", "kind", "house", "report_type", "presented_via", "committee_slug", "committee_name", "title", "date", "source", "crawled_at"],
+  "properties": {
+    "key": { "type": "string", "description": "LS|{slug}|{report_no}|{ls_no} or RS|{slug}|{report_no}" },
+    "run_id": { "type": "string" },
+    "kind": { "type": "string", "const": "committee_report" },
+    "house": { "type": "string", "enum": ["Lok Sabha", "Rajya Sabha"] },
+    "report_type": {
+      "type": "string",
+      "enum": ["action_taken", "demands_for_grants", "bill", "subject", "other"]
+    },
+    "presented_via": {
+      "type": "string",
+      "enum": ["ls_only", "rs_only", "both", "none"]
+    },
+    "committee_slug": { "type": "string" },
+    "committee_name": { "type": "string" },
+    "report_no": { "type": ["string", "null"] },
+    "title": { "type": "string" },
+    "title_hindi": { "type": ["string", "null"] },
+    "language_classified": { "type": "array", "items": { "type": "string" } },
+    "date": { "type": "string", "description": "ISO date YYYY-MM-DD or empty string" },
+    "date_adoption": { "type": "string", "description": "ISO date or empty string" },
+    "pdf_url": { "type": ["string", "null"] },
+    "pdf_url_hindi": { "type": ["string", "null"] },
+    "pdf_path": { "type": "string" },
+    "source": {
+      "type": "string",
+      "enum": ["sansad.in/api_ls/committee", "sansad.in/api_rs/committee"]
+    },
+    "crawled_at": { "type": "string" },
+    "loksabha_no": { "type": ["integer", "string"], "description": "Lok Sabha number (LS only)" },
+    "date_presented_ls": { "type": "string", "description": "ISO date or empty string (LS only)" },
+    "date_laid_rs": { "type": "string", "description": "ISO date or empty string (LS only)" },
+    "date_presented_speaker": { "type": "string", "description": "ISO date or empty string (LS only)" },
+    "date_presentation": { "type": "string", "description": "ISO date or empty string (RS only)" }
+  }
+}

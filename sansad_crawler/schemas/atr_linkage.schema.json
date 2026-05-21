@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/sreeramramasubramanian/sansad-crawler/schemas/v1/atr_linkage.json",
+  "title": "atr_linkage.jsonl record",
+  "description": "Links an Action Taken Report manifest record to the original committee report it responds to.",
+  "type": "object",
+  "required": ["atr_key", "atr_no", "house", "committee_slug", "atr_title", "references_report_no", "references_report_key", "extracted_at", "extractor"],
+  "properties": {
+    "atr_key": { "type": "string", "description": "key of the ATR manifest record" },
+    "atr_no": { "type": ["integer", "string", "null"] },
+    "house": { "type": ["string", "null"], "enum": ["Lok Sabha", "Rajya Sabha", null] },
+    "committee_slug": { "type": ["string", "null"] },
+    "atr_title": { "type": "string", "maxLength": 200 },
+    "references_report_no": { "type": "integer" },
+    "references_report_key": { "type": ["string", "null"], "description": "key of the original report in manifest.jsonl; null when key cannot be computed" },
+    "extracted_at": { "type": "string" },
+    "extractor": { "type": "string" }
+  }
+}
