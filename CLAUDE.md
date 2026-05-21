@@ -3,6 +3,7 @@
 This file provides instructions and context for AI coding agents working on this project.
 
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:ca08a54f -->
+
 ## Beads Issue Tracker
 
 This project uses **bd (beads)** for issue tracking. Run `bd prime` to see full workflow context and commands.
@@ -24,31 +25,40 @@ bd close <id>         # Complete work
 
 ## Session Completion
 
-**When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds.
+**When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until every local change is committed. Pushing to remote is OPTIONAL and only happens when the user explicitly requests it.
 
 **MANDATORY WORKFLOW:**
 
 1. **File issues for remaining work** - Create issues for anything that needs follow-up
 2. **Run quality gates** (if code changed) - Tests, linters, builds
 3. **Update issue status** - Close finished work, update in-progress items
-4. **PUSH TO REMOTE** - This is MANDATORY:
+4. **COMMIT EVERYTHING LOCALLY** - This is MANDATORY:
    ```bash
-   git pull --rebase
-   bd dolt push
-   git push
-   git status  # MUST show "up to date with origin"
+   git add -A
+   git commit -m "<message>"   # Use a HEREDOC for multi-line messages
+   git status                  # MUST show "nothing to commit, working tree clean"
    ```
-5. **Clean up** - Clear stashes, prune remote branches
-6. **Verify** - All changes committed AND pushed
+5. **Clean up** - Clear stashes; do not delete local branches without user approval
+6. **Verify** - All changes committed locally (working tree clean)
 7. **Hand off** - Provide context for next session
 
-**CRITICAL RULES:**
-- Work is NOT complete until `git push` succeeds
-- NEVER stop before pushing - that leaves work stranded locally
-- NEVER say "ready to push when you are" - YOU must push
-- If push fails, resolve and retry until it succeeds
-<!-- END BEADS INTEGRATION -->
+**OPTIONAL: PUSH TO REMOTE**
 
+Only push when the user explicitly asks you to. If they do:
+
+```bash
+git pull --rebase
+git push
+git status  # Should show "up to date with origin"
+```
+
+**CRITICAL RULES:**
+
+- Work is NOT complete until every change is committed locally
+- NEVER leave uncommitted changes or stranded edits in the working tree
+- NEVER push to remote unless the user explicitly requests it
+- If a commit fails (hook, conflict, etc.), resolve and retry until it succeeds
+<!-- END BEADS INTEGRATION -->
 
 ## Build & Test
 

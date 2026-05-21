@@ -1,4 +1,4 @@
 repos:
   primary: "."
-  additional:
-    - "/Users/sreeramramasubramanian/.beads-planning"
+
+routing.mode: "local"
