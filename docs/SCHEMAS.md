@@ -28,7 +28,7 @@ Records come in **four shapes** discriminated by `kind` and `house`.
 | Field | Type | Required | Enum / format | Provenance |
 |---|---|---|---|---|
 | `key` | string | yes | `"LS\|{qtype_char}\|{qno}\|{date}"` | sansad.py:33 |
-| `run_id` | string | yes | UUID4 hex (32 chars) | sansad.py:258 |
+| `run_id` | string | cond | UUID4 hex (32 chars); present in all freshly crawled corpora | sansad.py:258 |
 | `kind` | string | yes | `"qa"` | sansad.py:259 |
 | `house` | string | yes | `"Lok Sabha"` | sansad.py:260 |
 | `uuid` | string | yes | LS e-library item UUID | sansad.py:261 |
@@ -49,7 +49,7 @@ Records come in **four shapes** discriminated by `kind` and `house`.
 | `source` | string | yes | `"elibrary.sansad.in"` | sansad.py:272 |
 | `found_via_group` | string | yes | Topic search_group name that found this record | sansad.py:273 |
 | `found_via_query` | string | yes | Exact query string | sansad.py:274 |
-| `crawled_at` | string | yes | ISO datetime of crawl (seconds precision) | sansad.py:275 |
+| `crawled_at` | string | cond | ISO datetime of crawl (seconds precision); present in all freshly crawled corpora | sansad.py:275 |
 | `language_classified` | string[] | yes | Default `["en"]`; set by extractor if different | sansad.py:288 |
 | `pdf_url` | string | cond | Absolute PDF URL; present only when download succeeded | sansad.py:286 |
 | `pdf_path` | string | cond | Path relative to corpus `out_dir`; present only when download succeeded | sansad.py:287 |
@@ -61,7 +61,7 @@ Records come in **four shapes** discriminated by `kind` and `house`.
 | Field | Type | Required | Enum / format | Provenance |
 |---|---|---|---|---|
 | `key` | string | yes | `"RS\|{qtype_char}\|{qno}\|{date}"` | sansad.py:33 |
-| `run_id` | string | yes | UUID4 hex | sansad.py:400 |
+| `run_id` | string | cond | UUID4 hex; present in all freshly crawled corpora | sansad.py:400 |
 | `kind` | string | yes | `"qa"` | sansad.py:402 |
 | `house` | string | yes | `"Rajya Sabha"` | sansad.py:403 |
 | `qslno` | string\|null | yes | RS serial question number | sansad.py:404 |
@@ -84,7 +84,7 @@ Records come in **four shapes** discriminated by `kind` and `house`.
 | `source` | string | yes | `"rsdoc.nic.in"` | sansad.py:416 |
 | `found_via_query` | string | yes | Ministry filter string used as crawl query | sansad.py:417 |
 | `status` | string | yes | Raw question status from API | sansad.py:418 |
-| `crawled_at` | string | yes | ISO datetime of crawl | sansad.py:419 |
+| `crawled_at` | string | cond | ISO datetime of crawl; present in all freshly crawled corpora | sansad.py:419 |
 | `language_classified` | string[] | yes | Default `["en"]` | sansad.py:429 |
 
 **Note — field divergence vs Shape A**: RS Q/A records lack `uuid`, `handle`,
@@ -102,7 +102,7 @@ Both shapes share `key`, `run_id`, `kind`, `house`, `title`, `date`, `qtype`,
 | Field | Type | Required | Enum / format | Provenance |
 |---|---|---|---|---|
 | `key` | string | yes | `"LS\|{slug}\|{report_no}\|{lok_sabha_no}"` | committees.py:339 |
-| `run_id` | string | yes | UUID4 hex | committees.py:345 |
+| `run_id` | string | cond | UUID4 hex; present in all freshly crawled corpora | committees.py:345 |
 | `kind` | string | yes | `"committee_report"` | committees.py:347 |
 | `house` | string | yes | `"Lok Sabha"` | committees.py:344 |
 | `report_type` | string | yes | See `report_type` vocabulary | committees.py:348 |
@@ -123,7 +123,7 @@ Both shapes share `key`, `run_id`, `kind`, `house`, `title`, `date`, `qtype`,
 | `pdf_url_hindi` | string\|null | yes | Hindi PDF URL; may be null | committees.py:363 |
 | `pdf_path` | string | cond | Relative path; present only when download succeeded | committees.py:375 |
 | `source` | string | yes | `"sansad.in/api_ls/committee"` | committees.py:364 |
-| `crawled_at` | string | yes | ISO datetime | committees.py:365 |
+| `crawled_at` | string | cond | ISO datetime; present in all freshly crawled corpora | committees.py:365 |
 
 ---
 
@@ -132,7 +132,7 @@ Both shapes share `key`, `run_id`, `kind`, `house`, `title`, `date`, `qtype`,
 | Field | Type | Required | Enum / format | Provenance |
 |---|---|---|---|---|
 | `key` | string | yes | `"RS\|{slug}\|{report_no}"` | committees.py:457 |
-| `run_id` | string | yes | UUID4 hex | committees.py:464 |
+| `run_id` | string | cond | UUID4 hex; present in all freshly crawled corpora | committees.py:464 |
 | `kind` | string | yes | `"committee_report"` | committees.py:466 |
 | `house` | string | yes | `"Rajya Sabha"` | committees.py:465 |
 | `report_type` | string | yes | See `report_type` vocabulary | committees.py:467 |
@@ -150,7 +150,7 @@ Both shapes share `key`, `run_id`, `kind`, `house`, `title`, `date`, `qtype`,
 | `pdf_url_hindi` | string\|null | yes | Hindi PDF URL; may be null | committees.py:479 |
 | `pdf_path` | string | cond | Relative path; present only when download succeeded | committees.py:490 |
 | `source` | string | yes | `"sansad.in/api_rs/committee"` | committees.py:480 |
-| `crawled_at` | string | yes | ISO datetime | committees.py:481 |
+| `crawled_at` | string | cond | ISO datetime; present in all freshly crawled corpora | committees.py:481 |
 
 **Note — field divergence between LS and RS committee reports**: LS reports carry
 `loksabha_no`, `date_presented_ls`, `date_laid_rs`, `date_presented_speaker`.

@@ -8,6 +8,7 @@ from .atr_linkage import extract_atr_linkages
 from .committees import CommitteeCrawler, resolve_committees
 from .sansad import SansadCrawler
 from .topics import load_topic
+from .validate import validate_corpus
 
 
 def _split_csv(value: str | None) -> list[str] | None:
@@ -156,6 +157,15 @@ def extract_atr_linkage_cmd(args: argparse.Namespace) -> None:
     extract_atr_linkages(out, log_fn=print)
 
 
+def validate_cmd(args: argparse.Namespace) -> None:
+    out = Path(args.out)
+    if not out.is_dir():
+        raise SystemExit(f"directory not found: {out}")
+    ok = validate_corpus(out, log=print, max_errors=args.max_errors)
+    if not ok:
+        raise SystemExit(1)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="sansad-crawl")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -221,6 +231,22 @@ def build_parser() -> argparse.ArgumentParser:
     )
     atr_link.add_argument("--out", required=True, help="Corpus directory containing manifest.jsonl")
     atr_link.set_defaults(func=extract_atr_linkage_cmd)
+
+    val = sub.add_parser(
+        "validate",
+        help=(
+            "Validate all JSONL files in a corpus directory against their "
+            "JSON Schemas. Requires pip install sansad-crawler[dev]."
+        ),
+    )
+    val.add_argument("--out", required=True, help="Corpus directory to validate")
+    val.add_argument(
+        "--max-errors",
+        type=int,
+        default=10,
+        help="Maximum validation errors to print per file (default: 10)",
+    )
+    val.set_defaults(func=validate_cmd)
 
     return parser
 

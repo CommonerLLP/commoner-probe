@@ -82,6 +82,18 @@ sansad-crawl extract-atr-linkage --out data/committees
 
 Writes `atr_linkage.jsonl` with `atr_key` → `references_report_key` mappings.
 
+### `sansad-crawl validate`
+
+Validate every JSONL file in a corpus directory against its JSON Schema.
+
+```bash
+sansad-crawl validate --out data/libraries
+```
+
+Requires `pip install "sansad-crawler[dev]"`. Exits 0 when all records
+are valid; exits 1 and prints line numbers + field paths on failure.
+Use `--max-errors N` to control how many errors are shown per file.
+
 ## Topic profile format
 
 A topic profile is a JSON file with:

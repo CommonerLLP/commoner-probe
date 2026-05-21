@@ -4,7 +4,7 @@
   "title": "manifest.jsonl — committee report record",
   "description": "One committee report record (kind=committee_report) from manifest.jsonl. Comes in two shapes depending on house.",
   "type": "object",
-  "required": ["key", "run_id", "kind", "house", "report_type", "presented_via", "committee_slug", "committee_name", "title", "date", "source", "crawled_at"],
+  "required": ["key", "kind", "house", "report_type", "presented_via", "committee_slug", "committee_name", "title", "date", "source"],
   "properties": {
     "key": { "type": "string", "description": "LS|{slug}|{report_no}|{ls_no} or RS|{slug}|{report_no}" },
     "run_id": { "type": "string" },
