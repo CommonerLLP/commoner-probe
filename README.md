@@ -7,12 +7,50 @@ Data-pulling crawler for Indian Parliament — Lok Sabha and Rajya Sabha questio
 ## Install
 
 ```bash
-pip install -e ".[pdf,http]"
+# For users
+pip install "sansad-crawler[all]"
+
+# For development
+pip install -e ".[pdf,http,dev]"
 ```
 
 Extras:
 - `http` — uses `requests` for HTTP (recommended; falls back to stdlib `urllib` without it)
 - `pdf` — uses `pdfminer.six` for PDF text extraction; falls back to system `pdftotext`
+- `dev` — `jsonschema` + `pytest` (schema validation, tests)
+- `pandas` — enables `Corpus.to_dataframe()`
+
+## Quickstart for researchers
+
+```python
+from sansad_crawler import Corpus
+
+c = Corpus("data/libraries")          # directory produced by sansad-crawl
+
+# Stream Q/A records
+for r in c.manifest_qa():
+    print(r.house, r.qtype, r.title)
+
+# Stream committee reports
+for r in c.manifest_committee_reports():
+    print(r.committee_slug, r.report_type, r.date)
+
+# Join manifest + extracted answers
+for pair in c.join_qa():
+    if pair.answers:
+        print(pair.manifest.key, pair.answers[0].question_text[:80])
+
+# ATR lifecycle chain: recommendation → government response
+for chain in c.join_atr_chain():
+    print(chain.atr.title, "responds to", chain.original and chain.original.title)
+
+# pandas (pip install sansad-crawler[pandas])
+df = c.to_dataframe("manifest_committee_reports")
+```
+
+See [`docs/SCHEMAS.md`](docs/SCHEMAS.md) for full field-level documentation
+of every output stream. See [`examples/usage.py`](examples/usage.py) for a
+runnable walkthrough.
 
 ## Commands
 
@@ -81,6 +119,18 @@ sansad-crawl extract-atr-linkage --out data/committees
 ```
 
 Writes `atr_linkage.jsonl` with `atr_key` → `references_report_key` mappings.
+
+### `sansad-crawl stats`
+
+Print corpus health statistics.
+
+```bash
+sansad-crawl stats --out data/libraries
+sansad-crawl stats --out data/libraries --json   # machine-readable
+```
+
+Shows: record counts by house/year/ministry/committee/report_type, answers
+extraction coverage, entity resolution rate, and date ranges.
 
 ### `sansad-crawl validate`
 

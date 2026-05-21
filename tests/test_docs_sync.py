@@ -27,12 +27,12 @@ class VersionSyncTests(unittest.TestCase):
 
 
 class CliCommandSyncTests(unittest.TestCase):
-    def test_cli_exposes_exactly_five_subcommands(self):
+    def test_cli_exposes_exactly_six_subcommands(self):
         parser = build_parser()
         subcommands = set(parser._subparsers._group_actions[0].choices.keys())  # type: ignore[attr-defined]
         self.assertEqual(
             subcommands,
-            {"crawl", "crawl-committees", "extract-answers", "extract-atr-linkage", "validate"},
+            {"crawl", "crawl-committees", "extract-answers", "extract-atr-linkage", "stats", "validate"},
         )
 
     def test_crawl_has_no_classifier_flag(self):

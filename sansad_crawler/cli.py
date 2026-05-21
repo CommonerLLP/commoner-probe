@@ -7,6 +7,7 @@ from .answers import extract_answers
 from .atr_linkage import extract_atr_linkages
 from .committees import CommitteeCrawler, resolve_committees
 from .sansad import SansadCrawler
+from .stats import compute_stats, print_stats
 from .topics import load_topic
 from .validate import validate_corpus
 
@@ -157,6 +158,14 @@ def extract_atr_linkage_cmd(args: argparse.Namespace) -> None:
     extract_atr_linkages(out, log_fn=print)
 
 
+def stats_cmd(args: argparse.Namespace) -> None:
+    out = Path(args.out)
+    if not out.is_dir():
+        raise SystemExit(f"directory not found: {out}")
+    stats = compute_stats(out)
+    print_stats(stats, json_output=args.json)
+
+
 def validate_cmd(args: argparse.Namespace) -> None:
     out = Path(args.out)
     if not out.is_dir():
@@ -231,6 +240,18 @@ def build_parser() -> argparse.ArgumentParser:
     )
     atr_link.add_argument("--out", required=True, help="Corpus directory containing manifest.jsonl")
     atr_link.set_defaults(func=extract_atr_linkage_cmd)
+
+    st = sub.add_parser(
+        "stats",
+        help="Print corpus health statistics (record counts, coverage, top ministries).",
+    )
+    st.add_argument("--out", required=True, help="Corpus directory")
+    st.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit stats as a single JSON object",
+    )
+    st.set_defaults(func=stats_cmd)
 
     val = sub.add_parser(
         "validate",
