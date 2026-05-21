@@ -1,0 +1,66 @@
+{
+  "name": "libraries",
+  "description": "Public, institutional, digital, and access-oriented library questions in Parliament.",
+  "search_groups": {
+    "public_libraries": [
+      "public library",
+      "public libraries",
+      "community library",
+      "rural library",
+      "village library",
+      "district library",
+      "state central library",
+      "children library",
+      "mobile library"
+    ],
+    "policy_funding": [
+      "Raja Rammohun Roy Library Foundation",
+      "RRRLF",
+      "National Mission on Libraries",
+      "library grant",
+      "library cess",
+      "library act",
+      "library policy"
+    ],
+    "institutional": [
+      "university library",
+      "school library",
+      "college library",
+      "digital library",
+      "National Digital Library",
+      "library automation",
+      "library digitisation",
+      "library digitization"
+    ],
+    "inclusion_access": [
+      "library for disabled",
+      "braille library",
+      "reading room",
+      "book bank",
+      "tribal library",
+      "minority library"
+    ]
+  },
+  "lok_sabha_ministries": [
+    "CULTURE",
+    "EDUCATION",
+    "HUMAN RESOURCE DEVELOPMENT",
+    "INFORMATION AND BROADCASTING",
+    "SOCIAL JUSTICE AND EMPOWERMENT",
+    "TRIBAL AFFAIRS",
+    "MINORITY AFFAIRS",
+    "RURAL DEVELOPMENT",
+    "PANCHAYATI RAJ"
+  ],
+  "rajya_sabha_ministry_likes": [
+    "CULTURE",
+    "EDUCATION",
+    "HUMAN RESOURCE DEVELOPMENT",
+    "INFORMATION AND BROADCASTING",
+    "SOCIAL JUSTICE",
+    "TRIBAL AFFAIRS",
+    "MINORITY AFFAIRS",
+    "RURAL DEVELOPMENT",
+    "PANCHAYATI RAJ"
+  ]
+}

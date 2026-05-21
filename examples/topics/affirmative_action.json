@@ -1,0 +1,82 @@
+{
+  "name": "affirmative_action",
+  "description": "SC/ST/OBC/EWS reservation policy, backlog reserved vacancies, post-creation and promotion-in-reservation, and SC/ST (Prevention of Atrocities) Act enforcement.",
+  "search_groups": {
+    "reservation_general": [
+      "reservation",
+      "reserved post",
+      "reserved category",
+      "reservation roster",
+      "reservation policy",
+      "reservation in promotion"
+    ],
+    "sc_st": [
+      "Scheduled Caste",
+      "Scheduled Tribe",
+      "SC/ST",
+      "scheduled castes and scheduled tribes",
+      "Dalit",
+      "Adivasi"
+    ],
+    "obc": [
+      "Other Backward Classes",
+      "OBC reservation",
+      "Mandal Commission",
+      "creamy layer",
+      "central list of OBCs"
+    ],
+    "ews": [
+      "Economically Weaker Section",
+      "EWS reservation",
+      "EWS quota",
+      "10 per cent reservation"
+    ],
+    "vacancies_backlog": [
+      "vacant post",
+      "vacancies",
+      "backlog vacancies",
+      "backlog reserved",
+      "backlog post",
+      "compassionate appointment",
+      "post creation",
+      "sanctioned post"
+    ],
+    "promotion_and_creation": [
+      "promotion in reservation",
+      "reservation in promotion",
+      "consequential seniority",
+      "creamy layer in promotion",
+      "post creation",
+      "cadre review"
+    ],
+    "atrocities": [
+      "Prevention of Atrocities Act",
+      "POA Act",
+      "SC/ST Atrocities Act",
+      "atrocities against Dalits",
+      "atrocities against tribals",
+      "PCR Act",
+      "Protection of Civil Rights"
+    ]
+  },
+  "lok_sabha_ministries": [
+    "PERSONNEL, PUBLIC GRIEVANCES AND PENSIONS",
+    "SOCIAL JUSTICE AND EMPOWERMENT",
+    "TRIBAL AFFAIRS",
+    "MINORITY AFFAIRS",
+    "EDUCATION",
+    "LABOUR AND EMPLOYMENT",
+    "HOME AFFAIRS",
+    "WOMEN AND CHILD DEVELOPMENT"
+  ],
+  "rajya_sabha_ministry_likes": [
+    "PERSONNEL",
+    "SOCIAL JUSTICE",
+    "TRIBAL AFFAIRS",
+    "MINORITY AFFAIRS",
+    "EDUCATION",
+    "LABOUR",
+    "HOME AFFAIRS",
+    "WOMEN AND CHILD"
+  ]
+}
