@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=42"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sansad-crawler"
+version = "0.1.0"
+description = "Data-pulling crawler for Indian Parliament (Lok Sabha + Rajya Sabha) questions and standing committee reports."
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "Sreeram Ramasubramanian" }]
+license = { text = "PolyForm-Noncommercial-1.0.0" }
+keywords = [
+  "parliament-of-india",
+  "lok-sabha",
+  "rajya-sabha",
+  "parliamentary-questions",
+  "standing-committees",
+  "public-records",
+  "civic-tech",
+]
+classifiers = [
+  "Intended Audience :: Science/Research",
+  "Topic :: Sociology",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Operating System :: OS Independent",
+]
+dependencies = []
+
+[project.optional-dependencies]
+pdf = ["pdfminer.six>=20231228"]
+http = ["requests>=2.31.0"]
+all = [
+  "pdfminer.six>=20231228",
+  "requests>=2.31.0",
+]
+
+[project.scripts]
+sansad-crawl = "sansad_crawler.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["sansad_crawler*"]
+namespaces = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
