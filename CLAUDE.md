@@ -58,6 +58,9 @@ git status  # Should show "up to date with origin"
 - NEVER leave uncommitted changes or stranded edits in the working tree
 - NEVER push to remote unless the user explicitly requests it
 - If a commit fails (hook, conflict, etc.), resolve and retry until it succeeds
+- **NEVER add `Co-authored-by` trailers** to commit messages. Do not include
+  `Co-authored-by: Cursor <cursoragent@cursor.com>` or any co-author attribution.
+  All commits are authored solely by the repository owner.
 <!-- END BEADS INTEGRATION -->
 
 ## Build & Test

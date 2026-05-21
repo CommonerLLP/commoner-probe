@@ -12,6 +12,12 @@ bd close <id>         # Complete work
 bd dolt push          # Push beads data to remote
 ```
 
+## Git Commit Rules
+
+**NEVER add `Co-authored-by` trailers** to any commit message. Do not add
+`Co-authored-by: Cursor <cursoragent@cursor.com>` or any other co-author
+attribution. All commits are authored solely by the repository owner.
+
 ## Non-Interactive Shell Commands
 
 **ALWAYS use non-interactive flags** with file operations to avoid hanging on confirmation prompts.
