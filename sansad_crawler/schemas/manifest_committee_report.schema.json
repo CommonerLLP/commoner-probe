@@ -16,11 +16,11 @@
     },
     "presented_via": {
       "type": "string",
-      "enum": ["ls_only", "rs_only", "both", "none"]
+      "enum": ["both_houses", "ls_only", "rs_only", "speaker_only", "none"]
     },
     "committee_slug": { "type": "string" },
     "committee_name": { "type": "string" },
-    "report_no": { "type": ["string", "null"] },
+    "report_no": { "type": ["string", "integer", "null"] },
     "title": { "type": "string" },
     "title_hindi": { "type": ["string", "null"] },
     "language_classified": { "type": "array", "items": { "type": "string" } },

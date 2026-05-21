@@ -109,7 +109,7 @@ Both shapes share `key`, `run_id`, `kind`, `house`, `title`, `date`, `qtype`,
 | `presented_via` | string | yes | See `presented_via` vocabulary | committees.py:349 |
 | `committee_slug` | string | yes | Slug key (e.g. `"finance"`, `"health"`) | committees.py:350 |
 | `committee_name` | string | yes | Human-readable committee name | committees.py:351 |
-| `report_no` | string\|null | yes | Report number from API | committees.py:352 |
+| `report_no` | string\|integer\|null | yes | Report number from API (integer or string depending on house) | committees.py:352 |
 | `loksabha_no` | integer\|string | yes | Lok Sabha number (e.g. `18`) | committees.py:353 |
 | `title` | string | yes | Subject of report | committees.py:354 |
 | `title_hindi` | string\|null | yes | Hindi subject; may be null | committees.py:355 |
@@ -136,10 +136,10 @@ Both shapes share `key`, `run_id`, `kind`, `house`, `title`, `date`, `qtype`,
 | `kind` | string | yes | `"committee_report"` | committees.py:466 |
 | `house` | string | yes | `"Rajya Sabha"` | committees.py:465 |
 | `report_type` | string | yes | See `report_type` vocabulary | committees.py:467 |
-| `presented_via` | string | yes | `"rs_only"` or `"none"` | committees.py:461 |
+| `presented_via` | string | yes | `"rs_only"` or `"none"`; see vocabulary | committees.py:461 |
 | `committee_slug` | string | yes | Slug key | committees.py:468 |
 | `committee_name` | string | yes | Human-readable committee name | committees.py:469 |
-| `report_no` | string\|null | yes | Report number from API | committees.py:470 |
+| `report_no` | string\|integer\|null | yes | Report number from API | committees.py:470 |
 | `title` | string | yes | Subject of report | committees.py:471 |
 | `title_hindi` | string\|null | yes | Hindi subject; may be null | committees.py:472 |
 | `language_classified` | string[] | yes | `["en"]` | committees.py:473 |
@@ -403,9 +403,10 @@ Source: `sansad_crawler/entities.py`.
 
 | Value | Meaning |
 |---|---|
-| `"ls_only"` | Presented only in Lok Sabha |
-| `"rs_only"` | Presented only in Rajya Sabha |
-| `"both"` | Presented in both houses |
+| `"both_houses"` | Presented in both Lok Sabha and Rajya Sabha |
+| `"ls_only"` | Presented in Lok Sabha only |
+| `"rs_only"` | Presented in Rajya Sabha only |
+| `"speaker_only"` | Presented to the Speaker but not yet laid in either house |
 | `"none"` | No presentation date available |
 
 ### `source` (manifest)
