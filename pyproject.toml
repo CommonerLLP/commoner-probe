@@ -9,7 +9,7 @@ description = "Data-pulling crawler for Indian Parliament (Lok Sabha + Rajya Sab
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [{ name = "Sreeram Ramasubramanian" }]
-license = { text = "PolyForm-Noncommercial-1.0.0" }
+license = { text = "MIT" }
 keywords = [
   "parliament-of-india",
   "lok-sabha",
@@ -20,6 +20,7 @@ keywords = [
   "civic-tech",
 ]
 classifiers = [
+  "License :: OSI Approved :: MIT License",
   "Intended Audience :: Science/Research",
   "Topic :: Sociology",
   "Programming Language :: Python :: 3",
@@ -39,6 +40,13 @@ all = [
   "pdfminer.six>=20231228",
   "requests>=2.31.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/CommonerLLP/sansad-crawler"
+Source = "https://github.com/CommonerLLP/sansad-crawler"
+Issues = "https://github.com/CommonerLLP/sansad-crawler/issues"
+Documentation = "https://github.com/CommonerLLP/sansad-crawler/blob/master/README.md"
+Changelog = "https://github.com/CommonerLLP/sansad-crawler/blob/master/CHANGELOG.md"
 
 [project.scripts]
 sansad-crawl = "sansad_crawler.cli:main"
