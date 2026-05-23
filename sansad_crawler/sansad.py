@@ -231,7 +231,7 @@ class SansadCrawler(BaseCrawler):
                 # Per-bucket counters for the audit trail. Surfaced 2026-05-08:
                 # empty-result crawls were undebuggable from _runs.jsonl alone.
                 bkt_t0 = time.monotonic()
-                bkt_raw = bkt_after_date = bkt_kept = bkt_skipped_seen = 0
+                bkt_raw = bkt_after_date = bkt_kept = bkt_skipped_seen = bkt_no_match = 0
                 bkt_error: str | None = None
                 try:
                     for item in self.ls_search_all(query, ministry, limit):
@@ -253,6 +253,9 @@ class SansadCrawler(BaseCrawler):
                             bkt_skipped_seen += 1
                             continue
                         title = md_value(md, "dc.title")
+                        if self.topic.filter_fn is not None and not self.topic.filter_fn(title, query):
+                            bkt_no_match += 1
+                            continue
                         rec = {
                             "key": key,
                             "run_id": run_id,
@@ -295,7 +298,7 @@ class SansadCrawler(BaseCrawler):
                             self.runlog.record_bucket(
                                 kind="ls_qa", group=group, query=query, ministry=ministry,
                                 raw_returned=bkt_raw, after_date_filter=bkt_after_date,
-                                kept=bkt_kept, skipped_seen=bkt_skipped_seen,
+                                no_match=bkt_no_match, kept=bkt_kept, skipped_seen=bkt_skipped_seen,
                                 elapsed_ms=round((time.monotonic() - bkt_t0) * 1000, 1),
                                 error=None,
                             )
@@ -310,7 +313,7 @@ class SansadCrawler(BaseCrawler):
                     self.runlog.record_bucket(
                         kind="ls_qa", group=group, query=query, ministry=ministry,
                         raw_returned=bkt_raw, after_date_filter=bkt_after_date,
-                        kept=bkt_kept, skipped_seen=bkt_skipped_seen,
+                        no_match=bkt_no_match, kept=bkt_kept, skipped_seen=bkt_skipped_seen,
                         elapsed_ms=round((time.monotonic() - bkt_t0) * 1000, 1),
                         error=bkt_error,
                     )
@@ -365,7 +368,7 @@ class SansadCrawler(BaseCrawler):
                 self.log(f"RS session={ses_no} ministry_like={ministry}%")
                 # Per-bucket counters (audit trail).
                 bkt_t0 = time.monotonic()
-                bkt_raw = bkt_after_date = bkt_kept = bkt_skipped_seen = 0
+                bkt_raw = bkt_after_date = bkt_kept = bkt_skipped_seen = bkt_no_match = 0
                 bkt_error: str | None = None
                 try:
                     records = self.rs_search_session(ses_no, ministry)
@@ -376,7 +379,7 @@ class SansadCrawler(BaseCrawler):
                     self.runlog.record_bucket(
                         kind="rs_qa", session=ses_no, ministry=ministry,
                         raw_returned=0, after_date_filter=0, no_match=0,
-                        kept=0, skipped_seen=0,
+                        kept=0, skipped_seen=0,  # exception path: counters not yet populated
                         elapsed_ms=round((time.monotonic() - bkt_t0) * 1000, 1),
                         error=bkt_error,
                     )
@@ -396,6 +399,10 @@ class SansadCrawler(BaseCrawler):
                     if key in seen:
                         bkt_skipped_seen += 1
                         continue
+                    title = (row.get("qtitle") or "").strip()
+                    if self.topic.filter_fn is not None and not self.topic.filter_fn(title, ministry):
+                        bkt_no_match += 1
+                        continue
                     rec = {
                         "key": key,
                         "run_id": run_id,
@@ -403,7 +410,7 @@ class SansadCrawler(BaseCrawler):
                         "house": "Rajya Sabha",
                         "qslno": row.get("qslno"),
                         "ses_no": row.get("ses_no"),
-                        "title": (row.get("qtitle") or "").strip(),
+                        "title": title,
                         "date": date,
                         "qtype": qtype,
                         "qno": qno,
@@ -437,7 +444,7 @@ class SansadCrawler(BaseCrawler):
                         self.runlog.record_bucket(
                             kind="rs_qa", session=ses_no, ministry=ministry,
                             raw_returned=bkt_raw, after_date_filter=bkt_after_date,
-                            no_match=0, kept=bkt_kept,
+                            no_match=bkt_no_match, kept=bkt_kept,
                             skipped_seen=bkt_skipped_seen,
                             elapsed_ms=round((time.monotonic() - bkt_t0) * 1000, 1),
                             error=None,

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Callable
 
 
 @dataclass(frozen=True)
@@ -12,6 +13,12 @@ class TopicProfile:
     search_groups: dict[str, list[str]]
     lok_sabha_ministries: list[str]
     rajya_sabha_ministry_likes: list[str]
+    # Injected by compose (Layer 1) at startup via dataclasses.replace().
+    # Called as filter_fn(title, query) -> bool before each record is kept.
+    # None means keep everything — pure acquisition mode.
+    filter_fn: Callable[[str, str], bool] | None = field(
+        default=None, compare=False, hash=False, repr=False
+    )
 
     def searches(self, max_buckets: int | None = None) -> list[tuple[str, str]]:
         pairs: list[tuple[str, str]] = []
