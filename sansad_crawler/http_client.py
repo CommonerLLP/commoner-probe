@@ -6,7 +6,6 @@ import urllib.error
 import urllib.request
 from urllib.parse import urlencode
 
-
 try:
     import requests  # type: ignore
 except ModuleNotFoundError:

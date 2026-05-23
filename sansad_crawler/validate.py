@@ -138,7 +138,6 @@ def validate_corpus(
     runs_path = out_dir / "_runs.jsonl"
     if runs_path.exists():
         log(f"Validating {runs_path.relative_to(out_dir)} ...")
-        runs_schema = sc.load("runs")
         ok = _validate_file(runs_path, lambda _: "runs")
         n = sum(1 for line in runs_path.read_text(encoding="utf-8").splitlines() if line.strip())
         log(f"  {n} records — {'ok' if ok else 'FAILED'}")

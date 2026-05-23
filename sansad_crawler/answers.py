@@ -32,7 +32,6 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterable
 
 from .textparse import extract_pdf_text, read_jsonl
 
@@ -182,7 +181,7 @@ def _parse_question_subject(question_text: str) -> str:
     # Subject lines are usually one all-caps phrase, possibly multi-line.
     # Strip whitespace, drop empty lines, take the longest contiguous
     # non-empty caps-or-mixed line block.
-    lines = [l.strip() for l in candidate.splitlines() if l.strip()]
+    lines = [ln.strip() for ln in candidate.splitlines() if ln.strip()]
     if not lines:
         return ""
     # Heuristic: the subject is the line(s) before any line starting with

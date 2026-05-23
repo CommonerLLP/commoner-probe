@@ -23,8 +23,8 @@ provided for symmetry, so downstream code can do::
 
 from __future__ import annotations
 
-import inspect
-from dataclasses import dataclass, field, fields as dc_fields
+from dataclasses import dataclass, field
+from dataclasses import fields as dc_fields
 from typing import Any
 
 # Re-export entity dataclasses for API symmetry.
@@ -43,7 +43,6 @@ def _from_dict(cls, d: dict) -> Any:
     filtered = {k: v for k, v in d.items() if k in known}
     # Supply defaults for any known fields not present in the dict so that
     # dataclass construction never raises TypeError for missing args.
-    sig = inspect.signature(cls.__init__)
     for f in dc_fields(cls):
         if f.name not in filtered:
             if f.default is not f.default_factory:  # type: ignore[misc]

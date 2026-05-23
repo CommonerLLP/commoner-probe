@@ -1,15 +1,15 @@
 from __future__ import annotations
 
-import json
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Iterable, Iterator
+from typing import TYPE_CHECKING, Iterable, Iterator
+
+if TYPE_CHECKING:
+    from .members import MPRoster
 from urllib.parse import urlencode
 
-from .http_client import make_session
 from .base import BaseCrawler, now, safe_filename_segment
-from .runlog import RunLog
 from .topics import TopicProfile
 
 LS_API_BASE = "https://elibrary.sansad.in/server/api"

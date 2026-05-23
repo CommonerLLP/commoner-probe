@@ -3,10 +3,10 @@
 from . import schemas as schemas
 from .corpus import AtrChain, Corpus, QaPair  # noqa: F401
 from .records import (  # noqa: F401
-    AtrLinkageRecord,
     AnswerAtrResponse,
     AnswerDfgRecommendation,
     AnswerQaResponse,
+    AtrLinkageRecord,
     BureaucraticPosting,
     CommitteeMembership,
     ManifestCommitteeReportRecord,

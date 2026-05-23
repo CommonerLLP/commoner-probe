@@ -11,7 +11,6 @@ from .http_client import make_session
 from .runlog import RunLog
 
 if TYPE_CHECKING:
-    from .http_client import StdlibSession
     from .resolver import Resolver
     from .topics import TopicProfile
 

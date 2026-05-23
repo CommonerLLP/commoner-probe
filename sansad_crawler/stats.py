@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 from collections import Counter
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 
 def _top(counter: Counter, n: int = 10) -> list[tuple[str, int]]:
