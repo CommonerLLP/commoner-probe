@@ -223,6 +223,7 @@ class SansadCrawler(BaseCrawler):
             },
             topic_name=self.topic.name,
             topic_path=self.topic_path,
+            classifier_config=self.topic.classifier_config,
         )
         added = 0
         for group, query in self.topic.searches(max_buckets):
@@ -357,6 +358,7 @@ class SansadCrawler(BaseCrawler):
             },
             topic_name=self.topic.name,
             topic_path=self.topic_path,
+            classifier_config=self.topic.classifier_config,
         )
         self.log("RS: keeping all ministry-matched rows (no in-crawler classification).")
         added = 0

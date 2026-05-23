@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
 
 @dataclass(frozen=True)
@@ -13,6 +13,10 @@ class TopicProfile:
     search_groups: dict[str, list[str]]
     lok_sabha_ministries: list[str]
     rajya_sabha_ministry_likes: list[str]
+    # Classifier config loaded from the topic JSON (if present). Stored here
+    # so it travels with the corpus via _runs.jsonl for auditability — the
+    # apparatus that produced the data is inseparable from the data itself.
+    classifier_config: dict[str, Any] | None = None
     # Injected by compose (Layer 1) at startup via dataclasses.replace().
     # Called as filter_fn(title, query) -> bool before each record is kept.
     # None means keep everything — pure acquisition mode.
@@ -35,4 +39,5 @@ def load_topic(path: str | Path) -> TopicProfile:
         search_groups={k: list(v) for k, v in raw.get("search_groups", {}).items()},
         lok_sabha_ministries=list(raw.get("lok_sabha_ministries", [])),
         rajya_sabha_ministry_likes=list(raw.get("rajya_sabha_ministry_likes", [])),
+        classifier_config=raw.get("classifier_config"),
     )
