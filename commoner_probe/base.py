@@ -63,7 +63,7 @@ def _encode_url_path(url: str) -> str:
     )
 
 
-class BaseCrawler:
+class BaseProbe:
     """Shared I/O logic for Sansad crawlers."""
 
     def __init__(
@@ -79,7 +79,7 @@ class BaseCrawler:
         self.out_dir = out_dir
         self.pdf_dir = out_dir / "pdfs"
         self.manifest = out_dir / "manifest.jsonl"
-        self.log_path = out_dir / "crawl.log"
+        self.log_path = out_dir / "probe.log"
         self.sleep = sleep
         self.session = make_session()
         self.topic_path = topic_path

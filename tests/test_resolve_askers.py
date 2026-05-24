@@ -1,4 +1,4 @@
-"""Tests for the BaseCrawler.resolve_askers helper.
+"""Tests for the BaseProbe.resolve_askers helper.
 
 This is the chokepoint where free-text asker names from API metadata
 become stable entity_ids on records. The schema commitment for v0.5.0
@@ -40,31 +40,31 @@ class _FakeMember:
 
 
 def _stub_crawler(out_dir: Path, resolver=None):
-    """Build a minimally-functional BaseCrawler for helper tests.
+    """Build a minimally-functional BaseProbe for helper tests.
 
     Bypasses the network-fetching topic + RunLog by providing fake stubs.
     Only the helper under test (``resolve_askers``) is exercised.
     """
-    from commoner_probe.base import BaseCrawler
+    from commoner_probe.base import BaseProbe
 
     class _FakeTopic:
         name = "fake"
         classifier_config: dict = {}
 
-    crawler = BaseCrawler.__new__(BaseCrawler)
-    crawler.topic = _FakeTopic()
-    crawler.out_dir = out_dir
-    crawler.pdf_dir = out_dir / "pdfs"
-    crawler.manifest = out_dir / "manifest.jsonl"
-    crawler.log_path = out_dir / "crawl.log"
-    crawler.sleep = 0.0
-    crawler.session = None
-    crawler.topic_path = None
-    crawler.classifier_mode = "regex"
+    probe = BaseProbe.__new__(BaseProbe)
+    probe.topic = _FakeTopic()
+    probe.out_dir = out_dir
+    probe.pdf_dir = out_dir / "pdfs"
+    probe.manifest = out_dir / "manifest.jsonl"
+    probe.log_path = out_dir / "probe.log"
+    probe.sleep = 0.0
+    probe.session = None
+    probe.topic_path = None
+    probe.classifier_mode = "regex"
     from commoner_probe.runlog import RunLog
-    crawler.runlog = RunLog(out_dir)
-    crawler.resolver = resolver
-    return crawler
+    probe.runlog = RunLog(out_dir)
+    probe.resolver = resolver
+    return probe
 
 
 class ResolveAskersTests(unittest.TestCase):

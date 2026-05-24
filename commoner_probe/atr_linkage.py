@@ -228,7 +228,7 @@ def extract_atr_linkages(
     manifest_path = out_dir / "manifest.jsonl"
     out_path = out_dir / "atr_linkage.jsonl"
     if not manifest_path.exists():
-        log_fn(f"no manifest at {manifest_path} — run 'crawl-committees' first")
+        log_fn(f"no manifest at {manifest_path} — run 'committees' first")
         return stats
 
     out_records: list[dict] = []

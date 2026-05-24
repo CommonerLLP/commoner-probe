@@ -1,4 +1,4 @@
-"""Standing-committee report crawler.
+"""Standing-committee report probe.
 
 Mirrors `sansad.py` (questions) but for parliamentary standing-committee
 reports. One record per report (granularity decision: see notes/RELEASE.md
@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Iterable, Iterator
 from urllib.parse import urlencode
 
-from .base import BaseCrawler, now, safe_filename_segment
+from .base import BaseProbe, now, safe_filename_segment
 from .sansad import date_in_range
 from .topics import TopicProfile
 
@@ -36,7 +36,7 @@ DEFAULT_LOK_SABHA = 18
 
 LS_HEADERS = {
     "Accept": "application/json",
-    "User-Agent": "Mozilla/5.0 sansad-crawler/0.1",
+    "User-Agent": "commoner-probe/0.3.0 (+https://github.com/CommonerLLP/commoner-probe; public-interest research; rate-limited)",
 }
 RS_HEADERS = {**LS_HEADERS, "Referer": "https://sansad.in/rs/committees"}
 
@@ -222,8 +222,8 @@ def report_key(house: str, slug: str, report_no: object, ls_no: int | None = Non
     return f"{h}|{slug}|{n}{suffix}"
 
 
-class CommitteeCrawler(BaseCrawler):
-    """Crawls standing-committee reports. Sibling of `SansadCrawler`."""
+class CommitteeProbe(BaseProbe):
+    """Probes standing-committee reports. Sibling of `SansadProbe`."""
 
     def __init__(
         self,
@@ -386,7 +386,7 @@ class CommitteeCrawler(BaseCrawler):
             page += 1
             time.sleep(self.sleep)
 
-    def crawl_ls(
+    def probe_ls(
         self,
         seen: set[str],
         *,
@@ -451,7 +451,7 @@ class CommitteeCrawler(BaseCrawler):
                         "pdf_url": raw.get("url"),
                         "pdf_url_hindi": raw.get("urlH"),
                         "source": "sansad.in/api_ls/committee",
-                        "crawled_at": now(),
+                        "probed_at": now(),
                     }
                     if download and rec.get("pdf_url"):
                         fname = (
@@ -509,7 +509,7 @@ class CommitteeCrawler(BaseCrawler):
             page += 1
             time.sleep(self.sleep)
 
-    def crawl_rs(
+    def probe_rs(
         self,
         seen: set[str],
         *,
@@ -567,7 +567,7 @@ class CommitteeCrawler(BaseCrawler):
                         "pdf_url": raw.get("url"),
                         "pdf_url_hindi": raw.get("urlHindi"),
                         "source": "sansad.in/api_rs/committee",
-                        "crawled_at": now(),
+                        "probed_at": now(),
                     }
                     if download and rec.get("pdf_url"):
                         fname = (

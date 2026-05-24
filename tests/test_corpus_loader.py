@@ -155,7 +155,7 @@ def test_join_qa_correct_counts():
 # ---------------------------------------------------------------------------
 
 def test_join_atr_chain_correct_linkage():
-    from commoner_probe import Corpus, AtrChain
+    from commoner_probe import AtrChain, Corpus
 
     manifest_recs = [
         # Original report

@@ -176,7 +176,7 @@ class MultiplePatternsTests(unittest.TestCase):
             staged=False,
         )
         self.assertEqual(len(leaks), 3)
-        labels = {l.pattern_label for l in leaks}
+        labels = {item.pattern_label for item in leaks}
         self.assertEqual(labels, {"tag", "ref", "framing"})
 
 

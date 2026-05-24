@@ -1,6 +1,6 @@
 """Frozen smoke fixture: parser regression test, no network.
 
-Drives ``CommitteeCrawler`` against the raw API payloads checked into
+Drives ``CommitteeProbe`` against the raw API payloads checked into
 ``examples/corpora/committees-smoke/raw/`` and asserts the resulting
 manifest matches the canonical ``manifest.jsonl`` byte-for-byte (after
 stripping volatile fields).
@@ -25,7 +25,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from commoner_probe.committees import CommitteeCrawler
+from commoner_probe.committees import CommitteeProbe
 from commoner_probe.topics import load_topic
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -35,7 +35,7 @@ TOPIC = ROOT / "examples" / "topics" / "libraries.json"
 
 # Fields that vary between runs even with identical input. Strip before
 # comparing so the fixture stays byte-stable.
-VOLATILE_FIELDS = frozenset({"run_id", "crawled_at", "elapsed_ms"})
+VOLATILE_FIELDS = frozenset({"run_id", "probed_at", "elapsed_ms"})
 
 
 class _FakeResponse:
@@ -74,15 +74,15 @@ def _run_against_fixture() -> list[dict]:
     records: list[dict] = []
     for slug, fn_name in [("finance", "crawl_ls"), ("health", "crawl_rs")]:
         with tempfile.TemporaryDirectory() as tmp:
-            crawler = CommitteeCrawler(
+            probe = CommitteeProbe(
                 topic,
                 Path(tmp),
                 sleep=0,
                 lok_sabha_no=18,
                 topic_path=TOPIC,
             )
-            crawler.session = _FakeSession(routes)
-            getattr(crawler, fn_name)(
+            probe.session = _FakeSession(routes)
+            getattr(probe, fn_name)(
                 set(),
                 committees=[slug],
                 from_date=None,

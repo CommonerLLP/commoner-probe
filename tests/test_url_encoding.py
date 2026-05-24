@@ -1,4 +1,4 @@
-"""Tests for URL path encoding in BaseCrawler.write_pdf.
+"""Tests for URL path encoding in BaseProbe.write_pdf.
 
 sansad.in's committee endpoints embed committee names with literal spaces in
 the URL path. Both urllib and requests reject URLs containing unencoded

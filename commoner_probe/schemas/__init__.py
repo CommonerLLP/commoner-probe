@@ -1,4 +1,4 @@
-"""JSON Schema helpers for sansad-crawler output streams.
+"""JSON Schema helpers for commoner-probe output streams.
 
 Usage::
 

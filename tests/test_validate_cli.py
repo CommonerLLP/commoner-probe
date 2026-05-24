@@ -11,7 +11,6 @@ Covers:
 from __future__ import annotations
 
 import json
-import sys
 import tempfile
 from pathlib import Path
 
@@ -46,7 +45,7 @@ def _run_validate(out_dir: Path, max_errors: int = 10) -> tuple[bool, list[str]]
 
 def test_smoke_fixture_validates():
     ok, lines = _run_validate(SMOKE)
-    assert ok, f"Expected smoke corpus to pass; got:\n" + "\n".join(lines)
+    assert ok, "Expected smoke corpus to pass; got:\n" + "\n".join(lines)
     assert any("ok" in line for line in lines)
 
 
@@ -84,7 +83,7 @@ def test_empty_directory_passes():
     with tempfile.TemporaryDirectory() as tmp:
         ok, lines = _run_validate(Path(tmp))
     assert ok
-    assert any("manifest.jsonl not found" in l for l in lines)
+    assert any("manifest.jsonl not found" in ln for ln in lines)
 
 
 # ---------------------------------------------------------------------------

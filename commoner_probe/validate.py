@@ -1,9 +1,9 @@
-"""Schema validation for sansad-crawler corpus directories.
+"""Schema validation for commoner-probe corpus directories.
 
-Used by the ``sansad-crawl validate`` CLI subcommand.  Walks a corpus
+Used by the ``commoner-probe validate`` CLI subcommand.  Walks a corpus
 ``out_dir`` and validates every present JSONL file against the matching
 JSON Schema.  Requires the optional ``jsonschema`` package
-(``pip install sansad-crawler[dev]``).
+(``pip install commoner-probe[dev]``).
 
 Exit behaviour:
 - 0  all present files validated cleanly (or no files present)
@@ -29,7 +29,7 @@ def _load_jsonschema():
     except ImportError:
         print(
             "Error: schema validation requires jsonschema — "
-            "run: pip install sansad-crawler[dev]",
+            "run: pip install commoner-probe[dev]",
             file=sys.stderr,
         )
         sys.exit(2)

@@ -34,7 +34,7 @@ from typing import Any
 
 try:
     from importlib.metadata import version as _importlib_version
-    TOOL_VERSION = _importlib_version("sansad-crawler")
+    TOOL_VERSION = _importlib_version("commoner-probe")
 except Exception:
     TOOL_VERSION = "0.0.0"
 

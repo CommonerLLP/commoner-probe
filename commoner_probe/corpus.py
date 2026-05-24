@@ -29,7 +29,7 @@ Usage::
     for chain in c.join_atr_chain():
         print(chain.atr.title, "->", chain.original.title)
 
-    # Pandas (requires pip install sansad-crawler[pandas])
+    # Pandas (requires pip install commoner-probe[pandas])
     df = c.to_dataframe("manifest_committee_reports")
 """
 
@@ -95,7 +95,7 @@ class AtrChain:
 # ---------------------------------------------------------------------------
 
 class Corpus:
-    """Load and explore a sansad-crawler corpus directory.
+    """Load and explore a commoner-probe corpus directory.
 
     Parameters
     ----------
@@ -275,7 +275,7 @@ class Corpus:
         except ImportError:
             raise ImportError(
                 "pandas is not installed. "
-                "Run: pip install 'sansad-crawler[pandas]'"
+                "Run: pip install 'commoner-probe[pandas]'"
             ) from None
 
         if stream not in self._STREAM_MAP:

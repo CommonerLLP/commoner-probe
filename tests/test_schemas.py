@@ -18,7 +18,6 @@ Skip cleanly when ``jsonschema`` is not installed.
 
 from __future__ import annotations
 
-import json
 import re
 import tempfile
 from pathlib import Path
@@ -30,7 +29,6 @@ ROOT = Path(__file__).resolve().parents[1]
 SCHEMAS_DOC = ROOT / "docs" / "SCHEMAS.md"
 
 try:
-    import jsonschema
     from jsonschema import Draft202012Validator
     HAS_JSONSCHEMA = True
 except ImportError:
@@ -149,7 +147,6 @@ def _validate(instance: Any, schema: dict) -> None:
 
 def test_all_schemas_are_valid_json_schema():
     from commoner_probe import schemas
-    meta = Draft202012Validator.META_SCHEMA
     for name in schemas.list_all():
         s = schemas.load(name)
         Draft202012Validator.check_schema(s)  # raises SchemaError on failure
@@ -183,7 +180,7 @@ _LS_QA = {
     "source": "elibrary.sansad.in",
     "found_via_group": "public_libraries",
     "found_via_query": "public library",
-    "crawled_at": "2024-01-15T10:00:00",
+    "probed_at": "2024-01-15T10:00:00",
     "language_classified": ["en"],
 }
 
@@ -211,7 +208,7 @@ _RS_QA = {
     "source": "rsdoc.nic.in",
     "found_via_query": "EDUCATION",
     "status": "answered",
-    "crawled_at": "2024-01-15T10:00:00",
+    "probed_at": "2024-01-15T10:00:00",
     "language_classified": ["en"],
 }
 
@@ -237,7 +234,7 @@ _LS_COMMITTEE = {
     "pdf_url": "https://sansad.in/getFile/app/lsscommittee/Finance/18_Finance_35.pdf",
     "pdf_url_hindi": None,
     "source": "sansad.in/api_ls/committee",
-    "crawled_at": "2026-03-17T12:00:00",
+    "probed_at": "2026-03-17T12:00:00",
 }
 
 _RS_COMMITTEE = {
@@ -259,7 +256,7 @@ _RS_COMMITTEE = {
     "pdf_url": "https://sansad.in/getFile/rsnew/report.pdf",
     "pdf_url_hindi": None,
     "source": "sansad.in/api_rs/committee",
-    "crawled_at": "2026-03-18T12:00:00",
+    "probed_at": "2026-03-18T12:00:00",
 }
 
 _RUN = {
@@ -421,10 +418,11 @@ def test_synthetic_fixture_validates(schema_name, fixture):
     _validate(fixture, schema)
 
 
-def test_crawled_committee_records_validate():
+def test_probed_committee_records_validate():
     """Drive the committee crawler in-memory and validate each record."""
     import json as _json
-    from commoner_probe.committees import CommitteeCrawler
+
+    from commoner_probe.committees import CommitteeProbe
     from commoner_probe.topics import load_topic
 
     FIXTURE_DIR = ROOT / "examples" / "corpora" / "committees-smoke"
@@ -458,9 +456,9 @@ def test_crawled_committee_records_validate():
     records_seen = 0
     for slug, fn_name in [("finance", "crawl_ls"), ("health", "crawl_rs")]:
         with tempfile.TemporaryDirectory() as tmp:
-            crawler = CommitteeCrawler(topic, Path(tmp), sleep=0, lok_sabha_no=18, topic_path=TOPIC)
-            crawler.session = _FakeSession(routes)
-            getattr(crawler, fn_name)(
+            probe = CommitteeProbe(topic, Path(tmp), sleep=0, lok_sabha_no=18, topic_path=TOPIC)
+            probe.session = _FakeSession(routes)
+            getattr(probe, fn_name)(
                 set(), committees=[slug],
                 from_date=None, to_date=None,
                 max_records=None, download=False,

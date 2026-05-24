@@ -14,7 +14,6 @@ from pathlib import Path
 from commoner_probe import __version__
 from commoner_probe.cli import build_parser
 
-
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PYPROJECT = (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
 
@@ -32,12 +31,12 @@ class CliCommandSyncTests(unittest.TestCase):
         subcommands = set(parser._subparsers._group_actions[0].choices.keys())  # type: ignore[attr-defined]
         self.assertEqual(
             subcommands,
-            {"crawl", "crawl-committees", "extract-answers", "extract-atr-linkage", "stats", "validate"},
+            {"sansad", "committees", "extract-answers", "atr-linkage", "stats", "validate"},
         )
 
-    def test_crawl_has_no_classifier_flag(self):
+    def test_sansad_has_no_classifier_flag(self):
         parser = build_parser()
-        crawl = parser._subparsers._group_actions[0].choices["crawl"]  # type: ignore[attr-defined]
+        crawl = parser._subparsers._group_actions[0].choices["sansad"]  # type: ignore[attr-defined]
         option_strings = {
             opt
             for action in crawl._actions
@@ -45,9 +44,9 @@ class CliCommandSyncTests(unittest.TestCase):
         }
         self.assertNotIn("--classifier", option_strings)
 
-    def test_crawl_committees_has_no_crawl_composition_flag(self):
+    def test_committees_has_no_composition_flag(self):
         parser = build_parser()
-        cc = parser._subparsers._group_actions[0].choices["crawl-committees"]  # type: ignore[attr-defined]
+        cc = parser._subparsers._group_actions[0].choices["committees"]  # type: ignore[attr-defined]
         option_strings = {
             opt
             for action in cc._actions

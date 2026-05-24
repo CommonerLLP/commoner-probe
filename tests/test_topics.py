@@ -1,8 +1,7 @@
-from pathlib import Path
 import unittest
+from pathlib import Path
 
-from commoner_probe.topics import load_topic, TopicProfile
-
+from commoner_probe.topics import TopicProfile, load_topic
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -31,7 +30,8 @@ class TopicTests(unittest.TestCase):
 
     def test_legacy_keys_ignored(self):
         """load_topic should silently ignore tag_rules/classifier/fallback_tag."""
-        import json, tempfile
+        import json
+        import tempfile
         data = {
             "name": "test",
             "description": "",

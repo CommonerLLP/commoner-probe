@@ -22,7 +22,7 @@ import unittest
 from pathlib import Path
 
 from commoner_probe.committees import (
-    CommitteeCrawler,
+    CommitteeProbe,
     _ls_presented_via,
     _report_type,
     parse_ls_date,
@@ -31,7 +31,6 @@ from commoner_probe.committees import (
     resolve_committees,
 )
 from commoner_probe.topics import load_topic
-
 
 # --------------------------------------------------------------------------- #
 # Fake HTTP session                                                           #
@@ -230,18 +229,18 @@ class CrawlIntegrationTests(unittest.TestCase):
         self.topic = load_topic(ROOT / "examples" / "topics" / "libraries.json")
         self.profile_path = ROOT / "examples" / "topics" / "libraries.json"
 
-    def _crawler(self, tmp: str, routes: dict[str, dict]) -> CommitteeCrawler:
-        crawler = CommitteeCrawler(
+    def _probe(self, tmp: str, routes: dict[str, dict]) -> CommitteeProbe:
+        probe = CommitteeProbe(
             self.topic,
             Path(tmp),
             sleep=0,
             lok_sabha_no=18,
             topic_path=self.profile_path,
         )
-        crawler.session = FakeSession(routes)
-        return crawler
+        probe.session = FakeSession(routes)
+        return probe
 
-    def test_crawl_ls_emits_records_with_form_as_data_fields(self):
+    def test_probe_ls_emits_records_with_form_as_data_fields(self):
         page1 = {
             "_metadata": {"totalPages": 1},
             "records": [
@@ -251,8 +250,8 @@ class CrawlIntegrationTests(unittest.TestCase):
             ],
         }
         with tempfile.TemporaryDirectory() as tmp:
-            crawler = self._crawler(tmp, {"api_ls/committee": page1})
-            added = crawler.crawl_ls(
+            probe = self._probe(tmp, {"api_ls/committee": page1})
+            added = probe.probe_ls(
                 set(),
                 committees=["finance"],
                 from_date=None,
@@ -280,14 +279,14 @@ class CrawlIntegrationTests(unittest.TestCase):
             self.assertEqual(r["committee_name"], "Finance")  # display name, not API's padded one
             self.assertTrue(r["run_id"])  # non-empty
 
-    def test_crawl_rs_emits_records_with_rs_only_presented_via(self):
+    def test_probe_rs_emits_records_with_rs_only_presented_via(self):
         page1 = {
             "_metadata": {"totalPages": 1},
             "records": [_rs_record(174), _rs_record(173)],
         }
         with tempfile.TemporaryDirectory() as tmp:
-            crawler = self._crawler(tmp, {"api_rs/committee": page1})
-            added = crawler.crawl_rs(
+            probe = self._probe(tmp, {"api_rs/committee": page1})
+            added = probe.probe_rs(
                 set(),
                 committees=["health"],
                 from_date=None,
@@ -309,23 +308,23 @@ class CrawlIntegrationTests(unittest.TestCase):
     def test_dedup_on_rerun_against_seen_keys(self):
         page1 = {"_metadata": {"totalPages": 1}, "records": [_ls_record(35)]}
         with tempfile.TemporaryDirectory() as tmp:
-            crawler = self._crawler(tmp, {"api_ls/committee": page1})
-            crawler.crawl_ls(set(), committees=["finance"], from_date=None,
+            probe = self._probe(tmp, {"api_ls/committee": page1})
+            probe.probe_ls(set(), committees=["finance"], from_date=None,
                              to_date=None, max_records=None, download=False)
 
-            seen = crawler.load_seen()
+            seen = probe.load_seen()
             self.assertIn("LS|finance|35|18", seen)
 
             # Second invocation: same payload, same key — should add nothing.
-            added2 = crawler.crawl_ls(seen, committees=["finance"], from_date=None,
+            added2 = probe.probe_ls(seen, committees=["finance"], from_date=None,
                                        to_date=None, max_records=None, download=False)
             self.assertEqual(added2, 0)
 
     def test_runs_jsonl_records_apparatus_with_topic_hash(self):
         page1 = {"_metadata": {"totalPages": 1}, "records": [_ls_record(35)]}
         with tempfile.TemporaryDirectory() as tmp:
-            crawler = self._crawler(tmp, {"api_ls/committee": page1})
-            crawler.crawl_ls(set(), committees=["finance"], from_date=None,
+            probe = self._probe(tmp, {"api_ls/committee": page1})
+            probe.probe_ls(set(), committees=["finance"], from_date=None,
                              to_date=None, max_records=None, download=False)
 
             run_lines = (Path(tmp) / "_runs.jsonl").read_text().splitlines()

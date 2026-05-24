@@ -33,7 +33,7 @@
       "type": "string",
       "enum": ["sansad.in/api_ls/committee", "sansad.in/api_rs/committee"]
     },
-    "crawled_at": { "type": "string" },
+    "probed_at": { "type": "string" },
     "loksabha_no": { "type": ["integer", "string"], "description": "Lok Sabha number (LS only)" },
     "date_presented_ls": { "type": "string", "description": "ISO date or empty string (LS only)" },
     "date_laid_rs": { "type": "string", "description": "ISO date or empty string (LS only)" },

@@ -38,7 +38,7 @@
     "responder_role_at_event": { "type": ["string", "null"] },
     "source": { "type": "string", "enum": ["elibrary.sansad.in", "rsdoc.nic.in"] },
     "found_via_query": { "type": "string" },
-    "crawled_at": { "type": "string" },
+    "probed_at": { "type": "string" },
     "language_classified": { "type": "array", "items": { "type": "string" } },
     "pdf_url": { "type": ["string", "null"] },
     "pdf_path": { "type": "string" },

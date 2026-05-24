@@ -1,4 +1,4 @@
-"""Corpus health statistics for the `sansad-crawl stats` subcommand.
+"""Corpus health statistics for the `commoner-probe stats` subcommand.
 
 Walks all JSONL streams in a corpus directory and prints a structured
 summary covering record counts, distribution by house/year/ministry/
@@ -216,7 +216,7 @@ def print_stats(stats: dict, *, json_output: bool = False) -> None:
         _section("Committee reports (manifest)", stats["manifest_committee_reports"])
 
     if stats["runs"]["total"] or stats["runs"]["total_added"]:
-        _section("Crawl runs", stats["runs"])
+        _section("Probe runs", stats["runs"])
 
     if stats["answers"]["total"]:
         _section("Extracted answers", stats["answers"])

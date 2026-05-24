@@ -5,9 +5,9 @@ from pathlib import Path
 
 from .answers import extract_answers
 from .atr_linkage import extract_atr_linkages
-from .committees import CommitteeCrawler, resolve_committees
+from .committees import CommitteeProbe, resolve_committees
 from .neva import NevaStateCrawler
-from .sansad import SansadCrawler
+from .sansad import SansadProbe
 from .stats import compute_stats, print_stats
 from .topics import load_topic
 from .validate import validate_corpus
@@ -58,27 +58,27 @@ def _build_resolver_if_requested(out_dir: Path, with_entities: bool, log):
     return Resolver(store)
 
 
-def crawl_cmd(args: argparse.Namespace) -> None:
+def sansad_cmd(args: argparse.Namespace) -> None:
     topic = load_topic(args.topic)
     out = Path(args.out)
     if args.reset and (out / "manifest.jsonl").exists():
         (out / "manifest.jsonl").unlink()
-    if args.reset and (out / "crawl.log").exists():
-        (out / "crawl.log").unlink()
+    if args.reset and (out / "probe.log").exists():
+        (out / "probe.log").unlink()
     out.mkdir(parents=True, exist_ok=True)
     resolver = _build_resolver_if_requested(out, getattr(args, "with_entities", False), print)
-    crawler = SansadCrawler(
+    probe = SansadProbe(
         topic,
         out,
         sleep=args.sleep,
         topic_path=args.topic,
         resolver=resolver,
     )
-    seen = crawler.load_seen()
-    crawler.log(f"resume seen={len(seen)} topic={topic.name} download={not args.no_download}")
+    seen = probe.load_seen()
+    probe.log(f"resume seen={len(seen)} topic={topic.name} download={not args.no_download}")
     added = 0
     if args.house in ("both", "ls"):
-        added += crawler.crawl_ls(
+        added += probe.probe_ls(
             seen,
             from_date=args.from_date,
             to_date=args.to_date,
@@ -89,7 +89,7 @@ def crawl_cmd(args: argparse.Namespace) -> None:
             download=not args.no_download,
         )
     if args.house in ("both", "rs"):
-        added += crawler.crawl_rs(
+        added += probe.probe_rs(
             seen,
             sessions=parse_session_range(args.sessions),
             from_date=args.from_date,
@@ -100,32 +100,32 @@ def crawl_cmd(args: argparse.Namespace) -> None:
             max_records=args.max_records,
             download=not args.no_download,
         )
-    crawler.log(f"DONE added={added} total={len(seen)}")
+    probe.log(f"DONE added={added} total={len(seen)}")
 
 
-def crawl_committees_cmd(args: argparse.Namespace) -> None:
+def committees_cmd(args: argparse.Namespace) -> None:
     topic = load_topic(args.topic)
     out = Path(args.out)
     if args.reset and (out / "manifest.jsonl").exists():
         (out / "manifest.jsonl").unlink()
-    if args.reset and (out / "crawl.log").exists():
-        (out / "crawl.log").unlink()
-    crawler = CommitteeCrawler(
+    if args.reset and (out / "probe.log").exists():
+        (out / "probe.log").unlink()
+    probe = CommitteeProbe(
         topic,
         out,
         sleep=args.sleep,
         lok_sabha_no=args.lok_sabha_no,
         topic_path=args.topic,
     )
-    seen = crawler.load_seen()
+    seen = probe.load_seen()
     requested = _split_csv(args.committees)
-    crawler.log(
+    probe.log(
         f"resume seen={len(seen)} topic={topic.name} ls={args.lok_sabha_no} "
         f"download={not args.no_download}"
     )
     added = 0
     if args.house in ("both", "ls"):
-        added += crawler.crawl_ls(
+        added += probe.probe_ls(
             seen,
             committees=resolve_committees("ls", requested),
             from_date=args.from_date,
@@ -134,7 +134,7 @@ def crawl_committees_cmd(args: argparse.Namespace) -> None:
             download=not args.no_download,
         )
     if args.house in ("both", "rs"):
-        added += crawler.crawl_rs(
+        added += probe.probe_rs(
             seen,
             committees=resolve_committees("rs", requested),
             from_date=args.from_date,
@@ -142,7 +142,7 @@ def crawl_committees_cmd(args: argparse.Namespace) -> None:
             max_records=args.max_records,
             download=not args.no_download,
         )
-    crawler.log(f"DONE added={added} total={len(seen)}")
+    probe.log(f"DONE added={added} total={len(seen)}")
 
 
 def crawl_neva_cmd(args: argparse.Namespace) -> None:
@@ -166,14 +166,14 @@ def crawl_neva_cmd(args: argparse.Namespace) -> None:
 def extract_answers_cmd(args: argparse.Namespace) -> None:
     out = Path(args.out)
     if not (out / "manifest.jsonl").exists():
-        raise SystemExit(f"no manifest at {out}/manifest.jsonl — run 'crawl' first")
+        raise SystemExit(f"no manifest at {out}/manifest.jsonl — run 'sansad' first")
     extract_answers(out, refresh=args.refresh, log_fn=print)
 
 
 def extract_atr_linkage_cmd(args: argparse.Namespace) -> None:
     out = Path(args.out)
     if not (out / "manifest.jsonl").exists():
-        raise SystemExit(f"no manifest at {out}/manifest.jsonl — run 'crawl-committees' first")
+        raise SystemExit(f"no manifest at {out}/manifest.jsonl — run 'committees' first")
     extract_atr_linkages(out, log_fn=print)
 
 
@@ -198,26 +198,26 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="commoner-probe")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    crawl = sub.add_parser("sansad", help="Probe Lok Sabha / Rajya Sabha parliamentary questions")
-    crawl.add_argument("--topic", required=True, help="Path to topic profile JSON")
-    crawl.add_argument("--out", required=True, help="Output corpus directory")
-    crawl.add_argument("--house", choices=["both", "ls", "rs"], default="both")
-    crawl.add_argument("--from-date")
-    crawl.add_argument("--to-date")
-    crawl.add_argument(
+    sansad = sub.add_parser("sansad", help="Probe Lok Sabha / Rajya Sabha parliamentary questions")
+    sansad.add_argument("--topic", required=True, help="Path to topic profile JSON")
+    sansad.add_argument("--out", required=True, help="Output corpus directory")
+    sansad.add_argument("--house", choices=["both", "ls", "rs"], default="both")
+    sansad.add_argument("--from-date")
+    sansad.add_argument("--to-date")
+    sansad.add_argument(
         "--qtype",
         choices=["both", "starred", "unstarred"],
         default="both",
         help="Filter to starred or unstarred questions at crawl time.",
     )
-    crawl.add_argument("--sessions", default="1-267", help="Rajya Sabha sessions, e.g. 230-267")
-    crawl.add_argument("--limit", type=int, help="Max raw API records per bucket")
-    crawl.add_argument("--max-buckets", type=int, help="First N search/ministry buckets (smoke-test brake)")
-    crawl.add_argument("--max-records", type=int, help="Stop after N new records per house crawl (smoke-test brake)")
-    crawl.add_argument("--sleep", type=float, default=0.25)
-    crawl.add_argument("--no-download", action="store_true")
-    crawl.add_argument("--reset", action="store_true")
-    crawl.add_argument(
+    sansad.add_argument("--sessions", default="1-267", help="Rajya Sabha sessions, e.g. 230-267")
+    sansad.add_argument("--limit", type=int, help="Max raw API records per bucket")
+    sansad.add_argument("--max-buckets", type=int, help="First N search/ministry buckets (smoke-test brake)")
+    sansad.add_argument("--max-records", type=int, help="Stop after N new records per house crawl (smoke-test brake)")
+    sansad.add_argument("--sleep", type=float, default=0.25)
+    sansad.add_argument("--no-download", action="store_true")
+    sansad.add_argument("--reset", action="store_true")
+    sansad.add_argument(
         "--with-entities",
         action="store_true",
         help=(
@@ -226,7 +226,7 @@ def build_parser() -> argparse.ArgumentParser:
             "reuse the local store."
         ),
     )
-    crawl.set_defaults(func=crawl_cmd)
+    sansad.set_defaults(func=sansad_cmd)
 
     cc = sub.add_parser("committees", help="Probe standing-committee reports")
     cc.add_argument("--topic", required=True, help="Path to topic profile JSON")
@@ -240,7 +240,7 @@ def build_parser() -> argparse.ArgumentParser:
     cc.add_argument("--sleep", type=float, default=0.25)
     cc.add_argument("--no-download", action="store_true")
     cc.add_argument("--reset", action="store_true")
-    cc.set_defaults(func=crawl_committees_cmd)
+    cc.set_defaults(func=committees_cmd)
 
     extract = sub.add_parser(
         "extract-answers",

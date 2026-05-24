@@ -28,7 +28,6 @@ from commoner_probe.answers import (
     split_qa,
 )
 
-
 # A real-shape Q/A text fixture — boilerplate header + subject + asker
 # + stem + body, then the answer half with minister preamble + body.
 _REAL_QA_TEXT = """\

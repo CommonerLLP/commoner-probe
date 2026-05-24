@@ -12,7 +12,6 @@ import unittest
 from commoner_probe.base import safe_filename_segment
 from commoner_probe.runlog import _is_secret_key, _redact
 
-
 # --------------------------------------------------------------------------- #
 # H2 — redact key list (substring-based)                                       #
 # --------------------------------------------------------------------------- #

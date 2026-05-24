@@ -9,7 +9,7 @@ if TYPE_CHECKING:
     from .members import MPRoster
 from urllib.parse import urlencode
 
-from .base import BaseCrawler, now, safe_filename_segment
+from .base import BaseProbe, now, safe_filename_segment
 from .topics import TopicProfile
 
 LS_API_BASE = "https://elibrary.sansad.in/server/api"
@@ -18,7 +18,7 @@ LS_CATEGORY_QA = "Part 1(Questions And Answers)"
 
 HEADERS = {
     "Accept": "application/json",
-    "User-Agent": "Mozilla/5.0 sansad-crawler/0.1",
+    "User-Agent": "commoner-probe/0.3.0 (+https://github.com/CommonerLLP/commoner-probe; public-interest research; rate-limited)",
 }
 RS_HEADERS = {
     **HEADERS,
@@ -64,7 +64,7 @@ def rs_date_iso(value: str | None) -> str:
         return value[:10]
 
 
-class SansadCrawler(BaseCrawler):
+class SansadProbe(BaseProbe):
     def __init__(
         self,
         topic: TopicProfile,
@@ -198,7 +198,7 @@ class SansadCrawler(BaseCrawler):
                 f.write(chunk)
         return path.exists() and path.stat().st_size > 1000
 
-    def crawl_ls(
+    def probe_ls(
         self,
         seen: set[str],
         *,
@@ -276,7 +276,7 @@ class SansadCrawler(BaseCrawler):
                             "source": "elibrary.sansad.in",
                             "found_via_group": group,
                             "found_via_query": query,
-                            "crawled_at": now(),
+                            "probed_at": now(),
                         }
                         if download:
                             pdf_url = self.ls_pdf_url(uuid)
@@ -330,7 +330,7 @@ class SansadCrawler(BaseCrawler):
             return data.get("data", []) or []
         return data if isinstance(data, list) else []
 
-    def crawl_rs(
+    def probe_rs(
         self,
         seen: set[str],
         *,
@@ -425,7 +425,7 @@ class SansadCrawler(BaseCrawler):
                         "source": "rsdoc.nic.in",
                         "found_via_query": ministry,
                         "status": (row.get("status") or "").strip(),
-                        "crawled_at": now(),
+                        "probed_at": now(),
                     }
                     if download and rec.get("pdf_url"):
                         qtype_seg = safe_filename_segment((qtype or "U").upper()[:1])

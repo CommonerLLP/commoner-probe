@@ -1,4 +1,4 @@
-"""Typed dataclass records for every sansad-crawler output stream.
+"""Typed dataclass records for every commoner-probe output stream.
 
 Each class has a :meth:`from_dict` classmethod that tolerates unknown keys
 (drops them) and missing optional fields (uses dataclass defaults).  This
@@ -88,7 +88,7 @@ class ManifestQaRecord:
     source: str
     # Optional/conditional fields
     run_id: str | None = None
-    crawled_at: str | None = None
+    probed_at: str | None = None
     language_classified: list = field(default_factory=list)
     asker_details: list = field(default_factory=list)
     asker_entity_ids: list = field(default_factory=list)
@@ -133,7 +133,7 @@ class ManifestCommitteeReportRecord:
     source: str
     # Optional/conditional
     run_id: str | None = None
-    crawled_at: str | None = None
+    probed_at: str | None = None
     report_no: Any = None
     title_hindi: str | None = None
     language_classified: list = field(default_factory=list)
