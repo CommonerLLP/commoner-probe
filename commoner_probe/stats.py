@@ -3,7 +3,7 @@
 Walks all JSONL streams in a corpus directory and prints a structured
 summary covering record counts, distribution by house/year/ministry/
 committee/report_type, answers extraction coverage, and entity resolution
-rate.  Uses the :class:`~sansad_crawler.corpus.Corpus` streaming iterators
+rate.  Uses the :class:`~commoner_probe.corpus.Corpus` streaming iterators
 so memory stays O(1) per record (counters are accumulated, not buffered).
 """
 

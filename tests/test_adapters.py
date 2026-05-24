@@ -13,7 +13,7 @@ import unittest
 from dataclasses import dataclass
 from pathlib import Path
 
-from sansad_crawler.entities import (
+from commoner_probe.entities import (
     EntityStore,
     populate_entity_store_from_mp_roster,
 )

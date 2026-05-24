@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from sansad_crawler.textparse import (
+from commoner_probe.textparse import (
     clean_htmlish,
     excerpt,
     pdf_path_for,

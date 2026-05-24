@@ -21,7 +21,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from sansad_crawler.committees import (
+from commoner_probe.committees import (
     CommitteeCrawler,
     _ls_presented_via,
     _report_type,
@@ -30,7 +30,7 @@ from sansad_crawler.committees import (
     report_key,
     resolve_committees,
 )
-from sansad_crawler.topics import load_topic
+from commoner_probe.topics import load_topic
 
 
 # --------------------------------------------------------------------------- #

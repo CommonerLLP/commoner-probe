@@ -20,12 +20,12 @@ To refresh the fixture after a confirmed upstream API change:
 ```bash
 # 1. Pull the raw API responses again.
 curl -sS \
-  -H 'User-Agent: Mozilla/5.0 sansad-crawler' \
+  -H 'User-Agent: Mozilla/5.0 commoner-probe' \
   'https://sansad.in/api_ls/committee/lsRSAllReports?house=L&committeeCode=12&lsNo=18&page=1&size=2&sortOn=reportNo&sortBy=desc' \
   -o examples/corpora/committees-smoke/raw/ls_finance_p1.json
 
 curl -sS \
-  -H 'User-Agent: Mozilla/5.0 sansad-crawler' \
+  -H 'User-Agent: Mozilla/5.0 commoner-probe' \
   -H 'Referer: https://sansad.in/rs/committees' \
   'https://sansad.in/api_rs/committee/committee-reports?mstCommId=14&departmentId=&presentationYear=&search=&page=1&size=2&sortOn=reportNo&sortBy=desc&locale=en' \
   -o examples/corpora/committees-smoke/raw/rs_health_p1.json

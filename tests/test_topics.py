@@ -1,7 +1,7 @@
 from pathlib import Path
 import unittest
 
-from sansad_crawler.topics import load_topic, TopicProfile
+from commoner_probe.topics import load_topic, TopicProfile
 
 
 ROOT = Path(__file__).resolve().parents[1]

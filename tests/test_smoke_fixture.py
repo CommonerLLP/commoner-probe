@@ -25,8 +25,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from sansad_crawler.committees import CommitteeCrawler
-from sansad_crawler.topics import load_topic
+from commoner_probe.committees import CommitteeCrawler
+from commoner_probe.topics import load_topic
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / "examples" / "corpora" / "committees-smoke"

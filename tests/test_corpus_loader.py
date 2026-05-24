@@ -1,4 +1,4 @@
-"""Tests for sansad_crawler.corpus.Corpus.
+"""Tests for commoner_probe.corpus.Corpus.
 
 Covers:
 - Streaming iteration counts on the smoke fixture.
@@ -25,7 +25,7 @@ SMOKE = ROOT / "examples" / "corpora" / "committees-smoke"
 # ---------------------------------------------------------------------------
 
 def test_manifest_committee_reports_count():
-    from sansad_crawler import Corpus
+    from commoner_probe import Corpus
     c = Corpus(SMOKE)
     records = list(c.manifest_committee_reports())
     assert len(records) == 4, f"expected 4 committee report records, got {len(records)}"
@@ -33,7 +33,7 @@ def test_manifest_committee_reports_count():
 
 def test_manifest_qa_on_smoke_is_empty():
     """The smoke fixture has no Q/A records."""
-    from sansad_crawler import Corpus
+    from commoner_probe import Corpus
     c = Corpus(SMOKE)
     records = list(c.manifest_qa())
     assert records == []
@@ -41,14 +41,14 @@ def test_manifest_qa_on_smoke_is_empty():
 
 def test_answers_qa_on_smoke_is_empty():
     """The smoke fixture has no answers.jsonl."""
-    from sansad_crawler import Corpus
+    from commoner_probe import Corpus
     c = Corpus(SMOKE)
     assert list(c.answers_qa()) == []
 
 
 def test_runs_on_smoke_is_empty():
     """The smoke fixture has no _runs.jsonl."""
-    from sansad_crawler import Corpus
+    from commoner_probe import Corpus
     c = Corpus(SMOKE)
     assert list(c.runs()) == []
 
@@ -58,7 +58,7 @@ def test_runs_on_smoke_is_empty():
 # ---------------------------------------------------------------------------
 
 def test_from_dict_tolerates_unknown_keys():
-    from sansad_crawler import ManifestCommitteeReportRecord
+    from commoner_probe import ManifestCommitteeReportRecord
     d = {
         "key": "LS|finance|35|18",
         "kind": "committee_report",
@@ -89,7 +89,7 @@ def _write_lines(path: Path, records: list[dict]) -> None:
 
 
 def test_join_qa_correct_counts():
-    from sansad_crawler import Corpus
+    from commoner_probe import Corpus
 
     manifest_recs = [
         {
@@ -155,7 +155,7 @@ def test_join_qa_correct_counts():
 # ---------------------------------------------------------------------------
 
 def test_join_atr_chain_correct_linkage():
-    from sansad_crawler import Corpus, AtrChain
+    from commoner_probe import Corpus, AtrChain
 
     manifest_recs = [
         # Original report
@@ -233,7 +233,7 @@ def test_to_dataframe_raises_without_pandas(monkeypatch):
             raise ImportError("No module named 'pandas'")
         return real_import(name, *args, **kwargs)
 
-    from sansad_crawler import Corpus
+    from commoner_probe import Corpus
     with monkeypatch.context() as m:
         m.setattr(builtins, "__import__", mock_import)
         c = Corpus(SMOKE)
@@ -246,7 +246,7 @@ def test_to_dataframe_raises_without_pandas(monkeypatch):
 # ---------------------------------------------------------------------------
 
 def test_entities_returns_empty_store_when_no_dir():
-    from sansad_crawler import Corpus
+    from commoner_probe import Corpus
     with tempfile.TemporaryDirectory() as tmp:
         c = Corpus(Path(tmp))
         store = c.entities()
@@ -259,6 +259,6 @@ def test_entities_returns_empty_store_when_no_dir():
 # ---------------------------------------------------------------------------
 
 def test_corpus_repr():
-    from sansad_crawler import Corpus
+    from commoner_probe import Corpus
     c = Corpus("/some/path")
     assert "/some/path" in repr(c)

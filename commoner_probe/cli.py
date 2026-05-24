@@ -195,10 +195,10 @@ def validate_cmd(args: argparse.Namespace) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="sansad-crawl")
+    parser = argparse.ArgumentParser(prog="commoner-probe")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    crawl = sub.add_parser("crawl", help="Crawl LS/RS parliamentary questions")
+    crawl = sub.add_parser("sansad", help="Probe Lok Sabha / Rajya Sabha parliamentary questions")
     crawl.add_argument("--topic", required=True, help="Path to topic profile JSON")
     crawl.add_argument("--out", required=True, help="Output corpus directory")
     crawl.add_argument("--house", choices=["both", "ls", "rs"], default="both")
@@ -228,7 +228,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     crawl.set_defaults(func=crawl_cmd)
 
-    cc = sub.add_parser("crawl-committees", help="Crawl standing-committee reports")
+    cc = sub.add_parser("committees", help="Probe standing-committee reports")
     cc.add_argument("--topic", required=True, help="Path to topic profile JSON")
     cc.add_argument("--out", required=True, help="Output corpus directory")
     cc.add_argument("--house", choices=["both", "ls", "rs"], default="both")
@@ -244,7 +244,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     extract = sub.add_parser(
         "extract-answers",
-        help="Extract structured (question/answer) and (recommendation/response) pairs from PDFs into answers.jsonl",
+        help="Extract structured question/answer and recommendation/response pairs from PDFs into answers.jsonl",
     )
     extract.add_argument("--out", required=True, help="Corpus directory containing manifest.jsonl + downloaded PDFs")
     extract.add_argument("--refresh", action="store_true", help="Force re-extraction even if answers.jsonl exists")
@@ -265,10 +265,12 @@ def build_parser() -> argparse.ArgumentParser:
     neva.set_defaults(func=crawl_neva_cmd)
 
     atr_link = sub.add_parser(
-        "extract-atr-linkage",
+        "atr-linkage",
         help=(
-            "For every Action Taken Report in manifest.jsonl, parse the title "
-            "to find the original report it cites. Writes atr_linkage.jsonl."
+            "For every Action Taken Report (ATR) in manifest.jsonl, parse the title "
+            "to find the original committee report it responds to. "
+            "ATR = the government's formal written response to a committee recommendation. "
+            "Writes atr_linkage.jsonl."
         ),
     )
     atr_link.add_argument("--out", required=True, help="Corpus directory containing manifest.jsonl")
@@ -290,7 +292,7 @@ def build_parser() -> argparse.ArgumentParser:
         "validate",
         help=(
             "Validate all JSONL files in a corpus directory against their "
-            "JSON Schemas. Requires pip install sansad-crawler[dev]."
+            "JSON Schemas. Requires pip install commoner-probe[dev]."
         ),
     )
     val.add_argument("--out", required=True, help="Corpus directory to validate")

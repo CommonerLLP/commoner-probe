@@ -9,8 +9,8 @@ from __future__ import annotations
 import re
 import unittest
 
-from sansad_crawler.base import safe_filename_segment
-from sansad_crawler.runlog import _is_secret_key, _redact
+from commoner_probe.base import safe_filename_segment
+from commoner_probe.runlog import _is_secret_key, _redact
 
 
 # --------------------------------------------------------------------------- #

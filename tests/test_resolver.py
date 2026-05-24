@@ -17,13 +17,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from sansad_crawler.entities import (
+from commoner_probe.entities import (
     EntityStore,
     MpMembership,
     Person,
     make_entity_id,
 )
-from sansad_crawler.resolver import Resolver
+from commoner_probe.resolver import Resolver
 
 
 def _build_store(*, with_two_joshis: bool = False) -> EntityStore:

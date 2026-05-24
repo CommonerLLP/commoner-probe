@@ -38,7 +38,7 @@ except ImportError:
 
 pytestmark = pytest.mark.skipif(
     not HAS_JSONSCHEMA,
-    reason="jsonschema not installed — pip install sansad-crawler[dev]",
+    reason="jsonschema not installed — pip install commoner-probe[dev]",
 )
 
 
@@ -135,7 +135,7 @@ def _parse_docs_fields(schema_name: str) -> set[str]:
 
 
 def _load_schema(name: str) -> dict:
-    from sansad_crawler import schemas
+    from commoner_probe import schemas
     return schemas.load(name)
 
 
@@ -148,7 +148,7 @@ def _validate(instance: Any, schema: dict) -> None:
 # ---------------------------------------------------------------------------
 
 def test_all_schemas_are_valid_json_schema():
-    from sansad_crawler import schemas
+    from commoner_probe import schemas
     meta = Draft202012Validator.META_SCHEMA
     for name in schemas.list_all():
         s = schemas.load(name)
@@ -424,8 +424,8 @@ def test_synthetic_fixture_validates(schema_name, fixture):
 def test_crawled_committee_records_validate():
     """Drive the committee crawler in-memory and validate each record."""
     import json as _json
-    from sansad_crawler.committees import CommitteeCrawler
-    from sansad_crawler.topics import load_topic
+    from commoner_probe.committees import CommitteeCrawler
+    from commoner_probe.topics import load_topic
 
     FIXTURE_DIR = ROOT / "examples" / "corpora" / "committees-smoke"
     RAW = FIXTURE_DIR / "raw"
@@ -516,7 +516,7 @@ def test_docs_fields_match_schema_properties(schema_name):
         errors.append(
             f"Fields in docs/SCHEMAS.md but NOT in schema '{schema_name}': "
             f"{sorted(missing_from_schema)}\n"
-            f"  → Add them to sansad_crawler/schemas/{schema_name}.schema.json "
+            f"  → Add them to commoner_probe/schemas/{schema_name}.schema.json "
             f"or remove them from docs/SCHEMAS.md"
         )
     if missing_from_docs:

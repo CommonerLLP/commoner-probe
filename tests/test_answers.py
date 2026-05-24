@@ -16,7 +16,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from sansad_crawler.answers import (
+from commoner_probe.answers import (
     EXTRACTOR_VERSION,
     extract_answers,
     split_atr,
@@ -218,7 +218,7 @@ class ExtractAnswersTests(unittest.TestCase):
     def setUp(self):
         # Monkey-patch extract_pdf_text to read the file's bytes directly so
         # we don't need a real PDF binary to test the dispatcher.
-        from sansad_crawler import answers as ans_mod
+        from commoner_probe import answers as ans_mod
         self._orig = ans_mod.extract_pdf_text
         def fake_extract(p):
             try:
@@ -234,7 +234,7 @@ class ExtractAnswersTests(unittest.TestCase):
         ans_mod.extract_pdf_text = fake_extract
 
     def tearDown(self):
-        from sansad_crawler import answers as ans_mod
+        from commoner_probe import answers as ans_mod
         ans_mod.extract_pdf_text = self._orig
 
     def test_dispatches_dfg_records_to_split_dfg(self):
@@ -330,7 +330,7 @@ _REAL_DFG_PDF = Path(__file__).resolve().parents[1] / "test_v4_rs" / "pdfs" / "r
 @unittest.skipUnless(_REAL_DFG_PDF.exists(), f"real DFG PDF not available at {_REAL_DFG_PDF}")
 class RealPdfIntegrationTests(unittest.TestCase):
     def test_dfg_extraction_on_real_education_377(self):
-        from sansad_crawler.textparse import extract_pdf_text
+        from commoner_probe.textparse import extract_pdf_text
         text = extract_pdf_text(_REAL_DFG_PDF)
         self.assertTrue(text)
         items = split_dfg(text)

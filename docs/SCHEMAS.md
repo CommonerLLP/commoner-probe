@@ -1,6 +1,6 @@
 # Output schema reference
 
-Complete field-level documentation for every file that `sansad-crawler` writes.
+Complete field-level documentation for every file that `commoner-probe` writes.
 Each section gives a **field table** with five columns:
 
 | Column | Meaning |
@@ -161,7 +161,7 @@ RS reports carry `date_presentation` instead. Both shapes share all other fields
 ## `_runs.jsonl`
 
 One record per crawl invocation (one per `crawl_ls` / `crawl_rs` / `crawl_committees` call).
-Produced by `sansad_crawler/runlog.py`.
+Produced by `commoner_probe/runlog.py`.
 
 | Field | Type | Required | Enum / format | Provenance |
 |---|---|---|---|---|
@@ -173,7 +173,7 @@ Produced by `sansad_crawler/runlog.py`.
 | `topic_hash` | string | yes | `"sha256:{hex}"` of raw topic file bytes | runlog.py:98 |
 | `classifier_mode` | string | yes | Always `""` in this version (reserved for schema compat) | runlog.py:99 |
 | `classifier_config_redacted` | object | yes | Always `{}` in this version; secrets would be redacted | runlog.py:100 |
-| `tool_version` | string | yes | `sansad-crawler` package version at crawl time | runlog.py:101 |
+| `tool_version` | string | yes | `commoner-probe` package version at crawl time | runlog.py:101 |
 | `started_at` | string | yes | ISO datetime | runlog.py:102 |
 | `ended_at` | string\|null | yes | ISO datetime; `null` if run did not finish | runlog.py:103 |
 | `added` | integer | yes | Records added in this run | runlog.py:104 |
@@ -277,7 +277,7 @@ Used for Demands for Grants, Bill scrutiny, and Subject reports; the
 ## `atr_linkage.jsonl`
 
 One record per Action Taken Report that could be linked to its original report.
-Written by `sansad-crawl extract-atr-linkage`. Source module: `sansad_crawler/atr_linkage.py`.
+Written by `sansad-crawl extract-atr-linkage`. Source module: `commoner_probe/atr_linkage.py`.
 
 | Field | Type | Required | Enum / format | Provenance |
 |---|---|---|---|---|
@@ -296,7 +296,7 @@ Written by `sansad-crawl extract-atr-linkage`. Source module: `sansad_crawler/at
 ## `entities/people.jsonl`
 
 One record per unique person encountered. Written by `EntityStore.save()`.
-Source: `sansad_crawler/entities.py`.
+Source: `commoner_probe/entities.py`.
 
 | Field | Type | Required | Enum / format | Provenance |
 |---|---|---|---|---|

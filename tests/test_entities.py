@@ -13,7 +13,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from sansad_crawler.entities import (
+from commoner_probe.entities import (
     EntityStore,
     MpMembership,
     Person,

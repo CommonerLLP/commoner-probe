@@ -6,14 +6,14 @@ makes them safe to instantiate from records produced by any version of the
 crawler without raising ``TypeError``.
 
 Schema validation — whether a given dict *conforms to the JSON Schema* — is
-handled by :mod:`sansad_crawler.validate`, not here.  These dataclasses are
+handled by :mod:`commoner_probe.validate`, not here.  These dataclasses are
 convenience wrappers for typed iteration; they are not a substitute for
 schema validation.
 
-Re-exports of entity dataclasses from :mod:`sansad_crawler.entities` are
+Re-exports of entity dataclasses from :mod:`commoner_probe.entities` are
 provided for symmetry, so downstream code can do::
 
-    from sansad_crawler.records import (
+    from commoner_probe.records import (
         ManifestQaRecord,
         ManifestCommitteeReportRecord,
         Person,

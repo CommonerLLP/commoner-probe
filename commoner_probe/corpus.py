@@ -10,7 +10,7 @@ used on large corpora without exhausting RAM.
 
 Usage::
 
-    from sansad_crawler import Corpus
+    from commoner_probe import Corpus
 
     c = Corpus("data/libraries")
 
@@ -157,7 +157,7 @@ class Corpus:
     def entities(self) -> "EntityStore":
         """Load (and cache) the entity store from entities/.
 
-        Returns an :class:`~sansad_crawler.entities.EntityStore` with the
+        Returns an :class:`~commoner_probe.entities.EntityStore` with the
         in-memory index populated from disk.  If the ``entities/`` directory
         does not exist the store will be empty.
         """

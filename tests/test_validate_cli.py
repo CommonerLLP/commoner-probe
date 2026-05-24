@@ -28,13 +28,13 @@ except ImportError:
 
 pytestmark = pytest.mark.skipif(
     not HAS_JSONSCHEMA,
-    reason="jsonschema not installed — pip install sansad-crawler[dev]",
+    reason="jsonschema not installed — pip install commoner-probe[dev]",
 )
 
 
 def _run_validate(out_dir: Path, max_errors: int = 10) -> tuple[bool, list[str]]:
     """Call validate_corpus() directly and capture log output."""
-    from sansad_crawler.validate import validate_corpus
+    from commoner_probe.validate import validate_corpus
     lines: list[str] = []
     ok = validate_corpus(out_dir, log=lines.append, max_errors=max_errors)
     return ok, lines
@@ -105,7 +105,7 @@ def test_unknown_kind_skipped():
 # ---------------------------------------------------------------------------
 
 def test_cli_smoke_exits_zero(monkeypatch):
-    from sansad_crawler.cli import build_parser
+    from commoner_probe.cli import build_parser
     parser = build_parser()
     args = parser.parse_args(["validate", "--out", str(SMOKE)])
     # Should not raise SystemExit(1)

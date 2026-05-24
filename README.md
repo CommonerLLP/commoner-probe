@@ -1,4 +1,4 @@
-# sansad-crawler
+# commoner-probe
 
 A Python library and CLI for pulling structured data from the Indian Parliament.
 Built for researchers, journalists, and civic technologists who want to study
@@ -13,7 +13,7 @@ floor debates, bills, and MP profiles. The data is all there. The problem is
 that it lives across three separate portals with inconsistent APIs, no bulk
 export, and PDFs that require extraction to read programmatically.
 
-`sansad-crawler` handles the entire acquisition pipeline:
+`commoner-probe` handles the entire acquisition pipeline:
 
 ```
 sansad.in APIs  →  manifest.jsonl  →  PDFs  →  answers.jsonl  →  your analysis
@@ -29,13 +29,13 @@ clean, schema-validated JSONL — and does it reliably.
 ## Install
 
 ```bash
-pip install "sansad-crawler[all]"
+pip install "commoner-probe[all]"
 ```
 
 For schema validation and tests:
 
 ```bash
-pip install "sansad-crawler[all,dev]"
+pip install "commoner-probe[all,dev]"
 ```
 
 ---
@@ -62,7 +62,7 @@ Create `topic.json` to declare what you want to pull:
 ### Step 2 — Crawl questions
 
 ```bash
-sansad-crawl crawl \
+commoner-probe crawl \
   --topic topic.json \
   --out data/climate \
   --house both \
@@ -75,7 +75,7 @@ writes `data/climate/manifest.jsonl` — one record per question.
 ### Step 3 — Crawl committee reports
 
 ```bash
-sansad-crawl crawl-committees \
+commoner-probe crawl-committees \
   --topic topic.json \
   --out data/climate-committees \
   --house both
@@ -86,8 +86,8 @@ Writes one record per standing committee report (LS and RS DRSCs).
 ### Step 4 — Extract text from PDFs
 
 ```bash
-sansad-crawl extract-answers --out data/climate
-sansad-crawl extract-answers --out data/climate-committees
+commoner-probe extract-answers --out data/climate
+commoner-probe extract-answers --out data/climate-committees
 ```
 
 Parses downloaded PDFs into `answers.jsonl`: Q/A pairs, committee
@@ -96,7 +96,7 @@ recommendations, and government responses.
 ### Step 5 — Load in Python
 
 ```python
-from sansad_crawler import Corpus
+from commoner_probe import Corpus
 
 c = Corpus("data/climate")
 
@@ -130,7 +130,7 @@ the most questions by topic, how the same policy question evolves across
 sessions, party-level questioning patterns.
 
 ```python
-from sansad_crawler import Corpus
+from commoner_probe import Corpus
 from collections import Counter
 
 c = Corpus("data/climate")
@@ -156,7 +156,7 @@ back to the original recommendations it responds to, enabling lifecycle
 analysis: *recommendation → government rejection/acceptance → follow-up*.
 
 ```python
-from sansad_crawler import Corpus
+from commoner_probe import Corpus
 
 c = Corpus("data/climate-committees")
 
@@ -171,10 +171,10 @@ for chain in c.join_atr_chain():
 
 ## All commands
 
-### `sansad-crawl crawl` — Q/A questions
+### `commoner-probe crawl` — Q/A questions
 
 ```bash
-sansad-crawl crawl \
+commoner-probe crawl \
   --topic topic.json \
   --out data/climate \
   --house both \
@@ -199,10 +199,10 @@ Key flags:
 | `--max-buckets N` | — | Only run the first N search/ministry combos |
 | `--reset` | off | Wipe existing manifest and start fresh |
 
-### `sansad-crawl crawl-committees` — Committee reports
+### `commoner-probe crawl-committees` — Committee reports
 
 ```bash
-sansad-crawl crawl-committees \
+commoner-probe crawl-committees \
   --topic topic.json \
   --out data/committees \
   --house both \
@@ -227,11 +227,11 @@ Key flags:
 `commerce`, `education`, `health`, `home_affairs`, `industry`, `personnel`,
 `science`, `transport`
 
-### `sansad-crawl extract-answers` — PDF text extraction
+### `commoner-probe extract-answers` — PDF text extraction
 
 ```bash
-sansad-crawl extract-answers --out data/climate
-sansad-crawl extract-answers --out data/climate --refresh  # re-extract everything
+commoner-probe extract-answers --out data/climate
+commoner-probe extract-answers --out data/climate --refresh  # re-extract everything
 ```
 
 Reads `manifest.jsonl` and downloaded PDFs; writes `answers.jsonl` with:
@@ -240,28 +240,28 @@ Reads `manifest.jsonl` and downloaded PDFs; writes `answers.jsonl` with:
 - `atr_response` — (recommendation_no, recommendation_text, response_text) triples from ATR PDFs
 - `dfg_recommendation` — numbered observation paragraphs from DFG/Bill/Subject PDFs
 
-Requires `pip install "sansad-crawler[pdf]"`.
+Requires `pip install "commoner-probe[pdf]"`.
 
-### `sansad-crawl extract-atr-linkage` — ATR → original report
+### `commoner-probe extract-atr-linkage` — ATR → original report
 
 ```bash
-sansad-crawl extract-atr-linkage --out data/committees
+commoner-probe extract-atr-linkage --out data/committees
 ```
 
 Writes `atr_linkage.jsonl` — each ATR record linked back to the report it responds to.
 Run once per committee corpus; safe to re-run (idempotent overwrite).
 
-### `sansad-crawl stats` — Corpus health
+### `commoner-probe stats` — Corpus health
 
 ```bash
-sansad-crawl stats --out data/climate
-sansad-crawl stats --out data/climate --json   # machine-readable
+commoner-probe stats --out data/climate
+commoner-probe stats --out data/climate --json   # machine-readable
 ```
 
-### `sansad-crawl validate` — Schema validation
+### `commoner-probe validate` — Schema validation
 
 ```bash
-sansad-crawl validate --out data/climate
+commoner-probe validate --out data/climate
 ```
 
 Validates every JSONL file against its JSON Schema. Exits 1 and prints
@@ -315,7 +315,7 @@ controlled vocabularies, and join keys — see [`docs/SCHEMAS.md`](docs/SCHEMAS.
 
 ## Entity resolution (`--with-entities`)
 
-Pass `--with-entities` to `sansad-crawl crawl` to resolve asker names to
+Pass `--with-entities` to `commoner-probe crawl` to resolve asker names to
 stable `entity_id` values. On first run the entity store is populated from
 the sansad.in MP roster API; subsequent runs reuse the local cache.
 
@@ -327,7 +327,7 @@ the same MP's questioning behaviour over time or across houses.
 ## Python API
 
 ```python
-from sansad_crawler import Corpus
+from commoner_probe import Corpus
 
 c = Corpus("data/climate")
 
@@ -353,7 +353,7 @@ for pair in c.join_qa():               # manifest + extracted answers
 for chain in c.join_atr_chain():       # ATR + original report + observations
     ...
 
-# pandas (pip install sansad-crawler[pandas])
+# pandas (pip install commoner-probe[pandas])
 df = c.to_dataframe("manifest_committee_reports")
 ```
 

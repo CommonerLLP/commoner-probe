@@ -2,7 +2,7 @@
 
 Usage::
 
-    from sansad_crawler import schemas
+    from commoner_probe import schemas
 
     # List available schema names
     names = schemas.list_all()
@@ -11,7 +11,7 @@ Usage::
     manifest_schema = schemas.load("manifest_committee_report")
 
 Schema names correspond to the ``.schema.json`` files shipped under
-``sansad_crawler/schemas/``.  Each schema targets JSON Schema Draft 2020-12.
+``commoner_probe/schemas/``.  Each schema targets JSON Schema Draft 2020-12.
 """
 
 from __future__ import annotations

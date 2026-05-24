@@ -64,7 +64,7 @@ def validate_corpus(
     Returns ``True`` if everything is valid, ``False`` if any record failed.
     Missing optional files are silently skipped.
     """
-    from sansad_crawler import schemas as sc
+    from commoner_probe import schemas as sc
 
     Validator = _load_jsonschema()
 

@@ -3,9 +3,9 @@ requires = ["setuptools>=42"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "sansad-crawler"
+name = "commoner-probe"
 version = "0.2.0"
-description = "Data-pulling crawler for Indian Parliament (Lok Sabha + Rajya Sabha) questions and standing committee reports."
+description = "Sousveillance infrastructure for state mandatory-disclosure portals — parliamentary questions, committee reports, budget data, and state assembly records."
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [{ name = "Sreeram Ramasubramanian" }]
@@ -16,8 +16,15 @@ keywords = [
   "rajya-sabha",
   "parliamentary-questions",
   "standing-committees",
+  "state-assembly",
+  "neva",
   "public-records",
   "civic-tech",
+  "sousveillance",
+  "counter-forensics",
+  "right-to-information",
+  "open-government",
+  "data-justice",
 ]
 classifiers = [
   "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
@@ -42,21 +49,21 @@ all = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/CommonerLLP/sansad-crawler"
-Source = "https://github.com/CommonerLLP/sansad-crawler"
-Issues = "https://github.com/CommonerLLP/sansad-crawler/issues"
-Documentation = "https://github.com/CommonerLLP/sansad-crawler/blob/master/README.md"
-Changelog = "https://github.com/CommonerLLP/sansad-crawler/blob/master/CHANGELOG.md"
+Homepage = "https://github.com/CommonerLLP/commoner-probe"
+Source = "https://github.com/CommonerLLP/commoner-probe"
+Issues = "https://github.com/CommonerLLP/commoner-probe/issues"
+Documentation = "https://github.com/CommonerLLP/commoner-probe/blob/master/README.md"
+Changelog = "https://github.com/CommonerLLP/commoner-probe/blob/master/CHANGELOG.md"
 
 [project.scripts]
-sansad-crawl = "sansad_crawler.cli:main"
+commoner-probe = "commoner_probe.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["sansad_crawler*"]
+include = ["commoner_probe*"]
 namespaces = false
 
 [tool.setuptools.package-data]
-"sansad_crawler.schemas" = ["*.json"]
+"commoner_probe.schemas" = ["*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

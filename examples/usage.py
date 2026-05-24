@@ -1,4 +1,4 @@
-"""Quickstart: loading and exploring a sansad-crawler corpus.
+"""Quickstart: loading and exploring a commoner-probe corpus.
 
 Run from the repo root against the bundled smoke corpus:
 
@@ -14,7 +14,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from sansad_crawler import Corpus
+from commoner_probe import Corpus
 
 
 def main(corpus_dir: str) -> None:

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import unittest
 
-from sansad_crawler.base import _encode_url_path
+from commoner_probe.base import _encode_url_path
 
 
 class EncodeUrlPathTests(unittest.TestCase):

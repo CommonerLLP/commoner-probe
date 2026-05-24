@@ -8,4 +8,4 @@ if [ ! -f "$RUFF" ]; then
   exit 1
 fi
 
-$RUFF check sansad_crawler/
+$RUFF check commoner_probe/

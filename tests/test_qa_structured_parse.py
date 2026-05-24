@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import unittest
 
-from sansad_crawler.answers import (
+from commoner_probe.answers import (
     QaExtraction,
     _parse_answer_minister_and_body,
     _parse_question_stem_and_body,

@@ -13,11 +13,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from sansad_crawler.entities import (
+from commoner_probe.entities import (
     EntityStore,
     populate_entity_store_from_mp_roster,
 )
-from sansad_crawler.resolver import Resolver
+from commoner_probe.resolver import Resolver
 
 
 class _Stub:
@@ -45,7 +45,7 @@ def _stub_crawler(out_dir: Path, resolver=None):
     Bypasses the network-fetching topic + RunLog by providing fake stubs.
     Only the helper under test (``resolve_askers``) is exercised.
     """
-    from sansad_crawler.base import BaseCrawler
+    from commoner_probe.base import BaseCrawler
 
     class _FakeTopic:
         name = "fake"
@@ -61,7 +61,7 @@ def _stub_crawler(out_dir: Path, resolver=None):
     crawler.session = None
     crawler.topic_path = None
     crawler.classifier_mode = "regex"
-    from sansad_crawler.runlog import RunLog
+    from commoner_probe.runlog import RunLog
     crawler.runlog = RunLog(out_dir)
     crawler.resolver = resolver
     return crawler

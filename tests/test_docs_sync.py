@@ -11,8 +11,8 @@ import re
 import unittest
 from pathlib import Path
 
-from sansad_crawler import __version__
-from sansad_crawler.cli import build_parser
+from commoner_probe import __version__
+from commoner_probe.cli import build_parser
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent

@@ -14,7 +14,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from sansad_crawler.runlog import RunLog, _redact, topic_hash
+from commoner_probe.runlog import RunLog, _redact, topic_hash
 
 
 class RedactTests(unittest.TestCase):
