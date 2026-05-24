@@ -242,6 +242,95 @@ class CommitteeCrawler(BaseCrawler):
         )
         self.lok_sabha_no = lok_sabha_no
 
+    def crawl_composition(self, house: str, committees: Iterable[str]) -> int:
+        """Fetch and save committee members to committee_members.jsonl.
+
+        Tries the sansad.in membership API first. Falls back to LLM extraction
+        from the most recent downloaded PDF if the API returns nothing — but only
+        when compose (Layer 1) has injected a CompositionExtractor via the
+        optional import below. In pure probe mode (no extractor available) the
+        PDF fallback is skipped and a warning is logged.
+        """
+        from .members import MPRoster, fetch_committee_members
+        from .textparse import extract_pdf_text
+
+        try:
+            from .extractors import CompositionExtractor  # compose injects this
+            _extractor_cls = CompositionExtractor
+        except ImportError:
+            _extractor_cls = None
+
+        self.out_dir.mkdir(parents=True, exist_ok=True)
+        composition_manifest = self.out_dir / "committee_members.jsonl"
+        extractor = _extractor_cls(self.topic.classifier_config) if _extractor_cls else None
+
+        roster = MPRoster(self.session)
+        self.log("Loading global MP roster for party enrichment...")
+        try:
+            roster.load_ls()
+            roster.load_rs()
+        except Exception as e:
+            self.log(f"Warning: Global roster load failed (party info may be missing): {e}")
+
+        added = 0
+        for slug in committees:
+            mapping = LS_COMMITTEES if house == "ls" else RS_COMMITTEES
+            if slug not in mapping:
+                continue
+            name, code = mapping[slug]
+            self.log(f"Fetching composition for {house.upper()} committee {slug} (code={code})")
+
+            members: list[dict] = []
+            source = "api"
+            try:
+                members = fetch_committee_members(house, code, self.lok_sabha_no)
+            except Exception as e:
+                self.log(f"Warning: API fetch failed for {slug}: {e}")
+
+            if not members:
+                pdf_path = self._find_recent_report_pdf(house, slug)
+                if pdf_path and extractor is not None:
+                    self.log(f"Attempting LLM extraction from {pdf_path.name}...")
+                    text = extract_pdf_text(pdf_path)
+                    members = extractor.extract(text[:15000])
+                    source = f"pdf_llm:{pdf_path.name}"
+                elif pdf_path and extractor is None:
+                    self.log(f"PDF fallback skipped for {slug} — CompositionExtractor not available in probe mode.")
+                else:
+                    self.log(f"No recent PDF found for {slug}, skipping fallback.")
+
+            if members:
+                enriched: list[dict] = []
+                for m in members:
+                    m_name = m.get("name") if isinstance(m, dict) else str(m)
+                    info = roster.lookup(m_name)
+                    if info:
+                        enriched.append({
+                            "name": info.name,
+                            "party": info.party,
+                            "party_name": info.party_name,
+                            "house": info.house or (m.get("house") if isinstance(m, dict) else None),
+                            "role": m.get("role", "Member") if isinstance(m, dict) else "Member",
+                        })
+                    else:
+                        enriched.append(m if isinstance(m, dict) else {"name": m, "role": "Member"})
+
+                payload = {
+                    "house": house.upper(),
+                    "committee": slug,
+                    "committee_name": name,
+                    "committee_code": code,
+                    "source": source,
+                    "members": enriched,
+                    "crawled_at": now(),
+                }
+                with composition_manifest.open("a", encoding="utf-8") as f:
+                    f.write(json.dumps(payload, ensure_ascii=False) + "\n")
+                added += 1
+                self.log(f"Stored {len(enriched)} members for {slug} (via {source})")
+            time.sleep(self.sleep)
+        return added
+
     def _find_recent_report_pdf(self, house: str, slug: str) -> Path | None:
         """Look for the most recent PDF for this committee in the manifest."""
         if not self.manifest.exists():
