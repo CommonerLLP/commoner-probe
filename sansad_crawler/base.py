@@ -132,6 +132,25 @@ class BaseCrawler:
         with self.manifest.open("a", encoding="utf-8") as f:
             f.write(json.dumps(rec, ensure_ascii=False) + "\n")
 
+    def _load_jsonl_keys(self, path: Path) -> set[str]:
+        """Return the set of ``key`` values from an arbitrary JSONL file."""
+        seen: set[str] = set()
+        if not path.exists():
+            return seen
+        with path.open(encoding="utf-8") as f:
+            for line in f:
+                try:
+                    seen.add(json.loads(line)["key"])
+                except (json.JSONDecodeError, KeyError):
+                    pass
+        return seen
+
+    def _append_jsonl(self, path: Path, rec: dict) -> None:
+        """Append one record to an arbitrary JSONL file."""
+        self.out_dir.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+
     def write_pdf(self, url: str, dest_path: Path, headers: dict) -> bool:
         if dest_path.exists() and dest_path.stat().st_size > 1000:
             return True
