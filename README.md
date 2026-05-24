@@ -1,41 +1,44 @@
 # commoner-probe
 
-A Python library and CLI for pulling structured data from the Indian Parliament.
-Built for researchers, journalists, and civic technologists who want to study
-parliamentary behaviour, policy trends, and government accountability — without
-writing scraper boilerplate.
+Sousveillance infrastructure for the state's mandatory disclosure systems.
+
+A commoner probes the state's own paperwork — parliamentary questions, committee
+reports, state assembly records — and turns it into evidence. `commoner-probe`
+automates the acquisition so you can focus on the analysis.
+
+```bash
+pip install "commoner-probe[all]"
+import commoner_probe as probe   # alias used throughout CommonerLLP toolchain
+```
+
+---
 
 ## Why this exists
 
-Sansad.in hosts a remarkable public record: every question asked in Lok Sabha
-and Rajya Sabha since independence, thousands of standing committee reports,
-floor debates, bills, and MP profiles. The data is all there. The problem is
-that it lives across three separate portals with inconsistent APIs, no bulk
+Parliamentary questions, committee reports, and state assembly records are
+mandatory disclosures — the state is legally obligated to publish them under
+the Right to Information Act 2005, Section 4. The data exists. The problem
+is that it lives across undocumented portals with inconsistent APIs, no bulk
 export, and PDFs that require extraction to read programmatically.
 
 `commoner-probe` handles the entire acquisition pipeline:
 
 ```
-sansad.in APIs  →  manifest.jsonl  →  PDFs  →  answers.jsonl  →  your analysis
-                    (metadata)                  (structured text)
+state disclosure portals  →  manifest.jsonl  →  PDFs  →  answers.jsonl  →  your analysis
+                              (metadata)                  (structured text)
 ```
 
 Classification, topic modelling, and dossier generation are intentionally out
-of scope and live downstream. This library does one thing — get the data into
-clean, schema-validated JSONL — and does it reliably.
+of scope. This library does one thing — acquire the data into clean,
+schema-validated JSONL — and does it reliably.
 
 ---
 
 ## Install
 
 ```bash
-pip install "commoner-probe[all]"
-```
-
-For schema validation and tests:
-
-```bash
-pip install "commoner-probe[all,dev]"
+pip install "commoner-probe[all]"          # requests + PDF extraction
+pip install "commoner-probe[all,dev]"      # + schema validation and tests
 ```
 
 ---
@@ -43,8 +46,6 @@ pip install "commoner-probe[all,dev]"
 ## Five-minute quickstart
 
 ### Step 1 — Write a topic profile
-
-Create `topic.json` to declare what you want to pull:
 
 ```json
 {
@@ -59,29 +60,28 @@ Create `topic.json` to declare what you want to pull:
 }
 ```
 
-### Step 2 — Crawl questions
+### Step 2 — Probe parliamentary questions
 
 ```bash
-commoner-probe crawl \
+commoner-probe sansad \
   --topic topic.json \
   --out data/climate \
   --house both \
   --from-date 2019-01-01
 ```
 
-This pulls every parliamentary question on your topic from both houses and
-writes `data/climate/manifest.jsonl` — one record per question.
+Writes `data/climate/manifest.jsonl` — one record per question from both houses.
 
-### Step 3 — Crawl committee reports
+### Step 3 — Probe committee reports
 
 ```bash
-commoner-probe crawl-committees \
+commoner-probe committees \
   --topic topic.json \
   --out data/climate-committees \
   --house both
 ```
 
-Writes one record per standing committee report (LS and RS DRSCs).
+One record per standing committee report (LS and RS DRSCs).
 
 ### Step 4 — Extract text from PDFs
 
@@ -96,15 +96,13 @@ recommendations, and government responses.
 ### Step 5 — Load in Python
 
 ```python
-from commoner_probe import Corpus
+import commoner_probe as probe
 
-c = Corpus("data/climate")
+c = probe.Corpus("data/climate")
 
-# Every Q/A record
 for r in c.manifest_qa():
     print(r.date, r.house, r.ministry, r.title)
 
-# Full text pairs
 for pair in c.join_qa():
     if pair.answers:
         print(pair.manifest.title)
@@ -117,23 +115,19 @@ for pair in c.join_qa():
 
 ### Parliamentary questions (Lok Sabha + Rajya Sabha)
 
-The Q/A corpus is the primary instrument for studying how MPs hold the
-executive accountable. Each record carries:
-
-- Who asked (MP name, party, state — resolvable to a stable `entity_id` with `--with-entities`)
-- Which ministry answered
-- The question number, type (starred / unstarred), date, and session
-- The full PDF and — after `extract-answers` — extracted question text and answer text
+Each record carries who asked (MP name, party, state), which ministry answered,
+question number, type (starred / unstarred), date, session, and the full PDF.
+After `extract-answers` — extracted question and answer text.
 
 **Typical research questions**: ministry responsiveness rates, which MPs ask
 the most questions by topic, how the same policy question evolves across
 sessions, party-level questioning patterns.
 
 ```python
-from commoner_probe import Corpus
+import commoner_probe as probe
 from collections import Counter
 
-c = Corpus("data/climate")
+c = probe.Corpus("data/climate")
 ministry_counts = Counter(r.ministry for r in c.manifest_qa())
 for ministry, n in ministry_counts.most_common(10):
     print(f"{ministry}: {n}")
@@ -141,8 +135,7 @@ for ministry, n in ministry_counts.most_common(10):
 
 ### Standing committee reports (LS + RS DRSCs)
 
-Committee reports are a richer but less-studied record. They come in four
-shapes:
+Committee reports come in four shapes:
 
 | `report_type` | What it is |
 |---|---|
@@ -151,38 +144,51 @@ shapes:
 | `subject` | Own-initiative policy investigation — deepest substantive record |
 | `action_taken` | The government's formal response to the committee's recommendations |
 
-The ATR linkage (`extract-atr-linkage`) connects each Action Taken Report
-back to the original recommendations it responds to, enabling lifecycle
-analysis: *recommendation → government rejection/acceptance → follow-up*.
+Action Taken Reports (ATRs) are the government's formal written responses to
+committee recommendations. The `atr-linkage` command connects each ATR back
+to the original report, enabling lifecycle analysis:
+*recommendation → government rejection/acceptance → follow-up*.
 
 ```python
-from commoner_probe import Corpus
+import commoner_probe as probe
 
-c = Corpus("data/climate-committees")
+c = probe.Corpus("data/climate-committees")
 
-# Track the full recommendation lifecycle
 for chain in c.join_atr_chain():
     print(f"Report: {chain.original and chain.original.title}")
     print(f"  Recommendations: {len(chain.original_observations)}")
     print(f"  Government responses: {len(chain.atr_answers)}")
 ```
 
+### State assembly records (NeVA portals)
+
+From 2020, sub-national governments have been adopting NIC's NeVA (National
+e-Vidhan Application) infrastructure under a centrally sponsored scheme run
+by the Ministry of Parliamentary Affairs. Most state assemblies are onboarding,
+though coverage varies. The `state-assembly` command probes any NeVA portal:
+
+```bash
+commoner-probe state-assembly \
+  --portal gujarat \
+  --state GJ \
+  --out data/gujarat-assembly \
+  --assemblies 15
+```
+
 ---
 
 ## All commands
 
-### `commoner-probe crawl` — Q/A questions
+### `commoner-probe sansad` — parliamentary questions
 
 ```bash
-commoner-probe crawl \
+commoner-probe sansad \
   --topic topic.json \
   --out data/climate \
   --house both \
   --from-date 2019-01-01 \
   --to-date 2026-01-01
 ```
-
-Key flags:
 
 | Flag | Default | What it does |
 |---|---|---|
@@ -199,17 +205,15 @@ Key flags:
 | `--max-buckets N` | — | Only run the first N search/ministry combos |
 | `--reset` | off | Wipe existing manifest and start fresh |
 
-### `commoner-probe crawl-committees` — Committee reports
+### `commoner-probe committees` — standing committee reports
 
 ```bash
-commoner-probe crawl-committees \
+commoner-probe committees \
   --topic topic.json \
   --out data/committees \
   --house both \
   --committees finance,education
 ```
-
-Key flags:
 
 | Flag | Default | What it does |
 |---|---|---|
@@ -231,7 +235,7 @@ Key flags:
 
 ```bash
 commoner-probe extract-answers --out data/climate
-commoner-probe extract-answers --out data/climate --refresh  # re-extract everything
+commoner-probe extract-answers --out data/climate --refresh
 ```
 
 Reads `manifest.jsonl` and downloaded PDFs; writes `answers.jsonl` with:
@@ -242,36 +246,46 @@ Reads `manifest.jsonl` and downloaded PDFs; writes `answers.jsonl` with:
 
 Requires `pip install "commoner-probe[pdf]"`.
 
-### `commoner-probe extract-atr-linkage` — ATR → original report
+### `commoner-probe atr-linkage` — ATR → original report
 
 ```bash
-commoner-probe extract-atr-linkage --out data/committees
+commoner-probe atr-linkage --out data/committees
 ```
 
-Writes `atr_linkage.jsonl` — each ATR record linked back to the report it responds to.
-Run once per committee corpus; safe to re-run (idempotent overwrite).
+Writes `atr_linkage.jsonl` — each ATR linked back to the report it responds to.
+Safe to re-run (idempotent overwrite).
 
-### `commoner-probe stats` — Corpus health
+### `commoner-probe state-assembly` — state legislature records
+
+```bash
+commoner-probe state-assembly \
+  --portal gujarat \
+  --state GJ \
+  --out data/gujarat \
+  --assemblies 15
+```
+
+### `commoner-probe stats` — corpus health
 
 ```bash
 commoner-probe stats --out data/climate
-commoner-probe stats --out data/climate --json   # machine-readable
+commoner-probe stats --out data/climate --json
 ```
 
-### `commoner-probe validate` — Schema validation
+### `commoner-probe validate` — schema validation
 
 ```bash
 commoner-probe validate --out data/climate
 ```
 
-Validates every JSONL file against its JSON Schema. Exits 1 and prints
-field-level errors if anything is malformed. Requires `[dev]` extra.
+Validates every JSONL file against its JSON Schema. Exits 1 on errors.
+Requires `[dev]` extra.
 
 ---
 
 ## Topic profile
 
-A topic profile is a JSON file that controls what the crawler pulls:
+Controls what the probe acquires:
 
 ```json
 {
@@ -288,8 +302,7 @@ A topic profile is a JSON file that controls what the crawler pulls:
 
 - `search_groups` — keyword groups for LS full-text search. Each query runs
   independently; results are union-deduped on `key`.
-- `lok_sabha_ministries` — exact ministry filter for LS (case-sensitive, matches
-  the `dc.relation.ministry` field).
+- `lok_sabha_ministries` — exact ministry filter for LS (case-sensitive).
 - `rajya_sabha_ministry_likes` — ministry LIKE filter for RS (prefix match).
 
 See `examples/topics/` for working examples.
@@ -306,18 +319,17 @@ See `examples/topics/` for working examples.
 | `atr_linkage.jsonl` | ATR → original report linkages |
 | `pdfs/ls/` | Downloaded LS PDFs |
 | `pdfs/rs/` | Downloaded RS PDFs |
-| `crawl.log` | Human-readable crawl progress log |
+| `probe.log` | Human-readable probe progress log |
 
-For complete field-level documentation — all four manifest record shapes,
-controlled vocabularies, and join keys — see [`docs/SCHEMAS.md`](docs/SCHEMAS.md).
+For complete field-level documentation see [`docs/SCHEMAS.md`](docs/SCHEMAS.md).
 
 ---
 
 ## Entity resolution (`--with-entities`)
 
-Pass `--with-entities` to `commoner-probe crawl` to resolve asker names to
+Pass `--with-entities` to `commoner-probe sansad` to resolve asker names to
 stable `entity_id` values. On first run the entity store is populated from
-the sansad.in MP roster API; subsequent runs reuse the local cache.
+the sansad.in MP roster; subsequent runs reuse the local cache.
 
 Resolved entity IDs join across corpora and sessions — useful for studying
 the same MP's questioning behaviour over time or across houses.
@@ -327,30 +339,30 @@ the same MP's questioning behaviour over time or across houses.
 ## Python API
 
 ```python
-from commoner_probe import Corpus
+import commoner_probe as probe
 
-c = Corpus("data/climate")
+c = probe.Corpus("data/climate")
 
 # Typed iterators
-for r in c.manifest_qa():               # ManifestQaRecord
+for r in c.manifest_qa():                 # ManifestQaRecord
     ...
-for r in c.manifest_committee_reports(): # ManifestCommitteeReportRecord
+for r in c.manifest_committee_reports():  # ManifestCommitteeReportRecord
     ...
-for r in c.answers_qa():                # AnswerQaResponse
+for r in c.answers_qa():                  # AnswerQaResponse
     ...
-for r in c.answers_atr():              # AnswerAtrResponse
+for r in c.answers_atr():                 # AnswerAtrResponse
     ...
-for r in c.answers_dfg():              # AnswerDfgRecommendation
+for r in c.answers_dfg():                 # AnswerDfgRecommendation
     ...
-for r in c.atr_linkages():             # AtrLinkageRecord
+for r in c.atr_linkages():                # AtrLinkageRecord
     ...
-for r in c.runs():                     # RunRecord
+for r in c.runs():                        # RunRecord
     ...
 
 # Join helpers
-for pair in c.join_qa():               # manifest + extracted answers
+for pair in c.join_qa():                  # manifest + extracted answers
     ...
-for chain in c.join_atr_chain():       # ATR + original report + observations
+for chain in c.join_atr_chain():          # ATR + original report + observations
     ...
 
 # pandas (pip install commoner-probe[pandas])
@@ -361,35 +373,34 @@ See [`examples/usage.py`](examples/usage.py) for a runnable walkthrough.
 
 ---
 
-## Upcoming
+## License
 
-The following data sources are available on sansad.in and are candidates for
-future crawlers in this library. PRs welcome.
+GNU Affero General Public License v3 or later (AGPL-3.0-or-later).
+
+`commoner-probe` is sousveillance infrastructure — built for the commons, not
+for commercial extraction. AGPL ensures that anyone running a modified version
+as a service must publish their source. Researchers, journalists, and civic
+tech organisations are unaffected.
+
+---
+
+## Upcoming
 
 ### Floor debates
 
-The sansad.in eLibrary exposes full debate proceedings via
-`api_ls/debate/text-of-debate` (structured JSON, 17th Lok Sabha onwards). Each
-debate record covers a single day and house: the type of business (bill, motion,
-statement by minister, zero hour), the member who spoke, and the verbatim text.
-This is the richest longitudinal record of what MPs say on the floor — far more
-than Q/A — and an essential dataset for speech analysis, political communication
-research, and accountability journalism.
+sansad.in exposes full debate proceedings via `api_ls/debate/text-of-debate`
+(structured JSON, 17th Lok Sabha onwards). Each record covers a single day:
+type of business, member who spoke, and verbatim text. The richest longitudinal
+record of what MPs say on the floor.
 
 ### Bills and legislation
 
-`sansad.in/ls/legislation/bills` lists every government and private member's
-bill introduced since independence, with introduction date, debate dates, status
-at each stage (introduced / committee referral / passed in LS / passed in RS /
-presidential assent), and gazette notification. A bills crawler would let
-researchers track legislative velocity, committee scrutiny rates, and what
-happens to private member bills over time.
+`sansad.in/ls/legislation/bills` lists every bill since independence with
+introduction date, debate dates, and status at each stage. Enables tracking
+legislative velocity, committee scrutiny rates, and private member bill outcomes.
 
 ### MP profiles and career timelines
 
-Beyond the MP roster already used for entity resolution, sansad.in exposes
-structured biographical data for each member: constituency, state, party,
-terms served, educational background, and declared profession. Pairing this
-with the Q/A corpus and committee membership data would enable studies of how
-MP background, seniority, and party affiliation predict parliamentary
-participation and questioning patterns.
+Structured biographical data for each member: constituency, state, party, terms
+served, educational background, declared profession. Pairs with the Q/A corpus
+for studies of how MP background predicts parliamentary participation.
