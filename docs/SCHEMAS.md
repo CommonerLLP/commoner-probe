@@ -214,7 +214,7 @@ Produced by `commoner_probe/runlog.py`.
 ## `answers.jsonl`
 
 One record per extracted text unit from a downloaded PDF.
-Written by `sansad-crawl extract-answers`. Three record shapes discriminated by `kind`.
+Written by `commoner-probe extract-answers`. Three record shapes discriminated by `kind`.
 
 ### Common header fields (all three shapes)
 
@@ -277,7 +277,7 @@ Used for Demands for Grants, Bill scrutiny, and Subject reports; the
 ## `atr_linkage.jsonl`
 
 One record per Action Taken Report that could be linked to its original report.
-Written by `sansad-crawl extract-atr-linkage`. Source module: `commoner_probe/atr_linkage.py`.
+Written by `commoner-probe atr-linkage`. Source module: `commoner_probe/atr_linkage.py`.
 
 | Field | Type | Required | Enum / format | Provenance |
 |---|---|---|---|---|

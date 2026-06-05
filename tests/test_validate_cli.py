@@ -1,4 +1,4 @@
-"""Tests for the `sansad-crawl validate` subcommand.
+"""Tests for the `commoner-probe validate` subcommand.
 
 Covers:
 - Smoke-fixture corpus exits 0.

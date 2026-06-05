@@ -31,7 +31,7 @@ curl -sS \
   -o examples/corpora/committees-smoke/raw/rs_health_p1.json
 
 # 2. Regenerate the canonical manifest.
-SANSAD_REGENERATE_FIXTURE=1 .venv/bin/python -m pytest tests/test_smoke_fixture.py -q
+COMMONER_REGENERATE_FIXTURE=1 .venv/bin/python -m pytest tests/test_smoke_fixture.py -q
 
 # 3. Inspect diff and commit only intentional changes.
 git diff examples/corpora/committees-smoke/
@@ -42,18 +42,18 @@ git diff examples/corpora/committees-smoke/
 ```bash
 pip install -e ".[pdf,http]"
 
-sansad-crawl crawl \
+commoner-probe sansad \
   --topic examples/topics/libraries.json \
   --out /tmp/smoke \
   --house ls \
   --max-buckets 1 --max-records 1 --no-download
 
-sansad-crawl extract-answers --out /tmp/smoke
-sansad-crawl crawl-committees \
+commoner-probe extract-answers --out /tmp/smoke
+commoner-probe committees \
   --topic examples/topics/libraries.json \
   --out /tmp/smoke-cc \
   --house ls --committees finance --max-records 1 --no-download
-sansad-crawl extract-atr-linkage --out /tmp/smoke-cc
+commoner-probe atr-linkage --out /tmp/smoke-cc
 ```
 
 All four commands should exit 0. Manifest records should not contain

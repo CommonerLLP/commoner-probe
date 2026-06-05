@@ -1,4 +1,4 @@
-# sansad-crawler: Rationale and Domain Case
+# commoner-probe: Rationale and Domain Case
 
 *Draft for JOSS submission / README anchor / funder pitch.*
 
@@ -6,7 +6,7 @@
 
 ## What this library does
 
-`sansad-crawler` is a Python library for acquiring Indian legislative records from mandatory-disclosure portals. It currently covers three source families:
+`commoner-probe` is a Python library for acquiring Indian legislative records from mandatory-disclosure portals. It currently covers three source families:
 
 - **Lok Sabha and Rajya Sabha parliamentary questions** — starred and unstarred questions, with PDF attachments, from sansad.in
 - **Standing committee reports** — Lok Sabha and Rajya Sabha department-related committees, with Action Taken Report linkage
@@ -115,7 +115,7 @@ The library's HTTP client addresses each of these: per-domain rate limiting, exp
 
 ## What the library is not
 
-`sansad-crawler` is Layer 0: acquisition. It does not:
+`commoner-probe` is Layer 0: acquisition. It does not:
 
 - perform semantic search or topic classification (that is the responsibility of the compose layer, which injects a `filter_fn` into the topic profile)
 - extract structured text from PDFs beyond answer/recommendation pair extraction for committee reports
@@ -145,7 +145,7 @@ This framing has practical consequences for library design. It is why we preserv
 
 ## Citation target (JOSS)
 
-The Journal of Open Source Software (JOSS) accepts submissions for research software with clear scholarly value. A JOSS paper for `sansad-crawler` would establish:
+The Journal of Open Source Software (JOSS) accepts submissions for research software with clear scholarly value. A JOSS paper for `commoner-probe` would establish:
 
 - a citable DOI for the library
 - peer review of the software design and documentation
