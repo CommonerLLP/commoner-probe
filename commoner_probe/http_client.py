@@ -29,7 +29,7 @@ interface exactly — no call-site changes required.
 
 Cache location
 --------------
-Defaults to $TMPDIR/commoner_probe_http_cache/. Override via SANSAD_CACHE_DIR.
+Defaults to $TMPDIR/commoner_probe_http_cache/. Override via COMMONER_CACHE_DIR (deprecated: SANSAD_CACHE_DIR).
 """
 
 from __future__ import annotations
@@ -84,7 +84,7 @@ def _get_robot_parser(url: str) -> urllib.robotparser.RobotFileParser:
 
 
 def _cache_dir() -> Path:
-    override = os.environ.get("SANSAD_CACHE_DIR")
+    override = os.environ.get("COMMONER_CACHE_DIR") or os.environ.get("SANSAD_CACHE_DIR")
     p = Path(override) if override else Path(os.environ.get("TMPDIR", "/tmp")) / "commoner_probe_http_cache"
     p.mkdir(parents=True, exist_ok=True)
     return p

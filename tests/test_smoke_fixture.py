@@ -12,9 +12,9 @@ Two failure modes this distinguishes:
 * **Upstream API change.** Live crawls fail; this fixture still passes.
   Refresh ``raw/*.json`` per ``examples/corpora/committees-smoke/README.md``.
 
-Setting ``SANSAD_REGENERATE_FIXTURE=1`` rewrites the canonical
+Setting ``COMMONER_REGENERATE_FIXTURE=1`` rewrites the canonical
 ``manifest.jsonl`` from current parser output. Use only after
-inspecting the live diff.
+inspecting the live diff. (Deprecated alias: ``SANSAD_REGENERATE_FIXTURE=1``.)
 """
 
 from __future__ import annotations
@@ -99,11 +99,11 @@ class SmokeFixtureTests(unittest.TestCase):
     def test_canonical_manifest_matches_current_parser(self):
         produced = _run_against_fixture()
 
-        if os.environ.get("SANSAD_REGENERATE_FIXTURE"):
+        if os.environ.get("COMMONER_REGENERATE_FIXTURE") or os.environ.get("SANSAD_REGENERATE_FIXTURE"):
             with (FIXTURE / "manifest.jsonl").open("w", encoding="utf-8") as f:
                 for rec in produced:
                     f.write(json.dumps(rec, ensure_ascii=False, sort_keys=True) + "\n")
-            self.skipTest("regenerated fixture; rerun without SANSAD_REGENERATE_FIXTURE=1")
+            self.skipTest("regenerated fixture; rerun without COMMONER_REGENERATE_FIXTURE=1")
 
         canonical = [
             json.loads(line)
