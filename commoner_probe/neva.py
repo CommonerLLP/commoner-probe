@@ -206,11 +206,11 @@ def _parse_members_html(
 
 
 # ---------------------------------------------------------------------------
-# Crawler
+# Probe
 # ---------------------------------------------------------------------------
 
 class StateAssemblyCrawler(BaseProbe):
-    """Crawl one NeVA state assembly portal.
+    """Probe one NeVA state assembly portal.
 
     Args:
         portal_code: subdomain prefix — e.g. ``"gujarat"``
@@ -497,10 +497,10 @@ class StateAssemblyCrawler(BaseProbe):
         fetch_member_details: bool = True,
         sessions_limit: int | None = None,
     ) -> dict:
-        """Run the full crawl for the given assembly numbers.
+        """Run the full probe for the given assembly numbers.
 
         Args:
-            assembly_nos: list of assembly numbers to crawl (e.g. [15])
+            assembly_nos: list of assembly numbers to probe (e.g. [15])
             download: download PDFs when URLs are found
             fetch_member_details: enrich members with individual profile pages
             sessions_limit: stop after this many sessions per assembly (smoke-test)
@@ -576,7 +576,7 @@ class StateAssemblyCrawler(BaseProbe):
                 if u_recs:
                     self.log(f"    unlisted={len(u_recs)}")
 
-        # Members — crawl once for the latest assembly
+        # Members — probe once for the latest assembly
         m_seen = self._load_jsonl_keys(self.members_path)
         if not m_seen:
             asm = assembly_nos[0]

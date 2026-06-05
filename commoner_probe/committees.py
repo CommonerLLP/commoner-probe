@@ -242,7 +242,7 @@ class CommitteeProbe(BaseProbe):
         )
         self.lok_sabha_no = lok_sabha_no
 
-    def crawl_composition(self, house: str, committees: Iterable[str]) -> int:
+    def probe_composition(self, house: str, committees: Iterable[str]) -> int:
         """Fetch and save committee members to committee_members.jsonl.
 
         Tries the sansad.in membership API first. Falls back to LLM extraction
