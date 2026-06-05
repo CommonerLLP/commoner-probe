@@ -524,3 +524,21 @@ def test_docs_fields_match_schema_properties(schema_name):
             f"  → Document them in docs/SCHEMAS.md or remove from the schema"
         )
     assert not errors, "\n\n".join(errors)
+
+
+def test_committee_members_schema_validates_sample():
+    """Sample committee_members record validates against its schema."""
+    schema = _load_schema("committee_members")
+    sample = {
+        "house": "LS",
+        "committee": "finance",
+        "committee_name": "Standing Committee on Finance",
+        "committee_code": 12,
+        "source": "api",
+        "members": [
+            {"name": "Test Member", "role": "Member", "party": "INC"}
+        ],
+        "probed_at": "2026-06-06T00:00:00",
+    }
+    import jsonschema
+    jsonschema.validate(instance=sample, schema=schema)
