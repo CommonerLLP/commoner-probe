@@ -64,6 +64,7 @@ namespaces = false
 
 [tool.setuptools.package-data]
 "commoner_probe.schemas" = ["*.json"]
+"commoner_probe.example_topics" = ["*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

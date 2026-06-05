@@ -26,12 +26,12 @@ class VersionSyncTests(unittest.TestCase):
 
 
 class CliCommandSyncTests(unittest.TestCase):
-    def test_cli_exposes_exactly_seven_subcommands(self):
+    def test_cli_exposes_exactly_eight_subcommands(self):
         parser = build_parser()
         subcommands = set(parser._subparsers._group_actions[0].choices.keys())  # type: ignore[attr-defined]
         self.assertEqual(
             subcommands,
-            {"sansad", "committees", "extract-answers", "state-assembly", "atr-linkage", "stats", "validate"},
+            {"sansad", "committees", "extract-answers", "state-assembly", "atr-linkage", "stats", "validate", "init-topic"},
         )
 
     def test_sansad_has_no_classifier_flag(self):

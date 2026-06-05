@@ -6,6 +6,7 @@ from pathlib import Path
 from .answers import extract_answers
 from .atr_linkage import extract_atr_linkages
 from .committees import CommitteeProbe, resolve_committees
+from .example_topics import list_example_topics, load_example_topic_text
 from .neva import StateAssemblyCrawler
 from .sansad import SansadProbe
 from .stats import compute_stats, print_stats
@@ -194,6 +195,22 @@ def validate_cmd(args: argparse.Namespace) -> None:
         raise SystemExit(1)
 
 
+def init_topic_cmd(args: argparse.Namespace) -> None:
+    out = Path(args.out)
+    if out.exists() and not args.force:
+        raise SystemExit(f"output already exists: {out} (pass --force to overwrite)")
+    try:
+        topic_text = load_example_topic_text(args.name)
+    except KeyError:
+        available = ", ".join(list_example_topics())
+        raise SystemExit(
+            f"unknown built-in topic '{args.name}'. available topics: {available}"
+        ) from None
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(topic_text, encoding="utf-8")
+    print(f"wrote built-in topic '{args.name}' to {out}")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="commoner-probe")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -303,6 +320,23 @@ def build_parser() -> argparse.ArgumentParser:
         help="Maximum validation errors to print per file (default: 10)",
     )
     val.set_defaults(func=validate_cmd)
+
+    init_topic = sub.add_parser(
+        "init-topic",
+        help="Write a built-in topic profile JSON to a local path.",
+    )
+    init_topic.add_argument(
+        "--name",
+        required=True,
+        help="Built-in topic name (e.g., libraries, home_affairs_starred, affirmative_action).",
+    )
+    init_topic.add_argument("--out", required=True, help="Destination path for the topic JSON file")
+    init_topic.add_argument(
+        "--force",
+        action="store_true",
+        help="Overwrite the destination file if it already exists.",
+    )
+    init_topic.set_defaults(func=init_topic_cmd)
 
     return parser
 
