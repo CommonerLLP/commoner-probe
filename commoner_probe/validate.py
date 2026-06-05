@@ -170,6 +170,22 @@ def validate_corpus(
         log(f"  {n} records — {'ok' if ok else 'FAILED'}")
         any_error = any_error or (not ok)
 
+    # --- state-assembly outputs ---
+    state_assembly_map = {
+        "questions.jsonl": "state_assembly_question",
+        "questions_unlisted.jsonl": "state_assembly_question_unlisted",
+        "members.jsonl": "state_assembly_member",
+        "papers_laid.jsonl": "state_assembly_paper_laid",
+    }
+    for fname, sname in state_assembly_map.items():
+        fpath = out_dir / fname
+        if fpath.exists():
+            log(f"Validating {fpath.relative_to(out_dir)} ...")
+            ok = _validate_file(fpath, lambda _, s=sname: s)
+            n = sum(1 for line in fpath.read_text(encoding="utf-8").splitlines() if line.strip())
+            log(f"  {n} records — {'ok' if ok else 'FAILED'}")
+            any_error = any_error or (not ok)
+
     # --- entities/*.jsonl ---
     entity_map = {
         "people.jsonl": "entities_person",

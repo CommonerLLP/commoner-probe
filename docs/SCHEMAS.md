@@ -291,6 +291,77 @@ Written by `CommitteeProbe.probe_composition()`. Source module: `commoner_probe/
 
 ---
 
+## State-assembly outputs (`commoner-probe state-assembly`)
+
+Four JSONL files written by `StateAssemblyCrawler` (NeVA portals).
+
+### `questions.jsonl`
+
+| Field | Type | Req | Description |
+|---|---|---|---|
+| `key` | string | yes | Unique record key: `{state}\|q\|{asm}\|{sess}\|{date}\|{q_no}` |
+| `record_type` | string | yes | `"question"` |
+| `source` | string | yes | `"neva"` |
+| `state_code` | string | yes | Two-letter CMS state code, e.g. `"GJ"` |
+| `portal_code` | string | yes | Portal subdomain, e.g. `"gujarat"` |
+| `assembly_no` | integer | yes | Assembly number |
+| `session_no` | integer/string | yes | Session code |
+| `session_date_id` | integer/string/null | yes | Date ID within session |
+| `question_number` | string | yes | Question number |
+| `subject` | string | yes | Subject line |
+| `question_text` | string | yes | Full question text |
+| `ministry` | string | yes | Answering ministry |
+| `member_name` | string | yes | MLA name |
+| `constituency` | string | yes | Constituency |
+| `pdf_urls` | array | yes | PDF download URLs |
+| `pdf_path` | string/null | yes | Local PDF path after download |
+| `probed_at` | string | yes | ISO datetime of probe |
+
+### `questions_unlisted.jsonl`
+
+Same schema as `questions.jsonl` but `record_type = "question_unlisted"`.
+
+### `members.jsonl`
+
+| Field | Type | Req | Description |
+|---|---|---|---|
+| `key` | string | yes | `{state}\|member\|{id}` |
+| `record_type` | string | yes | `"member"` |
+| `source` | string | yes | `"neva"` |
+| `state_code` | string | yes | |
+| `portal_code` | string | yes | |
+| `assembly_no` | integer | yes | |
+| `member_id` | integer | yes | Portal member ID |
+| `name` | string | yes | Member name |
+| `party` | string | yes | Party affiliation |
+| `constituency` | string | yes | Constituency |
+| `dob` | string | yes | Date of birth (string from portal) |
+| `phone` | string | yes | Contact phone |
+| `email` | string | yes | Contact email |
+| `photo_url` | string | yes | Photo URL |
+| `probed_at` | string | yes | ISO datetime of probe |
+
+### `papers_laid.jsonl`
+
+| Field | Type | Req | Description |
+|---|---|---|---|
+| `key` | string | yes | `{state}\|paper\|{asm}\|{sess}\|{date}\|{seq}` |
+| `record_type` | string | yes | `"paper_laid"` |
+| `source` | string | yes | `"neva"` |
+| `state_code` | string | yes | |
+| `portal_code` | string | yes | |
+| `assembly_no` | integer | yes | |
+| `session_no` | integer/string | yes | |
+| `session_date_id` | integer/string/null | yes | |
+| `serial_no` | string | yes | Serial number |
+| `title` | string | yes | Document title |
+| `ministry` | string | yes | Presenting ministry |
+| `pdf_urls` | array | yes | PDF URLs |
+| `pdf_path` | string/null | yes | Local path after download |
+| `probed_at` | string | yes | ISO datetime of probe |
+
+---
+
 ## `atr_linkage.jsonl`
 
 One record per Action Taken Report that could be linked to its original report.

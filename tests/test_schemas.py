@@ -542,3 +542,39 @@ def test_committee_members_schema_validates_sample():
     }
     import jsonschema
     jsonschema.validate(instance=sample, schema=schema)
+
+
+_SA_COMMON = {
+    "source": "neva", "state_code": "GJ", "portal_code": "gujarat",
+    "assembly_no": 15, "session_no": 1, "session_date_id": 101,
+    "probed_at": "2026-06-06T00:00:00",
+}
+_SA_QUESTION_COMMON = {
+    **_SA_COMMON,
+    "question_number": "42", "subject": "Water supply", "question_text": "Is there water?",
+    "ministry": "JAL SHAKTI", "member_name": "Test MLA", "constituency": "Test",
+    "pdf_urls": [], "pdf_path": None,
+}
+
+
+@pytest.mark.parametrize("schema_name,sample", [
+    ("state_assembly_question", {"key": "GJ|q|15|1|101|42", "record_type": "question", **_SA_QUESTION_COMMON}),
+    ("state_assembly_question_unlisted", {"key": "GJ|q_unl|15|1|101|1", "record_type": "question_unlisted", **_SA_QUESTION_COMMON}),
+    ("state_assembly_member", {
+        "key": "GJ|member|123", "record_type": "member", "source": "neva",
+        "state_code": "GJ", "portal_code": "gujarat", "assembly_no": 15,
+        "member_id": 123, "name": "Test MLA", "party": "INC",
+        "constituency": "Test", "dob": "", "phone": "", "email": "", "photo_url": "",
+        "probed_at": "2026-06-06T00:00:00",
+    }),
+    ("state_assembly_paper_laid", {
+        "key": "GJ|paper|15|1|101|1", "record_type": "paper_laid",
+        **_SA_COMMON, "serial_no": "1", "title": "Test Paper", "ministry": "HOME",
+        "pdf_urls": [], "pdf_path": None,
+    }),
+])
+def test_state_assembly_schemas_validate_samples(schema_name, sample):
+    """Each state-assembly schema validates a minimal sample record."""
+    import jsonschema
+    schema = _load_schema(schema_name)
+    jsonschema.validate(instance=sample, schema=schema)

@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CommonerLLP/commoner-probe/schemas/v1/state_assembly_member.json",
+  "title": "StateAssemblyMember",
+  "description": "One member record from a NeVA state assembly portal. Written to members.jsonl.",
+  "type": "object",
+  "required": [
+    "key",
+    "record_type",
+    "state_code",
+    "member_id",
+    "name",
+    "probed_at"
+  ],
+  "properties": {
+    "key": {
+      "type": "string"
+    },
+    "record_type": {
+      "type": "string",
+      "const": "member"
+    },
+    "source": {
+      "type": "string",
+      "const": "neva"
+    },
+    "state_code": {
+      "type": "string"
+    },
+    "portal_code": {
+      "type": "string"
+    },
+    "assembly_no": {
+      "type": "integer"
+    },
+    "member_id": {
+      "type": "integer"
+    },
+    "name": {
+      "type": "string"
+    },
+    "party": {
+      "type": "string"
+    },
+    "constituency": {
+      "type": "string"
+    },
+    "dob": {
+      "type": "string"
+    },
+    "phone": {
+      "type": "string"
+    },
+    "email": {
+      "type": "string"
+    },
+    "photo_url": {
+      "type": "string"
+    },
+    "probed_at": {
+      "type": "string"
+    }
+  }
+}
