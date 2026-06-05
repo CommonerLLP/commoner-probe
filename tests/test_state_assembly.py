@@ -5,8 +5,6 @@ All tests use frozen HTML/data fixtures — no network calls.
 
 from __future__ import annotations
 
-import pytest
-
 from commoner_probe.neva import (
     StateAssemblyCrawler,
     _collect_pdf_hrefs,
@@ -14,7 +12,6 @@ from commoner_probe.neva import (
     _parse_table,
     _split_member_cell,
 )
-
 
 # ---------------------------------------------------------------------------
 # _split_member_cell
