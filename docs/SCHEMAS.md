@@ -49,7 +49,7 @@ Records come in **four shapes** discriminated by `kind` and `house`.
 | `source` | string | yes | `"elibrary.sansad.in"` | sansad.py:272 |
 | `found_via_group` | string | yes | Topic search_group name that found this record | sansad.py:273 |
 | `found_via_query` | string | yes | Exact query string | sansad.py:274 |
-| `crawled_at` | string | cond | ISO datetime of crawl (seconds precision); present in all freshly crawled corpora | sansad.py:275 |
+| `probed_at` | string | cond | ISO datetime of probe (seconds precision); present in all freshly crawled corpora | sansad.py:275 |
 | `language_classified` | string[] | yes | Default `["en"]`; set by extractor if different | sansad.py:288 |
 | `pdf_url` | string | cond | Absolute PDF URL; present only when download succeeded | sansad.py:286 |
 | `pdf_path` | string | cond | Path relative to corpus `out_dir`; present only when download succeeded | sansad.py:287 |
@@ -84,7 +84,7 @@ Records come in **four shapes** discriminated by `kind` and `house`.
 | `source` | string | yes | `"rsdoc.nic.in"` | sansad.py:416 |
 | `found_via_query` | string | yes | Ministry filter string used as crawl query | sansad.py:417 |
 | `status` | string | yes | Raw question status from API | sansad.py:418 |
-| `crawled_at` | string | cond | ISO datetime of crawl; present in all freshly crawled corpora | sansad.py:419 |
+| `probed_at` | string | cond | ISO datetime of probe; present in all freshly crawled corpora | sansad.py:419 |
 | `language_classified` | string[] | yes | Default `["en"]` | sansad.py:429 |
 
 **Note — field divergence vs Shape A**: RS Q/A records lack `uuid`, `handle`,
@@ -93,7 +93,7 @@ Records come in **four shapes** discriminated by `kind` and `house`.
 Both shapes share `key`, `run_id`, `kind`, `house`, `title`, `date`, `qtype`,
 `qno`, `ministry`, `askers`, `asker_details`, `asker_entity_ids`,
 `responder_entity_id`, `responder_role_at_event`, `source`, `found_via_query`,
-`crawled_at`, `language_classified`, `pdf_url`, `pdf_path`.
+`probed_at`, `language_classified`, `pdf_url`, `pdf_path`.
 
 ---
 
@@ -123,7 +123,7 @@ Both shapes share `key`, `run_id`, `kind`, `house`, `title`, `date`, `qtype`,
 | `pdf_url_hindi` | string\|null | yes | Hindi PDF URL; may be null | committees.py:363 |
 | `pdf_path` | string | cond | Relative path; present only when download succeeded | committees.py:375 |
 | `source` | string | yes | `"sansad.in/api_ls/committee"` | committees.py:364 |
-| `crawled_at` | string | cond | ISO datetime; present in all freshly crawled corpora | committees.py:365 |
+| `probed_at` | string | cond | ISO datetime; present in all freshly crawled corpora | committees.py:365 |
 
 ---
 
@@ -150,7 +150,7 @@ Both shapes share `key`, `run_id`, `kind`, `house`, `title`, `date`, `qtype`,
 | `pdf_url_hindi` | string\|null | yes | Hindi PDF URL; may be null | committees.py:479 |
 | `pdf_path` | string | cond | Relative path; present only when download succeeded | committees.py:490 |
 | `source` | string | yes | `"sansad.in/api_rs/committee"` | committees.py:480 |
-| `crawled_at` | string | cond | ISO datetime; present in all freshly crawled corpora | committees.py:481 |
+| `probed_at` | string | cond | ISO datetime; present in all freshly crawled corpora | committees.py:481 |
 
 **Note — field divergence between LS and RS committee reports**: LS reports carry
 `loksabha_no`, `date_presented_ls`, `date_laid_rs`, `date_presented_speaker`.

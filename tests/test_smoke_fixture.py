@@ -72,7 +72,7 @@ def _run_against_fixture() -> list[dict]:
     routes = {"api_ls/committee": ls_payload, "api_rs/committee": rs_payload}
     topic = load_topic(TOPIC)
     records: list[dict] = []
-    for slug, fn_name in [("finance", "crawl_ls"), ("health", "crawl_rs")]:
+    for slug, fn_name in [("finance", "probe_ls"), ("health", "probe_rs")]:
         with tempfile.TemporaryDirectory() as tmp:
             probe = CommitteeProbe(
                 topic,

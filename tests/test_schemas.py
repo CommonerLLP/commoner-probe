@@ -454,7 +454,7 @@ def test_probed_committee_records_validate():
     routes = {"api_ls/committee": ls_payload, "api_rs/committee": rs_payload}
     topic = load_topic(TOPIC)
     records_seen = 0
-    for slug, fn_name in [("finance", "crawl_ls"), ("health", "crawl_rs")]:
+    for slug, fn_name in [("finance", "probe_ls"), ("health", "probe_rs")]:
         with tempfile.TemporaryDirectory() as tmp:
             probe = CommitteeProbe(topic, Path(tmp), sleep=0, lok_sabha_no=18, topic_path=TOPIC)
             probe.session = _FakeSession(routes)
