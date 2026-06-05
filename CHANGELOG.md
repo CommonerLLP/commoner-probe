@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.3.0 (2026-06-06)
+
+### Breaking changes
+
+- **Package renamed**: `sansad-crawler` → `commoner-probe`. Update your `pip install` and imports.
+  - Python: `from sansad_crawler import ...` → `from commoner_probe import ...`
+  - CLI: `sansad-crawl` → `commoner-probe`
+  - Subcommands renamed: `crawl` → `sansad`, `crawl-committees` → `committees`, `extract-atr-linkage` → `atr-linkage`
+- **New subcommand added**: `state-assembly` (NeVA state assembly portals)
+- **Schema field renamed**: `crawled_at` → `probed_at` in all output records
+- **Relicensed**: MIT → AGPL-3.0-or-later
+
+### Added
+
+- **`commoner-probe state-assembly`** — probe NeVA state assembly portals (`{portal}.neva.gov.in`). Writes `questions.jsonl`, `questions_unlisted.jsonl`, `members.jsonl`, `papers_laid.jsonl`. Tested on Gujarat assembly 15.
+- **HTTP hardening** (`commoner_probe/http_client.py`): SSRF guard, robots.txt checking, per-domain rate limiting (1 req/s), exponential backoff (3 retries), optional `requests_cache` (6h TTL). Install via `pip install commoner-probe[cache]`.
+- **Committee composition** (`CommitteeProbe.probe_composition()`): writes `committee_members.jsonl`.
+- **`filter_fn` hook on `TopicProfile`**: callable injected by analytics layer at runtime.
+- **`classifier_config` in `TopicProfile`**: propagated to `_runs.jsonl` for corpus auditability.
+- **JSON schemas for new outputs**: `committee_members`, `state_assembly_question`, `state_assembly_question_unlisted`, `state_assembly_member`, `state_assembly_paper_laid`.
+- **`commoner-probe init-topic`**: write a bundled example topic profile to disk (built-ins: `libraries`, `home_affairs_starred`, `affirmative_action`).
+- **Single-sourced version**: `__version__` reads from `importlib.metadata` with pyproject fallback.
+- **GitHub Actions**: CI (matrix 3.10–3.12, ruff, pytest) and OIDC PyPI release workflow.
+- **`MANIFEST.in`**, **`CONTRIBUTING.md`**, **`CODE_OF_CONDUCT.md`** (Contributor Covenant v2.1).
+
+### Changed
+
+- Base class `BaseCrawler` → `BaseProbe`; `crawl_ls`/`crawl_rs` → `probe_ls`/`probe_rs`; `crawl_composition` → `probe_composition`.
+- User-Agent: `commoner-probe/0.3.0`.
+- HTTP cache env var: `COMMONER_CACHE_DIR` (was `SANSAD_CACHE_DIR`; old name still honoured with deprecation warning).
+
+---
+
 ## 0.2.0 (2026-05-21)
 
 ### Added
