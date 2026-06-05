@@ -1,0 +1,7 @@
+include LICENSE
+include README.md
+include CHANGELOG.md
+recursive-include docs *.md
+prune .beads
+prune .ai
+prune .claude
