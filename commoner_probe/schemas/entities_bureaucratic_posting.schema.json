@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/sreeramramasubramanian/sansad-crawler/schemas/v1/entities_bureaucratic_posting.json",
+  "$id": "https://github.com/CommonerLLP/commoner-probe/schemas/v1/entities_bureaucratic_posting.json",
   "title": "entities/bureaucratic_postings.jsonl record",
   "description": "Temporal civil-service posting, populated as bureaucrats are encountered in PDFs.",
   "type": "object",

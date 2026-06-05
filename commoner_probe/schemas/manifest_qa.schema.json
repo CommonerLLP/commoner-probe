@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/sreeramramasubramanian/sansad-crawler/schemas/v1/manifest_qa.json",
+  "$id": "https://github.com/CommonerLLP/commoner-probe/schemas/v1/manifest_qa.json",
   "title": "manifest.jsonl — Q/A record",
   "description": "One parliamentary question record (kind=qa) from manifest.jsonl. Comes in two shapes depending on house.",
   "type": "object",

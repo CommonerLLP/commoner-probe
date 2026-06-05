@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/sreeramramasubramanian/sansad-crawler/schemas/v1/answers_qa_response.json",
+  "$id": "https://github.com/CommonerLLP/commoner-probe/schemas/v1/answers_qa_response.json",
   "title": "answers.jsonl — qa_response record",
   "description": "Extracted question/answer pair from a Q/A PDF.",
   "type": "object",

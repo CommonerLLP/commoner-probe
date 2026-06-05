@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/sreeramramasubramanian/sansad-crawler/schemas/v1/entities_committee_membership.json",
+  "$id": "https://github.com/CommonerLLP/commoner-probe/schemas/v1/entities_committee_membership.json",
   "title": "entities/committee_memberships.jsonl record",
   "description": "Temporal committee role data.",
   "type": "object",

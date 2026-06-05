@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/sreeramramasubramanian/sansad-crawler/schemas/v1/entities_person.json",
+  "$id": "https://github.com/CommonerLLP/commoner-probe/schemas/v1/entities_person.json",
   "title": "entities/people.jsonl record",
   "description": "Stable identity record for a politician, minister, bureaucrat, or expert witness.",
   "type": "object",

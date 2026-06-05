@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/sreeramramasubramanian/sansad-crawler/schemas/v1/atr_linkage.json",
+  "$id": "https://github.com/CommonerLLP/commoner-probe/schemas/v1/atr_linkage.json",
   "title": "atr_linkage.jsonl record",
   "description": "Links an Action Taken Report manifest record to the original committee report it responds to.",
   "type": "object",

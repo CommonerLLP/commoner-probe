@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/sreeramramasubramanian/sansad-crawler/schemas/v1/entities_ministerial_appointment.json",
+  "$id": "https://github.com/CommonerLLP/commoner-probe/schemas/v1/entities_ministerial_appointment.json",
   "title": "entities/ministerial_appointments.jsonl record",
   "description": "Temporal cabinet or MoS appointment.",
   "type": "object",

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/sreeramramasubramanian/sansad-crawler/schemas/v1/answers_dfg_recommendation.json",
+  "$id": "https://github.com/CommonerLLP/commoner-probe/schemas/v1/answers_dfg_recommendation.json",
   "title": "answers.jsonl — dfg_recommendation record",
   "description": "One numbered observation/recommendation paragraph from a non-ATR committee report PDF (DFG, bill, or subject report). The source_report_type field distinguishes the three sub-types.",
   "type": "object",

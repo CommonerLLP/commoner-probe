@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/sreeramramasubramanian/sansad-crawler/schemas/v1/entities_mp_membership.json",
+  "$id": "https://github.com/CommonerLLP/commoner-probe/schemas/v1/entities_mp_membership.json",
   "title": "entities/mp_memberships.jsonl record",
   "description": "Temporal MP role data: one row per (entity_id, house, term).",
   "type": "object",
