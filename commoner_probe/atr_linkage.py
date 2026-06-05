@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """ATR → original-report linkage extraction.
 
 Action Taken Reports cite the original substantive report they respond

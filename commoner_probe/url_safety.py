@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Single SSRF-guard surface used by every outbound HTTP caller in the
 scraper (`fetch.py` for HTML, `pdf_extractor.py` for PDF downloads).
 

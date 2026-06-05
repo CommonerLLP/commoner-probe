@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Phase 1: structured text extraction from parliamentary PDFs.
 
 Three shapes of source PDF, three extractors:

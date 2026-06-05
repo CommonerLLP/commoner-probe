@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Standing-committee report probe.
 
 Mirrors `sansad.py` (questions) but for parliamentary standing-committee

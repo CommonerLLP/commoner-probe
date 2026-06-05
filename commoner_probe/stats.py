@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Corpus health statistics for the `commoner-probe stats` subcommand.
 
 Walks all JSONL streams in a corpus directory and prints a structured

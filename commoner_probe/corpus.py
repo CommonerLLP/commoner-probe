@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """High-level corpus loader.
 
 Provides :class:`Corpus` — a single class that wraps a corpus directory

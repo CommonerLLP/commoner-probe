@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """HTTP client for probe — state mandatory-disclosure portals.
 
 Design (after academiaindia/scraper/fetch.py)

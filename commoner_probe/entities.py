@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Entity store: stable identity for politicians, ministers, bureaucrats.
 
 The entity record holds **only what's needed to identify a person**:

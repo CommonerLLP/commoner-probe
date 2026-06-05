@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """NeVA (National e-Vidhan Application) state assembly scraper.
 
 Scrapes: Questions (listed + unlisted), Members, Papers to be Laid.

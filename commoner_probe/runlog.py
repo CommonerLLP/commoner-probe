@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Per-run audit log: makes categorical apparatus travel with the corpus.
 
 Every crawl appends one record to ``<out>/_runs.jsonl``. Each record pins:
