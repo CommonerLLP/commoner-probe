@@ -161,6 +161,15 @@ def validate_corpus(
         log(f"  {n} records — {'ok' if ok else 'FAILED'}")
         any_error = any_error or (not ok)
 
+    # --- committee_members.jsonl ---
+    cm_path = out_dir / "committee_members.jsonl"
+    if cm_path.exists():
+        log(f"Validating {cm_path.relative_to(out_dir)} ...")
+        ok = _validate_file(cm_path, lambda _: "committee_members")
+        n = sum(1 for line in cm_path.read_text(encoding="utf-8").splitlines() if line.strip())
+        log(f"  {n} records — {'ok' if ok else 'FAILED'}")
+        any_error = any_error or (not ok)
+
     # --- entities/*.jsonl ---
     entity_map = {
         "people.jsonl": "entities_person",

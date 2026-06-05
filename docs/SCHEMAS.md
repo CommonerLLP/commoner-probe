@@ -274,6 +274,23 @@ Used for Demands for Grants, Bill scrutiny, and Subject reports; the
 
 ---
 
+## `committee_members.jsonl`
+
+One record per committee per `probe_composition()` call.
+Written by `CommitteeProbe.probe_composition()`. Source module: `commoner_probe/committees.py`.
+
+| Field | Type | Req | Description | Source |
+|---|---|---|---|---|
+| `house` | string | yes | `"LS"` or `"RS"` | committees.py:319 |
+| `committee` | string | yes | Committee slug, e.g. `"finance"` | committees.py:320 |
+| `committee_name` | string | yes | Human-readable committee name | committees.py:321 |
+| `committee_code` | integer | yes | sansad.in committeeCode (LS) or mstCommId (RS) | committees.py:322 |
+| `source` | string | yes | `"api"` or `"pdf_llm:<filename>"` | committees.py:323 |
+| `members` | array | yes | Enriched member records from MPRoster | committees.py:324 |
+| `probed_at` | string | yes | ISO datetime of probe | committees.py:325 |
+
+---
+
 ## `atr_linkage.jsonl`
 
 One record per Action Taken Report that could be linked to its original report.
