@@ -6,7 +6,7 @@ Tested on: Gujarat (gujarat.neva.gov.in, state_code=GJ).
 Output layout::
 
     <out_dir>/
-        crawl.log
+        probe.log
         questions.jsonl        — one record per listed question
         questions_unlisted.jsonl
         members.jsonl
@@ -23,9 +23,9 @@ import time
 from html.parser import HTMLParser
 from pathlib import Path
 
-from .base import BaseCrawler, now, safe_filename_segment
+from .base import BaseProbe, now, safe_filename_segment
 
-NEVA_UA = "sansad-crawler/0.3.0 (research)"
+NEVA_UA = "commoner-probe/0.3.0 (research)"
 CMS_BASE = "https://cms.neva.gov.in"
 
 
@@ -199,7 +199,7 @@ def _parse_members_html(
             "phone": phone,
             "email": email,
             "photo_url": photo,
-            "crawled_at": now(),
+            "probed_at": now(),
         }
         records.append(rec)
     return records
@@ -209,7 +209,7 @@ def _parse_members_html(
 # Crawler
 # ---------------------------------------------------------------------------
 
-class NevaStateCrawler(BaseCrawler):
+class StateAssemblyCrawler(BaseProbe):
     """Crawl one NeVA state assembly portal.
 
     Args:
@@ -345,7 +345,7 @@ class NevaStateCrawler(BaseCrawler):
                 "constituency": constituency,
                 "pdf_urls": _collect_pdf_hrefs(row_href),
                 "pdf_path": None,
-                "crawled_at": now(),
+                "probed_at": now(),
             }
             records.append(rec)
             seen.add(key)
@@ -390,7 +390,7 @@ class NevaStateCrawler(BaseCrawler):
                 "constituency": constituency,
                 "pdf_urls": _collect_pdf_hrefs(row_href),
                 "pdf_path": None,
-                "crawled_at": now(),
+                "probed_at": now(),
             }
             records.append(rec)
             seen.add(key)
@@ -479,7 +479,7 @@ class NevaStateCrawler(BaseCrawler):
                 "ministry": row[2].strip() if len(row) > 2 else "",
                 "pdf_urls": pdf_urls,
                 "pdf_path": None,
-                "crawled_at": now(),
+                "probed_at": now(),
             }
             records.append(rec)
             seen.add(key)

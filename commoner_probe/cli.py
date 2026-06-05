@@ -6,7 +6,7 @@ from pathlib import Path
 from .answers import extract_answers
 from .atr_linkage import extract_atr_linkages
 from .committees import CommitteeProbe, resolve_committees
-from .neva import NevaStateCrawler
+from .neva import StateAssemblyCrawler
 from .sansad import SansadProbe
 from .stats import compute_stats, print_stats
 from .topics import load_topic
@@ -145,16 +145,16 @@ def committees_cmd(args: argparse.Namespace) -> None:
     probe.log(f"DONE added={added} total={len(seen)}")
 
 
-def crawl_neva_cmd(args: argparse.Namespace) -> None:
+def state_assembly_cmd(args: argparse.Namespace) -> None:
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    crawler = NevaStateCrawler(
+    probe = StateAssemblyCrawler(
         portal_code=args.portal,
         state_code=args.state,
         out_dir=out,
         sleep=args.sleep,
     )
-    summary = crawler.run(
+    summary = probe.run(
         assembly_nos=parse_session_range(args.assemblies),
         download=not args.no_download,
         fetch_member_details=not args.no_member_details,
@@ -250,19 +250,19 @@ def build_parser() -> argparse.ArgumentParser:
     extract.add_argument("--refresh", action="store_true", help="Force re-extraction even if answers.jsonl exists")
     extract.set_defaults(func=extract_answers_cmd)
 
-    neva = sub.add_parser(
-        "crawl-neva",
-        help="Crawl a NeVA state assembly portal (questions, members, papers to be laid).",
+    state_assembly = sub.add_parser(
+        "state-assembly",
+        help="Probe a NeVA state assembly portal (questions, members, papers to be laid).",
     )
-    neva.add_argument("--portal", required=True, help="Portal subdomain, e.g. gujarat")
-    neva.add_argument("--state", required=True, help="CMS state code, e.g. GJ")
-    neva.add_argument("--out", required=True, help="Output corpus directory")
-    neva.add_argument("--assemblies", default="15", help="Assembly numbers, e.g. 15 or 14-15")
-    neva.add_argument("--sleep", type=float, default=0.5)
-    neva.add_argument("--no-download", action="store_true")
-    neva.add_argument("--no-member-details", action="store_true", help="Skip per-member detail pages")
-    neva.add_argument("--sessions-limit", type=int, help="Stop after N sessions per assembly (smoke-test)")
-    neva.set_defaults(func=crawl_neva_cmd)
+    state_assembly.add_argument("--portal", required=True, help="Portal subdomain, e.g. gujarat")
+    state_assembly.add_argument("--state", required=True, help="CMS state code, e.g. GJ")
+    state_assembly.add_argument("--out", required=True, help="Output corpus directory")
+    state_assembly.add_argument("--assemblies", default="15", help="Assembly numbers, e.g. 15 or 14-15")
+    state_assembly.add_argument("--sleep", type=float, default=0.5)
+    state_assembly.add_argument("--no-download", action="store_true")
+    state_assembly.add_argument("--no-member-details", action="store_true", help="Skip per-member detail pages")
+    state_assembly.add_argument("--sessions-limit", type=int, help="Stop after N sessions per assembly (smoke-test)")
+    state_assembly.set_defaults(func=state_assembly_cmd)
 
     atr_link = sub.add_parser(
         "atr-linkage",

@@ -322,7 +322,7 @@ class CommitteeProbe(BaseProbe):
                     "committee_code": code,
                     "source": source,
                     "members": enriched,
-                    "crawled_at": now(),
+                    "probed_at": now(),
                 }
                 with composition_manifest.open("a", encoding="utf-8") as f:
                     f.write(json.dumps(payload, ensure_ascii=False) + "\n")

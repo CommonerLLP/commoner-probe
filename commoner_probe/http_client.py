@@ -16,7 +16,7 @@ Design (after academiaindia/scraper/fetch.py)
 - requests_cache (optional, 6h TTL, stale_if_error=True): if the upstream
   returns 5xx or raises a network error AND a stale cached copy exists, the
   stale copy is served — corpora must survive portal downtime.
-  Install via: pip install sansad-crawler[cache]
+  Install via: pip install commoner-probe[cache]
   Without it, a plain requests.Session is used (no caching).
 - User-Agent identifies the library so portal operators can reach us.
 - Stdlib fallback: if requests is not installed at all, a minimal urllib-based
@@ -29,7 +29,7 @@ interface exactly — no call-site changes required.
 
 Cache location
 --------------
-Defaults to $TMPDIR/sansad_crawler_http_cache/. Override via SANSAD_CACHE_DIR.
+Defaults to $TMPDIR/commoner_probe_http_cache/. Override via SANSAD_CACHE_DIR.
 """
 
 from __future__ import annotations
@@ -49,8 +49,8 @@ from .url_safety import is_safe_url
 
 TOOL_VERSION = "0.3.0"
 USER_AGENT = (
-    f"sansad-crawler/{TOOL_VERSION} "
-    "(+https://github.com/CommonerLLP/sansad-crawler; "
+    f"commoner-probe/{TOOL_VERSION} "
+    "(+https://github.com/CommonerLLP/commoner-probe; "
     "public-interest research; rate-limited)"
 )
 
@@ -85,7 +85,7 @@ def _get_robot_parser(url: str) -> urllib.robotparser.RobotFileParser:
 
 def _cache_dir() -> Path:
     override = os.environ.get("SANSAD_CACHE_DIR")
-    p = Path(override) if override else Path(os.environ.get("TMPDIR", "/tmp")) / "sansad_crawler_http_cache"
+    p = Path(override) if override else Path(os.environ.get("TMPDIR", "/tmp")) / "commoner_probe_http_cache"
     p.mkdir(parents=True, exist_ok=True)
     return p
 
