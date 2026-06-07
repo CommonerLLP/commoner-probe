@@ -1,21 +1,25 @@
-# Handoff
+# Handoff — commoner-probe — 2026-06-07
 
-## What changed this session
+## What Changed This Session
 
-- Developed architecture decision memo at `../_org/docs/architecture-decision-memo-2026-05.{md,html,pdf}` (prior session) — covers full org-wide repo topology, naming rationale, migration roadmap
-- Established names: `probe` (Layer 0, acquisition) and `compose` (Layer 1, analytics)
-- Wrote concrete 2-session code refactor plan: `.ai/plans/phase1-probe-split.md`
-- Identity of probe grounded in Browne's sousveillance + Ambedkar's census blue books — "seizing the state's own paperwork and turning it into evidence"
-- Zotero item confirmed: Simone Browne, *Dark Matters* (2015), item_key EG7ZPN8H
+- Added `commoner_probe.csr.mca` as the durable MCA CSR Layer 0 acquisition adapter.
+- Added no-network tests in `tests/test_csr_mca.py` for:
+  - CSRF token parsing
+  - dry-run behavior without network initialization
+  - mocked CSV download plus manifest JSONL writing
+- Committed the adapter on branch `feat/mca-csr-adapter`:
+  - `032ec83 feat: add MCA CSR acquisition adapter`
+- Cleared the Codex `WORKING.md` row during maintain.
 
-## Open queue — what is next
+## What Is Next
 
-- **Session 1 (this repo):** Execute the plan at `.ai/plans/phase1-probe-split.md`
-  1. Port `bkt_no_match` + classifier log fields into `sansad.py` (13-line diff)
-  2. Port `crawl_composition()` + `committee_members.jsonl` into `committees.py`
-  3. Add `filter_fn: Callable | None = None` to `TopicProfile` in `topics.py`
-  4. Move `neva.py` verbatim from sansad-semantic-crawler
-  5. Standardise HTTP client (port academiaindia `fetch.py` → `http_client.py`)
-  6. Commit, tag `v0.3.0`
-- **Session 2 (sansad-semantic-crawler):** Gut forked modules, depend on `sansad-crawler>=0.3.0`
-- **Phase 2 (later):** Rename packages to `probe` / `compose` on PyPI and in imports
+- Verify the real MCA CSR export endpoint manually before any live run.
+- Add a dedicated `manifest_mca_csr` schema only after the live endpoint and final record shape are proven.
+- Consider exposing a CLI subcommand only after endpoint verification; for now the adapter is importable and tested but not CLI-wired.
+- Next org-wide gate is in `partial-recall`: external adapter registry/plugin mechanism.
+
+## Verification
+
+- `pytest tests/test_csr_mca.py -v` -> 3 passed.
+- `pytest tests -v` -> 246 passed, 39 skipped.
+- `git diff --cached --check` was clean before commit.

@@ -1,5 +1,26 @@
 # Session Log
 
+## 2026-06-07 — mca-csr-adapter
+
+**Decisions made:**
+- MCA CSR raw acquisition belongs in `commoner-probe` as Layer 0 acquisition.
+- The old local `csr-crawler` repo should remain archived, not canonical.
+- No CLI or schema lock for MCA CSR until the live MCA export endpoint and record contract are verified.
+
+**Facts verified:**
+- Canonical local checkout is `commoner-probe/` from `CommonerLLP/commoner-probe`.
+- Adapter tests run without network by using fake opener/session objects.
+
+**Errors caught:**
+- User caught that the session checkpoint had been committed before `/maintain` ran. Closeout now treats committed checkpoint and maintain as separate gates.
+
+**Commits:**
+- `032ec83 feat: add MCA CSR acquisition adapter`
+
+**Verification:**
+- `pytest tests/test_csr_mca.py -v` -> 3 passed.
+- `pytest tests -v` -> 246 passed, 39 skipped.
+
 ## 2026-05-23 — probe-split-planning
 
 **Decisions made:**

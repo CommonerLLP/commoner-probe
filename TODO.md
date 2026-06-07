@@ -2,8 +2,9 @@
 
 ## Current
 
-- [ ] Session 1: port `bkt_no_match`, `crawl_composition`, `filter_fn` hook, `neva.py`, HTTP client — tag v0.3.0 (see `.ai/plans/phase1-probe-split.md`)
-- [ ] Session 2: in sansad-semantic-crawler — gut forked modules, depend on sansad-crawler>=0.3.0
+- [ ] Verify the real MCA CSR export endpoint before any live MCA CSR run.
+- [ ] Add `manifest_mca_csr` schema only after the endpoint and final record contract are verified.
+- [ ] Decide whether `commoner_probe.csr.mca` should get a CLI subcommand after live endpoint verification.
 
 ## Future
 
@@ -12,3 +13,6 @@
 - HTTP client: evaluate stale-if-error + per-domain rate-limit against all existing corpora before enabling cache globally
 
 ## Archive
+
+- [x] 2026-06-07 — Added MCA CSR acquisition adapter in `commoner_probe.csr.mca`; committed as `032ec83`.
+- [x] 2026-06-07 — Session 1 probe split / v0.3.0 work is complete in canonical remote history.
