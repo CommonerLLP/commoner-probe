@@ -35,6 +35,9 @@ import ipaddress
 import socket
 from urllib.parse import urlparse
 
+WHITELISTED_DOMAINS = {
+    "elibrary.sansad.in",
+}
 
 def is_safe_url(url: str) -> bool:
     """Return True if `url` is safe to fetch under the SSRF policy.
@@ -51,6 +54,8 @@ def is_safe_url(url: str) -> bool:
         return False
     if not parsed.hostname:
         return False
+    if parsed.hostname in WHITELISTED_DOMAINS:
+        return True
     try:
         infos = socket.getaddrinfo(parsed.hostname, None)
     except socket.gaierror:
