@@ -2,6 +2,7 @@
 
 ## Current
 
+- [ ] Build finance document-disclosure adapters from SevenT4 Ahmedabad and Delhi work. See `docs/TODO-finance-document-disclosure-adapters.md`.
 - [ ] Verify the real MCA CSR export endpoint before any live MCA CSR run.
 - [ ] Add `manifest_mca_csr` schema only after the endpoint and final record contract are verified.
 - [ ] Decide whether `commoner_probe.csr.mca` should get a CLI subcommand after live endpoint verification.
