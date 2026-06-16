@@ -2,3 +2,5 @@ repos:
   primary: "."
 
 routing.mode: "local"
+
+sync.remote: "git+ssh://git@github.com/CommonerLLP/commoner-probe.git"
