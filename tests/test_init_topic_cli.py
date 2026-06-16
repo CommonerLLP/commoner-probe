@@ -17,7 +17,12 @@ def _run_cli(args: list[str]) -> None:
 
 
 def test_lists_expected_bundled_topics():
-    assert set(list_example_topics()) == {"libraries", "home_affairs_starred", "affirmative_action"}
+    assert set(list_example_topics()) == {
+        "affirmative_action",
+        "home_affairs_starred",
+        "libraries",
+        "mom_dmft_pmkkky",
+    }
 
 
 def test_init_topic_writes_bundled_profile(tmp_path: Path):

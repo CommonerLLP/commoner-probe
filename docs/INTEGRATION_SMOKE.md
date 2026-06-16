@@ -59,3 +59,35 @@ commoner-probe atr-linkage --out /tmp/smoke-cc
 All four commands should exit 0. Manifest records should not contain
 `matches`, `tags`, `score`, or `classifier` fields — classification
 is handled by downstream consumers.
+
+## DMFT evidence bundle
+
+Use the bundled topic to crawl Sansad Q/A records answered by the Ministry
+of Mines, then bundle those parliamentary oversight records with Ministry
+of Mines DMFT disclosure snapshots:
+
+```bash
+commoner-probe init-topic \
+  --name mom_dmft_pmkkky \
+  --out data/topics/mom_dmft_pmkkky.json
+
+commoner-probe sansad \
+  --topic data/topics/mom_dmft_pmkkky.json \
+  --out data/sansad/mom-dmft-pmkkky \
+  --house both \
+  --from-date 2015-09-01 \
+  --sessions 1-267
+
+commoner-probe extract-answers \
+  --out data/sansad/mom-dmft-pmkkky
+
+commoner-probe evidence dmft \
+  --mom-dir data/mom-dmft/mines-gov-in \
+  --sansad-dir data/sansad/mom-dmft-pmkkky \
+  --out data/evidence/dmft.json
+```
+
+The evidence bundle keeps `executive_disclosure` and
+`parliamentary_oversight` as separate arrays. The Ministry CSVs are
+cumulative snapshots keyed by source `Last-Modified`; Sansad records are
+dated legislative answers.

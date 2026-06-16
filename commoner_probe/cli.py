@@ -9,6 +9,7 @@ from .answers import extract_answers
 from .atr_linkage import extract_atr_linkages
 from .committees import CommitteeProbe, resolve_committees
 from .csr.mca import McaCsrProbe
+from .evidence import build_dmft_evidence_bundle
 from .example_topics import list_example_topics, load_example_topic_text
 from .neva import StateAssemblyCrawler
 from .sansad import SansadProbe
@@ -209,6 +210,23 @@ def validate_cmd(args: argparse.Namespace) -> None:
         raise SystemExit(1)
 
 
+def evidence_dmft_cmd(args: argparse.Namespace) -> None:
+    terms = tuple(_split_csv(args.terms) or [])
+    bundle = build_dmft_evidence_bundle(
+        mom_dir=args.mom_dir,
+        sansad_dir=args.sansad_dir,
+        ministry=args.ministry,
+        terms=terms or None,
+    )
+    text = json.dumps(bundle, ensure_ascii=False, indent=2)
+    if args.out:
+        out = Path(args.out)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(text + "\n", encoding="utf-8")
+    else:
+        print(text)
+
+
 def init_topic_cmd(args: argparse.Namespace) -> None:
     out = Path(args.out)
     if out.exists() and not args.force:
@@ -352,6 +370,25 @@ def build_parser() -> argparse.ArgumentParser:
         help="Maximum validation errors to print per file (default: 10)",
     )
     val.set_defaults(func=validate_cmd)
+
+    evidence = sub.add_parser(
+        "evidence",
+        help="Build cross-source evidence bundles without flattening source families.",
+    )
+    evidence_sub = evidence.add_subparsers(dest="evidence_command", required=True)
+    evidence_dmft = evidence_sub.add_parser(
+        "dmft",
+        help="Bundle Ministry of Mines DMFT disclosure records with Sansad Q/A oversight records.",
+    )
+    evidence_dmft.add_argument("--mom-dir", required=True, help="MoM DMFT disclosure corpus directory")
+    evidence_dmft.add_argument("--sansad-dir", help="Sansad Q/A corpus directory")
+    evidence_dmft.add_argument("--out", help="Write bundle JSON to this path; defaults to stdout")
+    evidence_dmft.add_argument("--ministry", default="MINES", help="Sansad ministry filter")
+    evidence_dmft.add_argument(
+        "--terms",
+        help="Comma-separated terms for filtering Sansad Q/A; defaults to DMFT/PMKKKY terms.",
+    )
+    evidence_dmft.set_defaults(func=evidence_dmft_cmd)
 
     init_topic = sub.add_parser(
         "init-topic",

@@ -1,0 +1,26 @@
+{
+  "name": "mom_dmft_pmkkky",
+  "description": "District Mineral Foundation, DMF/DMFT, PMKKKY, and mining-affected area oversight questions answered by the Ministry of Mines.",
+  "search_groups": {
+    "dmft": [
+      "District Mineral Foundation",
+      "DMF",
+      "DMFT"
+    ],
+    "pmkkky": [
+      "Pradhan Mantri Khanij Kshetra Kalyan Yojana",
+      "PMKKKY"
+    ],
+    "mining_affected": [
+      "mining affected areas",
+      "mining affected people",
+      "mining affected villages"
+    ]
+  },
+  "lok_sabha_ministries": [
+    "MINES"
+  ],
+  "rajya_sabha_ministry_likes": [
+    "MINES"
+  ]
+}

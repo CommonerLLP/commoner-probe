@@ -38,6 +38,7 @@ class CliCommandSyncTests(unittest.TestCase):
                 "state-assembly",
                 "mca-csr",
                 "atr-linkage",
+                "evidence",
                 "stats",
                 "validate",
                 "init-topic",
