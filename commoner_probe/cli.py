@@ -9,6 +9,7 @@ from .answers import extract_answers
 from .atr_linkage import extract_atr_linkages
 from .committees import CommitteeProbe, resolve_committees
 from .csr.mca import McaCsrProbe
+from .dmft.mines import MinesDmftProbe
 from .evidence import build_dmft_evidence_bundle
 from .example_topics import list_example_topics, load_example_topic_text
 from .neva import StateAssemblyCrawler
@@ -179,6 +180,22 @@ def mca_csr_cmd(args: argparse.Namespace) -> None:
         print(json.dumps(record, ensure_ascii=False))
 
 
+def mines_dmft_cmd(args: argparse.Namespace) -> None:
+    out = Path(args.out)
+    sources = _split_csv(args.sources) or []
+    if not sources:
+        raise SystemExit("--sources must contain at least one source, e.g. mines-gov-in")
+    probe = MinesDmftProbe(
+        out,
+        sleep=args.sleep,
+        ministry_endpoints=_split_csv(args.ministry_endpoints),
+        odisha_endpoints=_split_csv(args.odisha_endpoints),
+    )
+    records = probe.probe_sources(sources, dry_run=args.dry_run)
+    for record in records:
+        print(json.dumps(record, ensure_ascii=False))
+
+
 def extract_answers_cmd(args: argparse.Namespace) -> None:
     out = Path(args.out)
     if not (out / "manifest.jsonl").exists():
@@ -213,7 +230,7 @@ def validate_cmd(args: argparse.Namespace) -> None:
 def evidence_dmft_cmd(args: argparse.Namespace) -> None:
     terms = tuple(_split_csv(args.terms) or [])
     bundle = build_dmft_evidence_bundle(
-        mom_dir=args.mom_dir,
+        mines_dmft_dir=args.mines_dmft_dir,
         sansad_dir=args.sansad_dir,
         ministry=args.ministry,
         terms=terms or None,
@@ -331,6 +348,32 @@ def build_parser() -> argparse.ArgumentParser:
     )
     mca_csr.set_defaults(func=mca_csr_cmd)
 
+    mines_dmft = sub.add_parser(
+        "mines-dmft",
+        help="Download Ministry of Mines / Odisha DMFT raw source files.",
+    )
+    mines_dmft.add_argument("--out", required=True, help="Output directory")
+    mines_dmft.add_argument(
+        "--sources",
+        default="mines-gov-in,odisha",
+        help="Comma-separated sources: mines-gov-in, odisha",
+    )
+    mines_dmft.add_argument("--sleep", type=float, default=1.0)
+    mines_dmft.add_argument(
+        "--ministry-endpoints",
+        help="Optional comma-separated Ministry endpoint filenames for focused runs.",
+    )
+    mines_dmft.add_argument(
+        "--odisha-endpoints",
+        help="Optional comma-separated Odisha endpoint filenames for focused runs.",
+    )
+    mines_dmft.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print manifest records without opening network sessions or writing manifest.jsonl.",
+    )
+    mines_dmft.set_defaults(func=mines_dmft_cmd)
+
     atr_link = sub.add_parser(
         "atr-linkage",
         help=(
@@ -380,7 +423,11 @@ def build_parser() -> argparse.ArgumentParser:
         "dmft",
         help="Bundle Ministry of Mines DMFT disclosure records with Sansad Q/A oversight records.",
     )
-    evidence_dmft.add_argument("--mom-dir", required=True, help="MoM DMFT disclosure corpus directory")
+    evidence_dmft.add_argument(
+        "--mines-dmft-dir",
+        required=True,
+        help="Ministry of Mines / DMFT disclosure corpus directory",
+    )
     evidence_dmft.add_argument("--sansad-dir", help="Sansad Q/A corpus directory")
     evidence_dmft.add_argument("--out", help="Write bundle JSON to this path; defaults to stdout")
     evidence_dmft.add_argument("--ministry", default="MINES", help="Sansad ministry filter")

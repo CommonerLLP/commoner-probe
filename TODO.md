@@ -3,7 +3,7 @@
 ## Current
 
 - [ ] MCA CSR: build comparison utilities over the 10-year MCA CDM CSR corpus, and keep the boundary explicit that this source compares reporting/spending companies, not CSR consultants or implementing agencies.
-- [ ] MoM DMFT / PMKKKY: build acquisition for the proven Ministry of Mines static CSV contract and the Odisha DMF state/district JSON + DataTables contract. See `notes/dmft-source-intake.md`.
+- [ ] Mines DMFT / PMKKKY: build acquisition for the proven Ministry of Mines static CSV contract and the Odisha DMF state/district JSON + DataTables contract. See `notes/dmft-source-intake.md`.
 - [ ] MoF/DPE CSR: build DPE CPSE CSR document-disclosure acquisition from the proven `/cms/wp-json` contract; keep spend/project comparison blocked until CSRMS or Public Enterprises Survey spend fields are proven. See `notes/dpe-csr-source-intake.md`.
 - [ ] Build finance document-disclosure adapters from SevenT4 Ahmedabad and Delhi work. See `docs/TODO-finance-document-disclosure-adapters.md`.
 

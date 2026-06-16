@@ -178,6 +178,35 @@ class ManifestMcaCsrRecord:
         return _from_dict(cls, d)
 
 
+@dataclass
+class ManifestMinesDmftRecord:
+    """One Ministry of Mines / DMFT raw source-file record from manifest.jsonl."""
+
+    key: str
+    kind: str
+    record_type: str
+    source_family: str
+    source_name: str
+    publisher: str
+    endpoint_kind: str
+    filename: str
+    dest: str
+    url: str
+    status: str
+    media_type: str
+    period_kind: str
+    data_period: str | None
+    fetched_at: str
+    probed_at: str
+    source_last_modified: str | None = None
+    source_last_modified_raw: str | None = None
+    sha256: str | None = None
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "ManifestMinesDmftRecord":
+        return _from_dict(cls, d)
+
+
 # ---------------------------------------------------------------------------
 # answers.jsonl records
 # ---------------------------------------------------------------------------

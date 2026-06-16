@@ -68,22 +68,26 @@ of Mines DMFT disclosure snapshots:
 
 ```bash
 commoner-probe init-topic \
-  --name mom_dmft_pmkkky \
-  --out data/topics/mom_dmft_pmkkky.json
+  --name mines_dmft_pmkkky \
+  --out data/topics/mines_dmft_pmkkky.json
 
 commoner-probe sansad \
-  --topic data/topics/mom_dmft_pmkkky.json \
-  --out data/sansad/mom-dmft-pmkkky \
+  --topic data/topics/mines_dmft_pmkkky.json \
+  --out data/sansad/mines-dmft-pmkkky \
   --house both \
   --from-date 2015-09-01 \
   --sessions 1-267
 
 commoner-probe extract-answers \
-  --out data/sansad/mom-dmft-pmkkky
+  --out data/sansad/mines-dmft-pmkkky
+
+commoner-probe mines-dmft \
+  --out data/mines-dmft \
+  --sources mines-gov-in
 
 commoner-probe evidence dmft \
-  --mom-dir data/mom-dmft/mines-gov-in \
-  --sansad-dir data/sansad/mom-dmft-pmkkky \
+  --mines-dmft-dir data/mines-dmft \
+  --sansad-dir data/sansad/mines-dmft-pmkkky \
   --out data/evidence/dmft.json
 ```
 

@@ -60,10 +60,10 @@ national DMFT CSV assets:
 
 Downloaded local corpus:
 
-- `data/mom-dmft/mines-gov-in/DMF_Collection.csv`
-- `data/mom-dmft/mines-gov-in/Project_Fund_Status_Detail.csv`
-- `data/mom-dmft/mines-gov-in/Sector_Wise_Project_Fund_Allocation.csv`
-- `data/mom-dmft/mines-gov-in/State_wise_Project_Details.csv`
+- `data/mines-dmft/mines-gov-in/DMF_Collection.csv`
+- `data/mines-dmft/mines-gov-in/Project_Fund_Status_Detail.csv`
+- `data/mines-dmft/mines-gov-in/Sector_Wise_Project_Fund_Allocation.csv`
+- `data/mines-dmft/mines-gov-in/State_wise_Project_Details.csv`
 
 HTTP metadata observed:
 

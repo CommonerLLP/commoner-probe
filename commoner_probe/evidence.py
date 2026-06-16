@@ -73,11 +73,17 @@ def _clean_csv_rows(path: Path) -> list[dict[str, str]]:
     ]
 
 
-def _mom_dmft_records(mom_dir: Path) -> list[dict[str, Any]]:
-    manifest = _load_jsonl_by_filename(mom_dir / "manifest.jsonl")
+def _mines_dmft_records(mines_dmft_dir: Path) -> list[dict[str, Any]]:
+    manifest_path = mines_dmft_dir / "manifest.jsonl"
+    if manifest_path.exists():
+        records = _mines_dmft_records_from_manifest(mines_dmft_dir)
+        if records:
+            return records
+
+    manifest = _load_jsonl_by_filename(mines_dmft_dir / "manifest.jsonl")
     records: list[dict[str, Any]] = []
     for filename, record_type in _MOM_RECORD_TYPES.items():
-        path = mom_dir / filename
+        path = mines_dmft_dir / filename
         if not path.exists():
             continue
         meta = manifest.get(filename, {})
@@ -99,6 +105,55 @@ def _mom_dmft_records(mom_dir: Path) -> list[dict[str, Any]]:
                     "row": row,
                 }
             )
+    return records
+
+
+def _mines_dmft_records_from_manifest(mines_dmft_dir: Path) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    with (mines_dmft_dir / "manifest.jsonl").open(encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                manifest = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if manifest.get("kind") != "mines_dmft_source_file":
+                continue
+            path = Path(str(manifest.get("dest") or ""))
+            if not path.is_absolute():
+                path = mines_dmft_dir / path
+            if manifest.get("endpoint_kind") == "static_csv" and path.exists():
+                for row_number, row in enumerate(_clean_csv_rows(path), start=1):
+                    records.append(
+                        {
+                            "source": "mines.gov.in",
+                            "record_type": manifest.get("filename", ""),
+                            "filename": manifest.get("filename"),
+                            "row_number": row_number,
+                            "url": manifest.get("url"),
+                            "source_last_modified": manifest.get("source_last_modified"),
+                            "sha256": manifest.get("sha256"),
+                            "period_kind": manifest.get("period_kind"),
+                            "data_period": manifest.get("data_period"),
+                            "row": row,
+                        }
+                    )
+            else:
+                records.append(
+                    {
+                        "source": manifest.get("url"),
+                        "record_type": manifest.get("endpoint_kind"),
+                        "filename": manifest.get("filename"),
+                        "url": manifest.get("url"),
+                        "source_last_modified": manifest.get("source_last_modified"),
+                        "sha256": manifest.get("sha256"),
+                        "period_kind": manifest.get("period_kind"),
+                        "data_period": manifest.get("data_period"),
+                        "row": {},
+                    }
+                )
     return records
 
 
@@ -160,13 +215,13 @@ def _sansad_dmft_records(
 
 def build_dmft_evidence_bundle(
     *,
-    mom_dir: str | Path,
+    mines_dmft_dir: str | Path | None = None,
     sansad_dir: str | Path | None = None,
     ministry: str = "MINES",
     terms: tuple[str, ...] | None = None,
 ) -> dict[str, Any]:
-    """Build a DMFT evidence bundle from MoM disclosure and Sansad Q/A corpora."""
-    mom_path = Path(mom_dir)
+    """Build a DMFT evidence bundle from Mines disclosure and Sansad Q/A corpora."""
+    source_dir = Path(mines_dmft_dir or ".")
     query_terms = terms or DMFT_TERMS
     sansad_records: list[dict[str, Any]] = []
     if sansad_dir is not None:
@@ -185,7 +240,7 @@ def build_dmft_evidence_bundle(
             "source": "mines.gov.in",
             "period_kind": "cumulative_snapshot",
             "data_period": None,
-            "records": _mom_dmft_records(mom_path),
+            "records": _mines_dmft_records(source_dir),
         },
         "parliamentary_oversight": {
             "source": "sansad.in",

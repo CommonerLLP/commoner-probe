@@ -21,7 +21,7 @@ def test_lists_expected_bundled_topics():
         "affirmative_action",
         "home_affairs_starred",
         "libraries",
-        "mom_dmft_pmkkky",
+        "mines_dmft_pmkkky",
     }
 
 

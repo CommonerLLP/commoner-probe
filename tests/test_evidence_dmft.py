@@ -19,11 +19,11 @@ def _write_csv(path: Path, rows: list[list[str]]) -> None:
         writer.writerows(rows)
 
 
-def _make_mom_dmft_fixture(root: Path) -> Path:
-    mom = root / "mom"
-    mom.mkdir()
+def _make_mines_dmft_fixture(root: Path) -> Path:
+    mines = root / "mines"
+    mines.mkdir()
     _write_csv(
-        mom / "DMF_Collection.csv",
+        mines / "DMF_Collection.csv",
         [
             [
                 "Sr. No.",
@@ -37,7 +37,7 @@ def _make_mom_dmft_fixture(root: Path) -> Path:
         ],
     )
     _write_jsonl(
-        mom / "manifest.jsonl",
+        mines / "manifest.jsonl",
         [
             {
                 "source": "mines-gov-in-dmft-static-csv",
@@ -48,7 +48,7 @@ def _make_mom_dmft_fixture(root: Path) -> Path:
             }
         ],
     )
-    return mom
+    return mines
 
 
 def _make_sansad_fixture(root: Path) -> Path:
@@ -103,13 +103,13 @@ def _make_sansad_fixture(root: Path) -> Path:
     return sansad
 
 
-def test_build_dmft_evidence_bundle_keeps_mom_and_sansad_provenance(tmp_path: Path):
+def test_build_dmft_evidence_bundle_keeps_mines_and_sansad_provenance(tmp_path: Path):
     from commoner_probe.evidence import build_dmft_evidence_bundle
 
-    mom = _make_mom_dmft_fixture(tmp_path)
+    mines = _make_mines_dmft_fixture(tmp_path)
     sansad = _make_sansad_fixture(tmp_path)
 
-    bundle = build_dmft_evidence_bundle(mom_dir=mom, sansad_dir=sansad)
+    bundle = build_dmft_evidence_bundle(mines_dmft_dir=mines, sansad_dir=sansad)
 
     executive = bundle["executive_disclosure"]
     assert executive["source"] == "mines.gov.in"
@@ -128,7 +128,7 @@ def test_build_dmft_evidence_bundle_keeps_mom_and_sansad_provenance(tmp_path: Pa
 
 
 def test_evidence_dmft_cli_writes_bundle_json(tmp_path: Path):
-    mom = _make_mom_dmft_fixture(tmp_path)
+    mines = _make_mines_dmft_fixture(tmp_path)
     sansad = _make_sansad_fixture(tmp_path)
     out = tmp_path / "bundle.json"
 
@@ -137,8 +137,8 @@ def test_evidence_dmft_cli_writes_bundle_json(tmp_path: Path):
         [
             "evidence",
             "dmft",
-            "--mom-dir",
-            str(mom),
+            "--mines-dmft-dir",
+            str(mines),
             "--sansad-dir",
             str(sansad),
             "--out",

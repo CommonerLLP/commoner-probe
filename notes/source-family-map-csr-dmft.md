@@ -96,7 +96,7 @@ Boundary:
 - This is CSR, but it is not the MCA company-wide CSR portal.
 - It should not be mixed into `mca-csr` until a common cross-source entity model exists.
 
-## 3. `mom-dmft`
+## 3. `mines-dmft`
 
 Target source family: Ministry of Mines DMFT / PMKKKY plus state DMFT portals.
 
@@ -122,7 +122,7 @@ Proven Ministry of Mines contract:
 
 Local Ministry corpus:
 
-- `data/mom-dmft/mines-gov-in/`
+- `data/mines-dmft/mines-gov-in/`
 
 Ministry coverage observed:
 
@@ -202,6 +202,6 @@ Commoner should support comparisons at the grain the source actually proves:
 
 - `mca-csr`: compare CSR spending/reporting companies.
 - `mof-dpe-csr`: compare CPSE CSR once the official source contract is proven.
-- `mom-dmft`: compare district DMFT collection, allocation, expenditure, project execution, sector skew, and implementing agencies.
+- `mines-dmft`: compare district DMFT collection, allocation, expenditure, project execution, sector skew, and implementing agencies.
 
 Cross-source comparison should come later through explicit entity resolution, not by merging source-specific fields prematurely.
