@@ -1,5 +1,35 @@
 # Session Log
 
+## 2026-06-16 — mines-dmft-acquisition
+
+**Decisions made:**
+- Public source-family name is `mines-dmft`, not `mom-dmft`; the latter is unclear.
+- DMFT evidence bundles keep executive disclosure and Sansad oversight separate.
+- Ministry of Mines CSVs are cumulative/current snapshots keyed by source `Last-Modified`, not FY-wise data.
+- `mines-dmft` acquisition is raw Layer 0 source-file capture; parsed DMFT facts come later.
+- `/pm` now has a repo-local profile and `docs/STATUS.md` cockpit for future recomputation.
+
+**Facts verified:**
+- Ministry of Mines webportal bundle exposes four static DMFT CSV assets under `/webportal/assets/img/`.
+- The four Ministry CSVs include 23 state rows in state-level files and 14 national sector rows.
+- Odisha DMF has proven state/district JSON and report-page surfaces documented in `notes/dmft-source-intake.md`.
+- Local ignored data directory was renamed from `data/mom-dmft` to `data/mines-dmft`.
+
+**Errors caught:**
+- User caught that `mom-dmft` is a poor public name. Renamed CLI, manifest kind, schema, topic, docs, tests, and notes to `mines-dmft` / `mines_dmft_*`.
+- User repeatedly corrected ripgrep path usage; future sessions must call Homebrew ripgrep explicitly as `/opt/homebrew/bin/rg`.
+
+**Commits:**
+- `d3d223f docs: map CSR and DMFT source contracts`
+- `2cc9b23 feat: add DMFT evidence bundle`
+- `10cdcde feat: add mines DMFT acquisition`
+
+**Verification:**
+- `pytest tests/test_dmft_mines.py tests/test_evidence_dmft.py tests/test_init_topic_cli.py tests/test_docs_sync.py` -> 15 passed, 1 skipped.
+- `python3.13 -m commoner_probe mines-dmft --out /tmp/mines-dmft-dry --sources mines-gov-in --dry-run` -> emitted four `MINES_DMFT` records.
+- `pytest -k 'not test_mca_csr_manifest_schema_is_bundled_and_validates_record and not test_mines_dmft_manifest_schema_is_bundled_and_validates_record'` -> 255 passed, 39 skipped, 2 deselected.
+- `git diff --check` -> clean.
+
 ## 2026-06-16 — mca-csr-live-endpoint
 
 **Decisions made:**

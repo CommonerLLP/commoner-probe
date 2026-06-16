@@ -1,5 +1,41 @@
 # Changelog
 
+## 2026-06-16 · mines-dmft-acquisition · create/edit
+
+- `commoner_probe/dmft/__init__.py` — created DMFT acquisition package.
+- `commoner_probe/dmft/mines.py` — added Ministry of Mines/Odisha DMFT raw source-file acquisition.
+- `commoner_probe/schemas/manifest_mines_dmft.schema.json` — added schema for `mines_dmft_source_file`.
+- `commoner_probe/records.py` — added `ManifestMinesDmftRecord`.
+- `commoner_probe/corpus.py` — added `Corpus.manifest_mines_dmft()`.
+- `commoner_probe/validate.py` — routed `mines_dmft_source_file` to `manifest_mines_dmft`.
+- `commoner_probe/cli.py` — added `commoner-probe mines-dmft` and renamed DMFT evidence input to `--mines-dmft-dir`.
+- `commoner_probe/evidence.py` — made DMFT evidence bundle consume `mines-dmft` manifest records.
+- `commoner_probe/example_topics/mines_dmft_pmkkky.json` — renamed bundled Sansad topic from `mom_*` to `mines_*`.
+- `tests/test_dmft_mines.py` — added adapter/schema/CLI/corpus tests.
+- `tests/test_evidence_dmft.py` — updated evidence tests for `mines-dmft` naming.
+- `tests/test_docs_sync.py` — added `mines-dmft` to public CLI command sync.
+- `tests/test_init_topic_cli.py` — updated bundled topic expectation.
+- `docs/INTEGRATION_SMOKE.md` — documented mines-DMFT acquisition and evidence workflow.
+- `.claude/pm-profile.md` — added repo PM profile for future `/pm` runs.
+- `docs/STATUS.md` — added PM cockpit with source-family stages and blockers.
+- `TODO.md` — moved Mines DMFT acquisition to archive and updated current queue to live refresh/evidence.
+- `notes/dmft-source-intake.md` — updated local data path naming.
+- `notes/source-family-map-csr-dmft.md` — renamed source family to `mines-dmft`.
+- `notes/HANDOFF.md` — rewritten for closeout.
+- `notes/STATE_OF_BRAIN.md` — rewritten for closeout.
+- `notes/handoffs/handoff-2026-06-16-mines-dmft-acquisition.md` — archived prior handoff.
+- `notes/state-of-brains/state-of-brain-2026-06-16-mines-dmft-acquisition.md` — archived prior state.
+- `memory/changelog.md` — prepended this entry.
+- `memory/session-log.md` — prepended session log.
+
+## 2026-06-16 · dmft-dpe-evidence-intake · create/edit
+
+- `notes/dmft-source-intake.md` — recorded Ministry of Mines static DMFT CSV contract and Odisha DMF endpoint contract.
+- `notes/dpe-csr-source-intake.md` — recorded DPE `/cms/wp-json` CSR document-disclosure contract.
+- `notes/source-family-map-csr-dmft.md` — mapped MCA CSR, DPE CSR, and Mines DMFT boundaries.
+- `TODO.md` — updated current queue for MCA CSR comparison, DPE CSR documents, and Mines DMFT acquisition.
+- `data/mines-dmft/mines-gov-in/` — local ignored corpus now holds Ministry CSVs and manifest after rename.
+
 ## 2026-06-16 · mca-csr-live-endpoint · create/edit
 
 - `commoner_probe/csr/mca.py` — switched MCA CSR adapter to verified MCA CDM `csr-data` / `cdm/export.php` contract and CSV header validation.
