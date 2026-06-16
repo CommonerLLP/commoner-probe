@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CommonerLLP/commoner-probe/schemas/v1/entities_committee_membership.json",
+  "title": "entities/committee_memberships.jsonl record",
+  "description": "Temporal committee role data.",
+  "type": "object",
+  "required": ["entity_id", "committee_slug", "house", "role", "term", "start", "end", "fetched_at"],
+  "properties": {
+    "entity_id": { "type": "string" },
+    "committee_slug": { "type": "string" },
+    "house": { "type": "string", "enum": ["ls", "rs"] },
+    "role": { "type": "string", "enum": ["chairperson", "member"] },
+    "term": { "type": ["integer", "null"] },
+    "start": { "type": ["string", "null"] },
+    "end": { "type": ["string", "null"] },
+    "fetched_at": { "type": "string" }
+  }
+}

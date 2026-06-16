@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CommonerLLP/commoner-probe/schemas/v1/entities_ministerial_appointment.json",
+  "title": "entities/ministerial_appointments.jsonl record",
+  "description": "Temporal cabinet or MoS appointment.",
+  "type": "object",
+  "required": ["entity_id", "ministry", "rank", "start", "end", "govt_period", "fetched_at"],
+  "properties": {
+    "entity_id": { "type": "string" },
+    "ministry": { "type": "string" },
+    "rank": { "type": "string", "enum": ["cabinet", "mos_independent", "mos"] },
+    "start": { "type": ["string", "null"] },
+    "end": { "type": ["string", "null"] },
+    "govt_period": { "type": ["string", "null"], "description": "e.g. Modi-2, UPA-1" },
+    "fetched_at": { "type": "string" }
+  }
+}

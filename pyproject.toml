@@ -1,0 +1,78 @@
+[build-system]
+requires = ["setuptools>=42"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "commoner-probe"
+version = "0.3.0"
+description = "Sousveillance infrastructure for state mandatory-disclosure portals — parliamentary questions, committee reports, budget data, and state assembly records."
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "Sreeram Ramasubramanian" }]
+license = { text = "AGPL-3.0-or-later" }
+keywords = [
+  "parliament-of-india",
+  "lok-sabha",
+  "rajya-sabha",
+  "parliamentary-questions",
+  "standing-committees",
+  "state-assembly",
+  "neva",
+  "public-records",
+  "civic-tech",
+  "sousveillance",
+  "counter-forensics",
+  "right-to-information",
+  "open-government",
+  "data-justice",
+]
+classifiers = [
+  "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
+  "Intended Audience :: Science/Research",
+  "Topic :: Sociology",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Operating System :: OS Independent",
+]
+dependencies = []
+
+[project.optional-dependencies]
+pdf = ["pdfminer.six>=20231228"]
+http = ["requests>=2.31.0"]
+pandas = ["pandas>=2.0"]
+dev = ["jsonschema>=4.20", "pytest>=7", "ruff>=0.4"]
+all = [
+  "pdfminer.six>=20231228",
+  "requests>=2.31.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/CommonerLLP/commoner-probe"
+Source = "https://github.com/CommonerLLP/commoner-probe"
+Issues = "https://github.com/CommonerLLP/commoner-probe/issues"
+Documentation = "https://github.com/CommonerLLP/commoner-probe/blob/master/README.md"
+Changelog = "https://github.com/CommonerLLP/commoner-probe/blob/master/CHANGELOG.md"
+
+[project.scripts]
+commoner-probe = "commoner_probe.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["commoner_probe*"]
+namespaces = false
+
+[tool.setuptools.package-data]
+"commoner_probe.schemas" = ["*.json"]
+"commoner_probe.example_topics" = ["*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = ["E501"]

@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CommonerLLP/commoner-probe/schemas/v1/manifest_qa.json",
+  "title": "manifest.jsonl — Q/A record",
+  "description": "One parliamentary question record (kind=qa) from manifest.jsonl. Comes in two shapes depending on house.",
+  "type": "object",
+  "required": ["key", "kind", "house", "title", "date", "qtype", "qno", "ministry", "askers", "source"],
+  "properties": {
+    "key": { "type": "string", "description": "Stable dedup key: LS|{S|U}|{qno}|{date} or RS|{S|U}|{qno}|{date}" },
+    "run_id": { "type": "string", "description": "UUID4 hex (32 chars) matching _runs.jsonl run_id" },
+    "kind": { "type": "string", "const": "qa" },
+    "house": { "type": "string", "enum": ["Lok Sabha", "Rajya Sabha"] },
+    "title": { "type": "string" },
+    "date": { "type": "string", "description": "ISO date YYYY-MM-DD or empty string" },
+    "qtype": { "type": "string", "enum": ["STARRED", "UNSTARRED", ""], "description": "Question type" },
+    "qno": { "type": "string" },
+    "ministry": { "type": "string" },
+    "askers": { "type": "array", "items": { "type": "string" } },
+    "asker_details": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "party": { "type": ["string", "null"] },
+          "party_name": { "type": ["string", "null"] },
+          "house": { "type": ["string", "null"] }
+        },
+        "required": ["name"]
+      }
+    },
+    "asker_entity_ids": {
+      "type": "array",
+      "items": { "type": ["string", "null"] },
+      "description": "Parallel to askers; null when not resolved"
+    },
+    "responder_entity_id": { "type": ["string", "null"] },
+    "responder_role_at_event": { "type": ["string", "null"] },
+    "source": { "type": "string", "enum": ["elibrary.sansad.in", "rsdoc.nic.in"] },
+    "found_via_query": { "type": "string" },
+    "probed_at": { "type": "string" },
+    "language_classified": { "type": "array", "items": { "type": "string" } },
+    "pdf_url": { "type": ["string", "null"] },
+    "pdf_path": { "type": "string" },
+    "uuid": { "type": "string", "description": "LS e-library UUID (LS only)" },
+    "handle": { "type": ["string", "null"], "description": "LS e-library handle (LS only)" },
+    "session": { "type": "string", "description": "Session number (LS only)" },
+    "loksabhanumber": { "type": "string", "description": "Lok Sabha number (LS only)" },
+    "uri": { "type": "string", "description": "Persistent URI (LS only)" },
+    "found_via_group": { "type": "string", "description": "Topic search_group that found this record (LS only)" },
+    "qslno": { "type": ["string", "null"], "description": "RS serial question number (RS only)" },
+    "ses_no": { "type": ["integer", "null"], "description": "RS session number (RS only)" },
+    "question_text": { "type": ["string", "null"], "description": "Full question text from RS API (RS only)" },
+    "answer_text": { "type": ["string", "null"], "description": "Full answer text from RS API (RS only)" },
+    "pdf_url_hindi": { "type": ["string", "null"], "description": "Hindi PDF URL (RS only)" },
+    "status": { "type": "string", "description": "Raw question status from RS API (RS only)" }
+  }
+}

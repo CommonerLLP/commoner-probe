@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CommonerLLP/commoner-probe/schemas/v1/entities_bureaucratic_posting.json",
+  "title": "entities/bureaucratic_postings.jsonl record",
+  "description": "Temporal civil-service posting, populated as bureaucrats are encountered in PDFs.",
+  "type": "object",
+  "required": ["entity_id", "designation", "ministry", "department", "cadre", "batch", "start", "end", "fetched_at"],
+  "properties": {
+    "entity_id": { "type": "string" },
+    "designation": { "type": "string" },
+    "ministry": { "type": "string" },
+    "department": { "type": ["string", "null"] },
+    "cadre": { "type": ["string", "null"], "description": "IAS cadre, e.g. UP, TN" },
+    "batch": { "type": ["integer", "null"], "description": "IAS batch year" },
+    "start": { "type": ["string", "null"] },
+    "end": { "type": ["string", "null"] },
+    "fetched_at": { "type": "string" }
+  }
+}

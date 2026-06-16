@@ -1,0 +1,44 @@
+{
+  "name": "narcotics_substance",
+  "description": "Drug trafficking, NDPS enforcement, narcotics seizures, darknet drug sales, and the demand-side magnitude of substance abuse / de-addiction across Indian parliamentary committee reports and questions.",
+  "search_groups": {
+    "ndps_enforcement": [
+      "NDPS Act",
+      "narcotic drugs",
+      "psychotropic substances",
+      "Narcotics Control Bureau",
+      "drug law enforcement"
+    ],
+    "trafficking": [
+      "drug trafficking",
+      "narcotics seizure",
+      "heroin",
+      "cocaine",
+      "synthetic drugs",
+      "Golden Crescent",
+      "Golden Triangle",
+      "darknet"
+    ],
+    "substance_abuse": [
+      "substance abuse",
+      "drug abuse",
+      "drug addiction",
+      "magnitude of substance use",
+      "de-addiction",
+      "rehabilitation",
+      "Nasha Mukt Bharat"
+    ]
+  },
+  "lok_sabha_ministries": [
+    "SOCIAL JUSTICE AND EMPOWERMENT",
+    "HOME AFFAIRS",
+    "HEALTH AND FAMILY WELFARE",
+    "FINANCE"
+  ],
+  "rajya_sabha_ministry_likes": [
+    "SOCIAL JUSTICE",
+    "HOME AFFAIRS",
+    "HEALTH",
+    "FINANCE"
+  ]
+}

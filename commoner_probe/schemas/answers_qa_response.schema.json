@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CommonerLLP/commoner-probe/schemas/v1/answers_qa_response.json",
+  "title": "answers.jsonl — qa_response record",
+  "description": "Extracted question/answer pair from a Q/A PDF.",
+  "type": "object",
+  "required": ["key", "run_id", "source_pdf", "extracted_at", "language_classified", "source_report_type", "kind", "question_text", "answer_text", "confidence", "extractor", "boundary_marker"],
+  "properties": {
+    "key": { "type": "string" },
+    "run_id": { "type": "string" },
+    "source_pdf": { "type": "string" },
+    "extracted_at": { "type": "string" },
+    "language_classified": { "type": "array", "items": { "type": "string" } },
+    "source_report_type": { "type": ["string", "null"] },
+    "kind": { "type": "string", "const": "qa_response" },
+    "question_text": { "type": "string" },
+    "answer_text": { "type": "string" },
+    "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "extractor": { "type": "string" },
+    "boundary_marker": { "type": "string" },
+    "question_subject": { "type": "string", "description": "All-caps subject line; present only when parsed" },
+    "question_stem": { "type": "string", "description": "Will-the-Minister stem; present only when parsed" },
+    "question_body": { "type": "string", "description": "(a)/(b)/(c)/(d) sub-questions; present only when parsed" },
+    "answer_minister_name": { "type": "string", "description": "Minister name from answer prelude; present only when parsed" },
+    "answer_body": { "type": "string", "description": "Answer text without minister-name prelude; present only when parsed" }
+  }
+}

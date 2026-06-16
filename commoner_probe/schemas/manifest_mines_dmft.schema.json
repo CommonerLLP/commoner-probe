@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CommonerLLP/commoner-probe/schemas/v1/manifest_mines_dmft.json",
+  "title": "manifest.jsonl — Ministry of Mines / DMFT raw source file",
+  "description": "One Ministry of Mines / DMFT raw source-file acquisition record.",
+  "type": "object",
+  "required": [
+    "key",
+    "kind",
+    "record_type",
+    "source_family",
+    "source_name",
+    "publisher",
+    "endpoint_kind",
+    "filename",
+    "dest",
+    "url",
+    "status",
+    "media_type",
+    "period_kind",
+    "data_period",
+    "fetched_at",
+    "probed_at"
+  ],
+  "properties": {
+    "key": {
+      "type": "string",
+      "pattern": "^MINES_DMFT\\|[a-z0-9-]+\\|.+$"
+    },
+    "kind": {
+      "type": "string",
+      "const": "mines_dmft_source_file"
+    },
+    "record_type": {
+      "type": "string",
+      "const": "mines_dmft_source_file"
+    },
+    "source_family": {
+      "type": "string",
+      "const": "mines-dmft"
+    },
+    "source_name": {
+      "type": "string",
+      "enum": ["mines-gov-in", "odisha-dmf"]
+    },
+    "publisher": {
+      "type": "string"
+    },
+    "endpoint_kind": {
+      "type": "string",
+      "enum": ["static_csv", "static_json", "report_page"]
+    },
+    "filename": {
+      "type": "string"
+    },
+    "dest": {
+      "type": "string"
+    },
+    "url": {
+      "type": "string",
+      "format": "uri"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["pending", "dry_run", "downloaded", "skipped_exists"]
+    },
+    "media_type": {
+      "type": "string"
+    },
+    "period_kind": {
+      "type": "string",
+      "enum": ["cumulative_snapshot", "source_snapshot"]
+    },
+    "data_period": {
+      "type": ["string", "null"]
+    },
+    "source_last_modified": {
+      "type": ["string", "null"]
+    },
+    "source_last_modified_raw": {
+      "type": ["string", "null"]
+    },
+    "fetched_at": {
+      "type": "string"
+    },
+    "probed_at": {
+      "type": "string"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    }
+  }
+}

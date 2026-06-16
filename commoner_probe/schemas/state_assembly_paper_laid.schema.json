@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CommonerLLP/commoner-probe/schemas/v1/state_assembly_paper_laid.json",
+  "title": "papers_laid.jsonl record",
+  "description": "State assembly paper-laid record written by StateAssemblyCrawler.",
+  "type": "object",
+  "required": ["key", "record_type", "source", "state_code", "portal_code", "assembly_no", "probed_at"],
+  "properties": {
+    "key": { "type": "string" },
+    "record_type": { "type": "string", "const": "paper_laid" },
+    "source": { "type": "string", "const": "neva" },
+    "state_code": { "type": "string" },
+    "portal_code": { "type": "string" },
+    "assembly_no": { "type": "integer" },
+    "session_no": { "type": ["integer", "null"] },
+    "session_date_id": { "type": ["integer", "null"] },
+    "serial_no": { "type": "string" },
+    "title": { "type": "string" },
+    "ministry": { "type": "string" },
+    "pdf_urls": { "type": "array", "items": { "type": "string" } },
+    "pdf_path": { "type": ["string", "null"] },
+    "probed_at": { "type": "string" }
+  }
+}

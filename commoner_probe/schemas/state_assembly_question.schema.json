@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CommonerLLP/commoner-probe/schemas/v1/state_assembly_question.json",
+  "title": "StateAssemblyQuestion",
+  "description": "One listed question record from a NeVA state assembly portal. Written to questions.jsonl.",
+  "type": "object",
+  "required": [
+    "key",
+    "record_type",
+    "source",
+    "state_code",
+    "portal_code",
+    "assembly_no",
+    "probed_at"
+  ],
+  "properties": {
+    "key": {
+      "type": "string"
+    },
+    "record_type": {
+      "type": "string",
+      "const": "question"
+    },
+    "source": {
+      "type": "string",
+      "const": "neva"
+    },
+    "state_code": {
+      "type": "string"
+    },
+    "portal_code": {
+      "type": "string"
+    },
+    "assembly_no": {
+      "type": "integer"
+    },
+    "session_no": {
+      "type": [
+        "integer",
+        "string"
+      ]
+    },
+    "session_date_id": {
+      "type": [
+        "integer",
+        "string",
+        "null"
+      ]
+    },
+    "question_number": {
+      "type": "string"
+    },
+    "subject": {
+      "type": "string"
+    },
+    "question_text": {
+      "type": "string"
+    },
+    "ministry": {
+      "type": "string"
+    },
+    "member_name": {
+      "type": "string"
+    },
+    "constituency": {
+      "type": "string"
+    },
+    "pdf_urls": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "pdf_path": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "probed_at": {
+      "type": "string"
+    }
+  }
+}

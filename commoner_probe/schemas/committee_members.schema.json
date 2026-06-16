@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CommonerLLP/commoner-probe/schemas/v1/committee_members.json",
+  "title": "CommitteeMembers",
+  "description": "One record per committee per probe_composition() call. Written to committee_members.jsonl.",
+  "type": "object",
+  "required": ["house", "committee", "committee_name", "committee_code", "source", "members", "probed_at"],
+  "additionalProperties": false,
+  "properties": {
+    "house": {
+      "type": "string",
+      "enum": ["LS", "RS"],
+      "description": "Parliamentary house."
+    },
+    "committee": {
+      "type": "string",
+      "description": "Committee slug (e.g. 'finance', 'health')."
+    },
+    "committee_name": {
+      "type": "string",
+      "description": "Human-readable committee display name."
+    },
+    "committee_code": {
+      "type": ["integer", "string", "null"],
+      "description": "sansad.in committeeCode (LS) or mstCommId (RS)."
+    },
+    "source": {
+      "type": "string",
+      "description": "Data source: 'api' or 'pdf_llm:<filename>'."
+    },
+    "members": {
+      "type": "array",
+      "description": "Enriched member records.",
+      "items": {
+        "type": "object"
+      }
+    },
+    "probed_at": {
+      "type": "string",
+      "description": "ISO 8601 datetime of the probe (seconds precision)."
+    }
+  }
+}

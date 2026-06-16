@@ -1,0 +1,33 @@
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+*.db
+.beads-credential-key
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+.DS_Store
+
+# Runtime data
+data
+data/
+
+# Local coordination and private research state
+.ai/
+.beads/
+.claude/
+.codex/
+notes/
+memory/
+WORKING.md
+TODO.md
+docs/STATUS.md
+docs/TODO-*.md
+
+# Beads / Dolt files (added by bd init)
+.beads/proxieddb/
