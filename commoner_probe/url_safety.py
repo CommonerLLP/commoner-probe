@@ -4,9 +4,15 @@ scraper (`fetch.py` for HTML, `pdf_extractor.py` for PDF downloads).
 
 Lives in its own module so there's exactly one place to read, audit, and
 test the network policy. External auditors of this anti-caste public-
-interest project should be able to verify the host-allowlist behaviour
+interest project should be able to verify the SSRF-guard behaviour
 without grepping across two callers — that's the threat-model rationale,
 not just code-cleanliness.
+
+There is deliberately NO host allowlist that short-circuits the IP checks.
+A name-based allowlist that returns early would be an SSRF bypass: an
+attacker who controls that name's DNS could point it at a private address
+and skip the resolution check entirely. Every host — known-good gov
+domains included — must clear the resolved-IP policy below.
 
 Policy enforced:
   * scheme must be http or https
@@ -35,9 +41,6 @@ import ipaddress
 import socket
 from urllib.parse import urlparse
 
-WHITELISTED_DOMAINS = {
-    "elibrary.sansad.in",
-}
 
 def is_safe_url(url: str) -> bool:
     """Return True if `url` is safe to fetch under the SSRF policy.
@@ -54,10 +57,11 @@ def is_safe_url(url: str) -> bool:
         return False
     if not parsed.hostname:
         return False
-    if parsed.hostname in WHITELISTED_DOMAINS:
-        return True
+    hostname = parsed.hostname.lower().rstrip(".")
+    if not hostname:
+        return False
     try:
-        infos = socket.getaddrinfo(parsed.hostname, None)
+        infos = socket.getaddrinfo(hostname, None)
     except socket.gaierror:
         return False
     for info in infos:
