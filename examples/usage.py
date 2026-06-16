@@ -12,7 +12,6 @@ Or against your own crawled corpus:
 from __future__ import annotations
 
 import sys
-from pathlib import Path
 
 from commoner_probe import Corpus
 

@@ -19,8 +19,12 @@
 - `python3.13 -m commoner_probe init-topic --name mines_dmft_pmkkky --out /tmp/mines_dmft_pmkkky.json --force` -> wrote bundled topic.
 - `pytest -k 'not test_mca_csr_manifest_schema_is_bundled_and_validates_record and not test_mines_dmft_manifest_schema_is_bundled_and_validates_record'` -> 255 passed, 39 skipped, 2 deselected.
 - `git diff --check` -> clean.
-- Full schema-validation tests still require `jsonschema`, which is missing in this shell.
-- Ruff is not installed/importable in this shell.
+
+**Correction (2026-06-16):** the `jsonschema`/`ruff` "missing" notes above were a
+wrong-interpreter artifact (system `python3.13`). The repo venv has both. Run via
+`.venv/bin/python -m pytest` -> 295 passed, 1 skipped (no deselection); `.venv/bin/ruff
+check .` -> clean. `bd` is now installed (Homebrew 1.0.5) with its dolt DB rebuilt
+from `issues.jsonl`.
 
 ## Commits
 

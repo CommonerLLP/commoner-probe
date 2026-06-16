@@ -5,10 +5,10 @@ Branch: `feat/mca-csr-adapter`
 
 ## Integrity
 
-- Focused tests: `pytest tests/test_dmft_mines.py tests/test_evidence_dmft.py tests/test_init_topic_cli.py tests/test_docs_sync.py` -> 15 passed, 1 skipped.
-- Broad tests: `pytest -k 'not test_mca_csr_manifest_schema_is_bundled_and_validates_record and not test_mines_dmft_manifest_schema_is_bundled_and_validates_record'` -> 255 passed, 39 skipped, 2 deselected.
+- Full suite (`.venv/bin/python -m pytest`) -> **295 passed, 1 skipped**, no deselection. The schema-validation tests run clean; the earlier "39 skipped, 2 deselected" was an artifact of running the wrong interpreter (system `python3.13`), not the repo venv.
+- Lint (`.venv/bin/ruff check .`) -> clean (one F401 unused-import in `examples/usage.py` fixed 2026-06-16).
 - `git diff --check` -> clean.
-- Caveat: full schema-validation tests need `jsonschema`; ruff is not installed/importable in this shell.
+- **Toolchain note:** the repo venv (`.venv`, Python 3.14.5) HAS `jsonschema` 4.26.0 and `ruff` 0.15.16. Always run tests/lint via `.venv/bin/...`, not a bare system python. (`pandas` is absent from the venv; nothing in the repo imports it.)
 
 ## Units
 
@@ -33,10 +33,9 @@ Layer 0 acquisition is proven for MCA CSR and Mines DMFT. The next gate is evide
 
 ## Blocked
 
-- `bd` workflow: `bd prime` fails because `bd` is not on PATH.
-- Full schema tests: blocked on missing `jsonschema`.
-- Ruff gate: blocked on missing/import-unavailable ruff.
 - Chhattisgarh/Jharkhand DMFT structured finance endpoints: unproven source discovery.
+
+(Resolved 2026-06-16: `bd` installed via Homebrew 1.0.5 and dolt DB rebuilt from `issues.jsonl` — `bd ready`/`bd list` work, 43 issues all closed. Schema-test and ruff "blocks" were false — both tools live in `.venv`; see Integrity.)
 
 ## Commit Gap
 

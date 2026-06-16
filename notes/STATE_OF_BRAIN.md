@@ -31,12 +31,18 @@ and preserve provenance.
 
 ## Open Tensions
 
-- `jsonschema` is missing in the current shell, so schema-validation tests are
-  partially deselected during broad verification.
-- Ruff is not installed/importable in the current shell.
 - Chhattisgarh and Jharkhand structured DMFT finance endpoints are still not
   proven; district NIC/S3WaaS pages may only support document/governance
   acquisition.
+
+## Toolchain (resolved 2026-06-16)
+
+- The `jsonschema`/`ruff` "missing" caveat from prior sessions was wrong: it came
+  from running a bare system `python3.13`. The repo venv (`.venv`, Python 3.14.5)
+  has `jsonschema` 4.26.0 and `ruff` 0.15.16. Full suite via `.venv/bin/python`
+  is 295 passed / 1 skipped with no deselection. Always use `.venv/bin/...`.
+- `bd` (beads) is installed (Homebrew 1.0.5); the embedded dolt DB was rebuilt
+  from `.beads/issues.jsonl` (43 issues, all closed). `bd ready`/`bd list` work.
 
 ## Next Thought
 
