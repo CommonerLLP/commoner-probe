@@ -265,6 +265,18 @@ commoner-probe state-assembly \
   --assemblies 15
 ```
 
+### `commoner-probe mca-csr` — MCA CSR company-spend exports
+
+```bash
+commoner-probe mca-csr \
+  --out data/mca-csr \
+  --years 2022-23
+```
+
+Downloads CSV exports from the MCA CDM CSR data page and writes one
+`manifest.jsonl` record per financial year. Use `--dry-run` to print manifest
+records without opening a network session.
+
 ### `commoner-probe stats` — corpus health
 
 ```bash

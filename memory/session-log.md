@@ -1,5 +1,27 @@
 # Session Log
 
+## 2026-06-16 — mca-csr-live-endpoint
+
+**Decisions made:**
+- The MCA CSR adapter can now use the live MCA CDM route rather than a placeholder.
+- A narrow `commoner-probe mca-csr` CLI is justified after endpoint verification.
+- `manifest_mca_csr` is now stable enough for schema validation because the source CSV contract was observed live.
+
+**Facts verified:**
+- `https://www.mcacdm.nic.in/csr-data` returns the CSR data form with `csrf_token`.
+- `POST https://www.mcacdm.nic.in/cdm/export.php` with `financialyear[]=FY 2022-23`, all PSU/state/development-sector filters, matching captcha fields, and `export=true` returns `text/csv`.
+- The verified CSV was 13,964,988 bytes and began with `Company Name, Financial Year, PSU/Non-PSU, CSR State, CSR Development Sector, CSR Sub Development Sector, Project Amount Spent (In INR Cr.)`.
+- `https://www.csr.gov.in/` returned Akamai Access Denied locally; not needed for the current MCA CDM export.
+
+**Errors caught:**
+- Initial POST attempt hit transient DNS/sandbox failure; reran the exact live POST with approved network escalation.
+
+**Commits:** pending at closeout.
+
+**Verification:**
+- `pytest tests/test_csr_mca.py -q` -> 7 passed.
+- `pytest tests/test_schemas.py -q` -> 33 passed.
+
 ## 2026-06-07 — mca-csr-adapter
 
 **Decisions made:**

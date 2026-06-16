@@ -1,4 +1,4 @@
-# State Of Brain — commoner-probe — 2026-06-07
+# State Of Brain — commoner-probe — 2026-06-16
 
 ## Active Frame
 
@@ -6,14 +6,14 @@
 
 ## Current Decision
 
-MCA CSR raw acquisition belongs here as `commoner_probe.csr.mca`. The old `csr-crawler` repo is archived and should not remain a canonical acquisition repo.
+MCA CSR raw acquisition belongs here as `commoner_probe.csr.mca`. The live source is MCA CDM, not the old placeholder route: `GET /csr-data` for the CSRF-bearing form and `POST /cdm/export.php` for CSV export.
 
 ## Tensions
 
-- The MCA CSR export endpoint is still a placeholder. The adapter exists to preserve and test the acquisition shape, not to claim live portal access.
-- No schema is locked yet for MCA CSR manifest rows. Schema lock should wait until live endpoint behavior and source fields are verified.
+- The MCA CSR export is public but guarded by a client-side captcha convention; current verification shows matching `captcha_input`/`captcha_hidden` values are accepted. Keep this monitored as a source contract, not a permanent assumption.
+- The CSV is an export aggregate by company/year/state/sector/subsector/spend, not full CSR project interpretation. Domain analysis still belongs downstream.
 - CSR fiscal/social interpretation is not Layer 0. If it becomes durable, it belongs in a domain analysis repo, likely `budget-crawler` or a future CSR-domain layer.
 
 ## Next Thought
 
-Do not expand the adapter into a CLI or schema until the portal contract is known. The next larger architecture task is `partial-recall` adapter registration.
+Finance disclosure adapters are now the top in-repo implementation queue. The next larger architecture task is still `partial-recall` adapter registration.

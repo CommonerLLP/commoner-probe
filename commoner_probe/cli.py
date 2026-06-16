@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 
 from .answers import extract_answers
 from .atr_linkage import extract_atr_linkages
 from .committees import CommitteeProbe, resolve_committees
+from .csr.mca import McaCsrProbe
 from .example_topics import list_example_topics, load_example_topic_text
 from .neva import StateAssemblyCrawler
 from .sansad import SansadProbe
@@ -165,6 +167,17 @@ def state_assembly_cmd(args: argparse.Namespace) -> None:
     print(summary)
 
 
+def mca_csr_cmd(args: argparse.Namespace) -> None:
+    out = Path(args.out)
+    years = _split_csv(args.years) or []
+    if not years:
+        raise SystemExit("--years must contain at least one financial year, e.g. 2022-23")
+    probe = McaCsrProbe(out, sleep=args.sleep)
+    records = probe.probe_years(years, dry_run=args.dry_run)
+    for record in records:
+        print(json.dumps(record, ensure_ascii=False))
+
+
 def extract_answers_cmd(args: argparse.Namespace) -> None:
     out = Path(args.out)
     if not (out / "manifest.jsonl").exists():
@@ -281,6 +294,24 @@ def build_parser() -> argparse.ArgumentParser:
     state_assembly.add_argument("--no-member-details", action="store_true", help="Skip per-member detail pages")
     state_assembly.add_argument("--sessions-limit", type=int, help="Stop after N sessions per assembly (smoke-test)")
     state_assembly.set_defaults(func=state_assembly_cmd)
+
+    mca_csr = sub.add_parser(
+        "mca-csr",
+        help="Download MCA CDM CSR company-spend CSV exports.",
+    )
+    mca_csr.add_argument("--out", required=True, help="Output directory")
+    mca_csr.add_argument(
+        "--years",
+        required=True,
+        help="Comma-separated financial years, e.g. 2022-23 or FY 2022-23",
+    )
+    mca_csr.add_argument("--sleep", type=float, default=2.0)
+    mca_csr.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print manifest records without opening a network session or writing manifest.jsonl.",
+    )
+    mca_csr.set_defaults(func=mca_csr_cmd)
 
     atr_link = sub.add_parser(
         "atr-linkage",

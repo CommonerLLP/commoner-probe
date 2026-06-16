@@ -155,6 +155,29 @@ class ManifestCommitteeReportRecord:
         return _from_dict(cls, d)
 
 
+@dataclass
+class ManifestMcaCsrRecord:
+    """One MCA CSR company-spend export record from manifest.jsonl."""
+
+    key: str
+    kind: str
+    record_type: str
+    year: str
+    financial_year: str
+    filename: str
+    dest: str
+    source_page: str
+    url: str
+    status: str
+    timestamp_utc: str
+    probed_at: str
+    sha256: str | None = None
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "ManifestMcaCsrRecord":
+        return _from_dict(cls, d)
+
+
 # ---------------------------------------------------------------------------
 # answers.jsonl records
 # ---------------------------------------------------------------------------

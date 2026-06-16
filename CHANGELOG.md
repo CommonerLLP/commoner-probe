@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **`commoner-probe mca-csr`** — download MCA CDM CSR company-spend CSV exports by financial year.
+- **`manifest_mca_csr` schema** and `ManifestMcaCsrRecord` / `Corpus.manifest_mca_csr()` for typed access to MCA CSR manifest records.
+
+### Changed
+
+- `commoner_probe.csr.mca` now uses the verified MCA CDM live contract: `GET /csr-data` for the CSRF-bearing form and `POST /cdm/export.php` for CSV export.
+
 ## 0.3.0 (2026-06-06)
 
 ### Breaking changes

@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CommonerLLP/commoner-probe/schemas/v1/manifest_mca_csr.json",
+  "title": "manifest.jsonl — MCA CSR company-spend export",
+  "description": "One MCA CDM CSR CSV export record from manifest.jsonl.",
+  "type": "object",
+  "required": [
+    "key",
+    "kind",
+    "record_type",
+    "year",
+    "financial_year",
+    "filename",
+    "dest",
+    "source_page",
+    "url",
+    "status",
+    "timestamp_utc",
+    "probed_at"
+  ],
+  "properties": {
+    "key": {
+      "type": "string",
+      "pattern": "^MCA_CSR\\|FY [0-9]{4}-[0-9]{2}$"
+    },
+    "kind": {
+      "type": "string",
+      "const": "mca_csr_company_spend"
+    },
+    "record_type": {
+      "type": "string",
+      "const": "mca_csr_company_spend"
+    },
+    "year": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}$"
+    },
+    "financial_year": {
+      "type": "string",
+      "pattern": "^FY [0-9]{4}-[0-9]{2}$"
+    },
+    "filename": {
+      "type": "string",
+      "pattern": "^mca_csr_company_spend_[0-9]{4}-[0-9]{2}\\.csv$"
+    },
+    "dest": {
+      "type": "string"
+    },
+    "source_page": {
+      "type": "string",
+      "format": "uri"
+    },
+    "url": {
+      "type": "string",
+      "format": "uri"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["pending", "dry_run", "downloaded", "skipped_exists"]
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "timestamp_utc": {
+      "type": "string"
+    },
+    "probed_at": {
+      "type": "string"
+    }
+  }
+}

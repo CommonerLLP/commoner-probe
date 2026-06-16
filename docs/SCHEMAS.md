@@ -21,7 +21,8 @@ Each section gives a **field table** with five columns:
 
 One record per downloaded parliamentary question or committee report.
 Append-only; each record is a self-contained JSON object on its own line.
-Records come in **four shapes** discriminated by `kind` and `house`.
+Records come in **five shapes** discriminated by `kind` and, for parliamentary
+records, `house`.
 
 ### Shape A — Lok Sabha Q/A (`kind = "qa"`, `house = "Lok Sabha"`)
 
@@ -155,6 +156,35 @@ Both shapes share `key`, `run_id`, `kind`, `house`, `title`, `date`, `qtype`,
 **Note — field divergence between LS and RS committee reports**: LS reports carry
 `loksabha_no`, `date_presented_ls`, `date_laid_rs`, `date_presented_speaker`.
 RS reports carry `date_presentation` instead. Both shapes share all other fields.
+
+---
+
+### Shape E — MCA CSR company-spend export (`kind = "mca_csr_company_spend"`)
+
+One record per MCA CDM CSR CSV export produced by `commoner-probe mca-csr`.
+Source page verified on 2026-06-16: `https://www.mcacdm.nic.in/csr-data`.
+Download endpoint: `POST https://www.mcacdm.nic.in/cdm/export.php`.
+
+| Field | Type | Required | Enum / format | Provenance |
+|---|---|---|---|---|
+| `key` | string | yes | `"MCA_CSR\|FY {YYYY-YY}"` | csr/mca.py |
+| `kind` | string | yes | `"mca_csr_company_spend"` | csr/mca.py |
+| `record_type` | string | yes | `"mca_csr_company_spend"` | csr/mca.py |
+| `year` | string | yes | `YYYY-YY` | csr/mca.py |
+| `financial_year` | string | yes | `FY YYYY-YY` | csr/mca.py |
+| `filename` | string | yes | `mca_csr_company_spend_{year}.csv` | csr/mca.py |
+| `dest` | string | yes | Local CSV path | csr/mca.py |
+| `source_page` | string | yes | MCA CDM CSR page URL | csr/mca.py |
+| `url` | string | yes | MCA CDM export endpoint URL | csr/mca.py |
+| `status` | string | yes | `pending`, `dry_run`, `downloaded`, `skipped_exists` | csr/mca.py |
+| `sha256` | string | cond | 64-char lowercase hex; present when file exists/downloaded | csr/mca.py |
+| `timestamp_utc` | string | yes | ISO datetime | csr/mca.py |
+| `probed_at` | string | yes | ISO datetime | csr/mca.py |
+
+The CSV header currently emitted by MCA CDM is:
+`Company Name`, `Financial Year`, `PSU/Non-PSU`, `CSR State`,
+`CSR Development Sector`, `CSR Sub Development Sector`, and
+`Project Amount Spent (In INR Cr.)`.
 
 ---
 

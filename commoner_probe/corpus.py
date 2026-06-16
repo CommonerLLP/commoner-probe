@@ -47,6 +47,7 @@ from .records import (
     AnswerQaResponse,
     AtrLinkageRecord,
     ManifestCommitteeReportRecord,
+    ManifestMcaCsrRecord,
     ManifestQaRecord,
     RunRecord,
 )
@@ -122,6 +123,12 @@ class Corpus:
         for d in _iter_jsonl(self.out_dir / "manifest.jsonl"):
             if d.get("kind") == "committee_report":
                 yield ManifestCommitteeReportRecord.from_dict(d)
+
+    def manifest_mca_csr(self) -> Iterator[ManifestMcaCsrRecord]:
+        """Stream MCA CSR company-spend export records from manifest.jsonl."""
+        for d in _iter_jsonl(self.out_dir / "manifest.jsonl"):
+            if d.get("kind") == "mca_csr_company_spend":
+                yield ManifestMcaCsrRecord.from_dict(d)
 
     # --- Answers ---
 
@@ -247,6 +254,7 @@ class Corpus:
     _STREAM_MAP = {
         "manifest_qa": "manifest_qa",
         "manifest_committee_reports": "manifest_committee_reports",
+        "manifest_mca_csr": "manifest_mca_csr",
         "answers_qa": "answers_qa",
         "answers_atr": "answers_atr",
         "answers_dfg": "answers_dfg",

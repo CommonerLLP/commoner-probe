@@ -43,6 +43,8 @@ def _pick_schema_name(rec: dict) -> str | None:
         return "manifest_qa"
     if kind == "committee_report":
         return "manifest_committee_report"
+    if kind == "mca_csr_company_spend":
+        return "manifest_mca_csr"
     return None
 
 

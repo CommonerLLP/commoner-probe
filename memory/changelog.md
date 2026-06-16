@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026-06-16 · mca-csr-live-endpoint · create/edit
+
+- `commoner_probe/csr/mca.py` — switched MCA CSR adapter to verified MCA CDM `csr-data` / `cdm/export.php` contract and CSV header validation.
+- `commoner_probe/schemas/manifest_mca_csr.schema.json` — added schema for MCA CSR manifest records.
+- `commoner_probe/validate.py` — routed `mca_csr_company_spend` manifest records to `manifest_mca_csr`.
+- `commoner_probe/records.py` — added `ManifestMcaCsrRecord`.
+- `commoner_probe/corpus.py` — added `Corpus.manifest_mca_csr()` and DataFrame stream entry.
+- `commoner_probe/cli.py` — added `commoner-probe mca-csr`.
+- `tests/test_csr_mca.py` — expanded tests for live endpoint contract, schema, CLI dry-run, and corpus stream.
+- `README.md` — documented `commoner-probe mca-csr`.
+- `docs/SCHEMAS.md` — documented MCA CSR manifest shape.
+- `TODO.md` — archived completed MCA CSR verification/schema/CLI work.
+- `notes/HANDOFF.md` — updated closeout handoff.
+- `notes/STATE_OF_BRAIN.md` — updated active frame after endpoint verification.
+- `notes/handoffs/handoff-2026-06-16-mca-csr-live-endpoint.md` — archived prior handoff.
+- `notes/state-of-brains/state-of-brain-2026-06-16-mca-csr-live-endpoint.md` — archived prior state.
+- `memory/changelog.md` — prepended this entry.
+- `memory/session-log.md` — prepended session log.
+
 ## 2026-06-07 · mca-csr-adapter · create/edit
 
 - `commoner_probe/csr/__init__.py` — created CSR acquisition package export.
