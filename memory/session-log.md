@@ -1,5 +1,28 @@
 # Session Log
 
+## 2026-06-16 — toolchain-repair-and-ssrf-fix
+
+**Decisions made:**
+- SSRF guard keeps NO name-allowlist bypass; every host must clear the resolved-IP policy.
+- Keep `bd init`'s auto-commit `267014f` as-is — the agent-surface files are load-bearing for the gemini/codex/agy/claude/Hermes fleet, not Claude-only cruft.
+- Run all tests/lint through `.venv/bin/...`, never bare system python3.13.
+
+**Facts verified:**
+- `elibrary.sansad.in` → `164.100.85.146` (public NIC IP); passes the SSRF guard without any allowlist.
+- Repo venv (Python 3.14.5) has jsonschema 4.26.0 + ruff 0.15.16; full suite `.venv/bin/python -m pytest` → 305 passed, 1 skipped (no deselection); ruff clean.
+- `bd` 1.0.5 (Homebrew) works after rebuilding the dolt DB from `issues.jsonl` (43 issues, all closed). bd 1.0.5 intentionally tracks `.beads/interactions.jsonl` (removed it from `.beads/.gitignore`).
+
+**Errors caught (by user / self):**
+- User corrected my single-agent assumption: the workspace is a multi-agent fleet → agent-surface files are not cruft. Logged in `_org/mistakes.md`.
+- Self-caught: my "interactions.jsonl should be untracked" claim relied on the pre-`bd init` gitignore; re-checked `git check-ignore` and reversed.
+
+**Commits pushed:**
+- `e440f46` fix(ssrf): remove name-allowlist bypass in url_safety guard
+- `3a827ff` docs: correct false jsonschema/ruff-missing caveat; fix lint
+- (`267014f` bd init auto-commit — kept)
+
+**Concurrency:** another agent was live in-repo (untracked `examples/topics/narcotics_substance.json`); all commits staged by explicit path, never `git add -A`.
+
 ## 2026-06-16 — mines-dmft-acquisition
 
 **Decisions made:**

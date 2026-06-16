@@ -1,41 +1,52 @@
-# Handoff — commoner-probe — 2026-06-16
+# Handoff — commoner-probe — 2026-06-16 (toolchain + SSRF session)
+
+Prior handoff archived at `notes/handoffs/handoff-2026-06-16-bd-toolchain-ssrf.md`
+(the mines-DMFT acquisition session). This session was toolchain repair + a
+security fix, not source work.
 
 ## What Changed This Session
 
-- Added `commoner-probe evidence dmft` to bundle Ministry of Mines/DMFT disclosure records with Sansad Q/A oversight records without flattening the two source families.
-- Added bundled Sansad topic `mines_dmft_pmkkky` for Ministry of Mines DMFT/PMKKKY questions.
-- Added `commoner-probe mines-dmft` Layer 0 acquisition for:
-  - Ministry of Mines static DMFT CSVs under `https://mines.gov.in/webportal/assets/img/`
-  - Odisha DMF static JSON and state report-page endpoints under `https://dmf.odisha.gov.in`
-- Renamed the public source-family surface from the confusing `mom-dmft` to `mines-dmft`.
-- Renamed local ignored data directory from `data/mom-dmft` to `data/mines-dmft` and corrected paths in its local `manifest.jsonl`.
-- Added `manifest_mines_dmft` schema, `ManifestMinesDmftRecord`, and `Corpus.manifest_mines_dmft()`.
-- Updated source-family notes and integration smoke docs.
+- **Fixed the SSRF guard** (`commoner_probe/url_safety.py`, commit `e440f46`,
+  pushed): removed the `elibrary.sansad.in` entry in `WHITELISTED_DOMAINS` and
+  its unconditional early-return, which bypassed the resolved-IP checks (a
+  DNS-rebinding hole). The domain resolves to a public NIC IP (164.100.85.146)
+  and passes the normal policy anyway, so the allowlist bought nothing. Added
+  hostname normalization (`.lower().rstrip(".")`) and `tests/test_url_safety.py`
+  (10 network-free mocked-`getaddrinfo` tests, incl. a regression proving the
+  formerly-allowlisted host is rejected if it resolves private). Flagged by the
+  push-time security sweep.
+- **Corrected the false "jsonschema/ruff missing" caveat** (commit `3a827ff`,
+  pushed) across `docs/STATUS.md`, `notes/STATE_OF_BRAIN.md`, `notes/HANDOFF.md`.
+  The repo venv (`.venv`, Python 3.14.5) HAS jsonschema 4.26.0 + ruff 0.15.16;
+  the prior caveat came from running a bare system `python3.13`. Removed one
+  unused `pathlib.Path` import ruff flagged in `examples/usage.py`.
+- **Installed `bd` (beads)** via Homebrew 1.0.5 and rebuilt its embedded dolt DB
+  from `.beads/issues.jsonl` (`bd init` + `bd import` → 43 issues, all closed).
+  `bd ready`/`bd list`/`bd stats` now work. `bd init` auto-committed `267014f`
+  (agent-surface wiring: `.codex/`, `AGENTS.md`, `.agents/skills/beads/`,
+  regenerated CLAUDE.md). **Decision: keep `267014f` as-is** — it correctly wires
+  every agent in the fleet (gemini/codex/agy/claude/Hermes), not Claude-only.
 
 ## Verification
 
-- `pytest tests/test_dmft_mines.py tests/test_evidence_dmft.py tests/test_init_topic_cli.py tests/test_docs_sync.py` -> 15 passed, 1 skipped.
-- `python3.13 -m commoner_probe mines-dmft --out /tmp/mines-dmft-dry --sources mines-gov-in --dry-run` -> emitted four `MINES_DMFT` Ministry CSV manifest records.
-- `python3.13 -m commoner_probe init-topic --name mines_dmft_pmkkky --out /tmp/mines_dmft_pmkkky.json --force` -> wrote bundled topic.
-- `pytest -k 'not test_mca_csr_manifest_schema_is_bundled_and_validates_record and not test_mines_dmft_manifest_schema_is_bundled_and_validates_record'` -> 255 passed, 39 skipped, 2 deselected.
-- `git diff --check` -> clean.
+- `.venv/bin/python -m pytest` → **305 passed, 1 skipped** (no deselection).
+- `.venv/bin/ruff check .` → clean.
+- Branch `feat/mca-csr-adapter` pushed and in sync with origin.
 
-**Correction (2026-06-16):** the `jsonschema`/`ruff` "missing" notes above were a
-wrong-interpreter artifact (system `python3.13`). The repo venv has both. Run via
-`.venv/bin/python -m pytest` -> 295 passed, 1 skipped (no deselection); `.venv/bin/ruff
-check .` -> clean. `bd` is now installed (Homebrew 1.0.5) with its dolt DB rebuilt
-from `issues.jsonl`.
+## Concurrency Note
 
-## Commits
-
-- `10cdcde feat: add mines DMFT acquisition`
-- `2cc9b23 feat: add DMFT evidence bundle`
-- `d3d223f docs: map CSR and DMFT source contracts`
+Another agent was live in this repo this session (created untracked
+`examples/topics/narcotics_substance.json`). All my commits were staged by
+explicit path, never `git add -A`, so that file was never captured. It remains
+untracked and belongs to the other session — do not assume it's yours.
 
 ## What Is Next
 
-- Run `commoner-probe mines-dmft --out data/mines-dmft --sources mines-gov-in,odisha` live to refresh the canonical ignored data corpus under the new path.
-- Run the Sansad crawl with `mines_dmft_pmkkky`, then `extract-answers`, then `evidence dmft`.
-- Add parsed record streams later: `dmft_financial_summary`, `dmft_sector_summary`, `dmft_project`, and `dmft_governance_document`.
-- Continue source discovery for Chhattisgarh and Jharkhand structured DMFT finance endpoints.
-- Build MCA CSR comparison utilities over the 10-year MCA corpus.
+- Run `commoner-probe mines-dmft --out data/mines-dmft --sources mines-gov-in,odisha`
+  live, then the Sansad `mines_dmft_pmkkky` crawl → `extract-answers` → `evidence dmft`.
+- Add parsed record streams: `dmft_financial_summary`, `dmft_sector_summary`,
+  `dmft_project`, `dmft_governance_document`.
+- Build MCA CSR comparison utilities over the 10-year MCA corpus (boundary:
+  reporting/spending companies, not consultants/implementing agencies).
+- Continue source discovery for Chhattisgarh & Jharkhand structured DMFT finance.
+- Always run tests/lint via `.venv/bin/...`, never bare system python.

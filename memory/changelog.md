@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-06-16 · toolchain-repair-and-ssrf-fix · create/edit
+
+- `commoner_probe/url_safety.py` — removed `WHITELISTED_DOMAINS` SSRF bypass; normalize hostname before resolution (commit `e440f46`, pushed).
+- `tests/test_url_safety.py` — new; 10 mocked-`getaddrinfo` SSRF-policy tests incl. no-bypass regression.
+- `examples/usage.py` — removed unused `pathlib.Path` import (ruff F401).
+- `docs/STATUS.md` — corrected false jsonschema/ruff-missing caveat; cleared stale Blocked entries (commit `3a827ff`, pushed).
+- `notes/STATE_OF_BRAIN.md`, `notes/HANDOFF.md` — same correction; then rewritten at session close (prior versions archived under `notes/handoffs/` and `notes/state-of-brains/`).
+- `.beads/*`, `.codex/`, `AGENTS.md`, `CLAUDE.md`, `.agents/skills/beads/` — auto-committed by `bd init` (`267014f`); kept as-is (multi-agent fleet wiring).
+- `../_org/mistakes.md` — logged the "called multi-agent surface files cruft" misjudgment.
+
 ## 2026-06-16 · mines-dmft-acquisition · create/edit
 
 - `commoner_probe/dmft/__init__.py` — created DMFT acquisition package.

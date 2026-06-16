@@ -15,6 +15,8 @@
 
 ## Archive
 
+- [x] 2026-06-16 — Fixed SSRF guard: removed `WHITELISTED_DOMAINS` name-allowlist bypass in `commoner_probe/url_safety.py`, added hostname normalization + `tests/test_url_safety.py` (commit `e440f46`, pushed).
+- [x] 2026-06-16 — Corrected false "jsonschema/ruff missing" caveat (was wrong interpreter); installed `bd` 1.0.5 + rebuilt dolt DB from `issues.jsonl`; removed unused import (commit `3a827ff`, pushed).
 - [x] 2026-06-16 — Verified MCA CDM CSR live export endpoint, updated `commoner_probe.csr.mca`, added `manifest_mca_csr` schema, `Corpus.manifest_mca_csr()`, and `commoner-probe mca-csr`.
 - [x] 2026-06-16 — Added `commoner-probe mines-dmft` acquisition for Ministry of Mines static CSVs and Odisha DMF source endpoints, plus `manifest_mines_dmft`, corpus stream, and CLI tests.
 - [x] 2026-06-07 — Added MCA CSR acquisition adapter in `commoner_probe.csr.mca`; committed as `032ec83`.
