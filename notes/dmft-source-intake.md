@@ -44,6 +44,100 @@ Do not model DMFT as one national aggregate. `commoner-probe` needs a family of 
 3. District-level DMFT records wherever state portals expose them.
 4. Annual/audit report acquisition records for each DMF where available.
 
+## Portal Contract Status
+
+### Ministry of Mines / PMKKKY
+
+Official routes are reachable, and the current Angular bundle exposes static
+national DMFT CSV assets:
+
+- `https://mines.gov.in/webportal/pmkkky`
+- `https://mines.gov.in/webportal/content/dmf-collection`
+- `https://mines.gov.in/webportal/assets/img/DMF_Collection.csv`
+- `https://mines.gov.in/webportal/assets/img/Project_Fund_Status_Detail.csv`
+- `https://mines.gov.in/webportal/assets/img/Sector_Wise_Project_Fund_Allocation.csv`
+- `https://mines.gov.in/webportal/assets/img/State_wise_Project_Details.csv`
+
+Downloaded local corpus:
+
+- `data/mom-dmft/mines-gov-in/DMF_Collection.csv`
+- `data/mom-dmft/mines-gov-in/Project_Fund_Status_Detail.csv`
+- `data/mom-dmft/mines-gov-in/Sector_Wise_Project_Fund_Allocation.csv`
+- `data/mom-dmft/mines-gov-in/State_wise_Project_Details.csv`
+
+HTTP metadata observed:
+
+- webportal bundle last modified: `Thu, 11 Jun 2026 09:15:09 GMT`
+- CSV assets last modified: `Thu, 11 Jun 2026 09:15:11 GMT` to
+  `Thu, 11 Jun 2026 09:15:13 GMT`
+
+Coverage observed:
+
+- `DMF_Collection.csv`: 23 state rows; includes Odisha, Chhattisgarh, and
+  Jharkhand.
+- `Project_Fund_Status_Detail.csv`: 23 state rows; includes Odisha,
+  Chhattisgarh, and Jharkhand.
+- `State_wise_Project_Details.csv`: 23 state rows; includes Odisha,
+  Chhattisgarh, and Jharkhand.
+- `Sector_Wise_Project_Fund_Allocation.csv`: 14 national sector rows.
+
+Current limitation:
+
+- The Ministry CSVs are national/current snapshots, not FY-wise tables.
+- They prove state-level collection, project status, allocation, spend, and
+  sector totals, but do not expose district/project-level details.
+- Candidate national DMF hostnames checked during intake were not proven beyond
+  these Ministry static assets.
+
+### Odisha DMF
+
+Odisha is the first adapter-ready state source.
+
+Proven endpoints:
+
+- homepage: `https://dmf.odisha.gov.in`
+- state summary JSON:
+  `https://dmf.odisha.gov.in/assets/cron_files/state_summary_data.json`
+- district summary JSON:
+  `https://dmf.odisha.gov.in/assets/cron_files/district_summary_data.json`
+- district page example: `https://dmf.odisha.gov.in/district/KENDUJHAR`
+- state report pages:
+  `/report/fund_collection_report`, `/report/allocation_report`,
+  `/report/sector_wise_summary_report`
+- district report pages:
+  `/district/KENDUJHAR/report/fund_collection_report`,
+  `/district/KENDUJHAR/report/allocation_report`,
+  `/district/KENDUJHAR/report/sector_wise_summary_report`
+- proven DataTables POST:
+  `https://dmf.odisha.gov.in/district/report/fund_collection_list`
+- page-discovered POST endpoints:
+  `/district/report/sector_wise_summary_list`,
+  `/district/publication/annual_report_list`, likely
+  `/district/report/allocation_list`
+
+Fields observed:
+
+- collection/accrual splits: coal/lignite, other than coal/lignite, minor
+  minerals, bank interest, other, total
+- allocation/sanction splits: high priority, other priority, common
+  social/economic infrastructure, administrative, other, total
+- expenditure/utilisation splits on the same priority groups
+- project counts by priority class
+- district-wise collection, project, allocation, estimation, and expenditure
+
+Coverage caveat:
+
+- Report dropdowns expose FY `2015-2016` through `2027-2028`.
+- Current/future FY options may be zero or in-progress.
+- Homepage labels still say "As on end of June 2022" while the footer says
+  last updated `27/05/2026`; capture both as source metadata.
+
+### Chhattisgarh and Jharkhand
+
+State-level structured DMFT finance APIs were not proven during this intake.
+Treat district NIC/S3WaaS pages as governance/document sources only until a
+state or national structured finance endpoint is verified.
+
 ## Minimum Record Shapes To Prove
 
 - `dmft_financial_summary`
@@ -93,7 +187,8 @@ This should be used for portal probing when local network access is blocked or r
   - `https://mines.gov.in/webportal/content/dmf-collection`
   - National DMF Portal endpoints still need discovery.
 - Odisha:
-  - likely DMF portal; iFOREST references National DMF Portal and Odisha DMF Portal 2025 for sector allocations.
+  - `https://dmf.odisha.gov.in`
+  - first implementation target: static summary JSON + DataTables report POSTs.
   - priority districts: Kendujhar, Sundargarh, Angul, Jajpur, Sambalpur, Jharsuguda.
 - Chhattisgarh:
   - priority districts: Korba, Dantewada.
