@@ -6,11 +6,19 @@ We as members, contributors, and leaders pledge to make participation in our
 community a harassment-free experience for everyone, regardless of age, body
 size, visible or invisible disability, ethnicity, sex characteristics, gender
 identity and expression, level of experience, education, socio-economic status,
-nationality, personal appearance, race, religion, or sexual identity
-and orientation.
+nationality, personal appearance, race, religion, **caste** (including descent and
+work-and-descent-based discrimination), tribe or Indigenous status, or sexual
+identity and orientation.
 
 We pledge to act and interact in ways that contribute to an open, welcoming,
 diverse, inclusive, and healthy community.
+
+This is an explicitly **anti-caste** project, and so is every CommonerLLP
+repository. Caste discrimination — overt or coded, including by surname, region,
+diet, gotra, or reservation status, or any proxy for it — is treated as a
+first-order violation, not an afterthought. The standard Contributor Covenant
+omits caste; we name it deliberately, in keeping with CommonerLLP's Ambedkarite
+foundation.
 
 ## Our Standards
 
@@ -31,6 +39,9 @@ Examples of unacceptable behavior include:
   advances of any kind
 - Trolling, insulting or derogatory comments, and personal or political attacks
 - Public or private harassment
+- **Caste-based discrimination, slurs, or "outing"** — including probing for or
+  inferring someone's caste (by surname, region, diet, gotra, or reservation
+  status), casteist jokes or stereotypes, or graded-inequality gatekeeping of any kind
 - Publishing others' private information, such as a physical or email
   address, without their explicit permission
 - Other conduct which could reasonably be considered inappropriate in a
@@ -116,7 +127,9 @@ the community.
 
 This Code of Conduct is adapted from the [Contributor Covenant][homepage],
 version 2.1, available at
-https://www.contributor-covenant.org/version/2/1/code_of_conduct.html.
+https://www.contributor-covenant.org/version/2/1/code_of_conduct.html —
+**modified to name caste explicitly** as a protected characteristic and
+caste discrimination as unacceptable behavior, which the upstream Covenant omits.
 
 Community Impact Guidelines were inspired by
 [Mozilla's code of conduct enforcement ladder](https://github.com/mozilla/diversity).
