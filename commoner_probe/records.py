@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Typed dataclass records for every commoner-probe output stream.
 
 Each class has a :meth:`from_dict` classmethod that tolerates unknown keys

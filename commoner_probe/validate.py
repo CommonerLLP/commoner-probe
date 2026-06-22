@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Schema validation for commoner-probe corpus directories.
 
 Used by the ``commoner-probe validate`` CLI subcommand.  Walks a corpus

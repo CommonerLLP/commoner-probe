@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Cross-source evidence bundles.
 
 Evidence bundles keep source families side by side instead of forcing unlike
