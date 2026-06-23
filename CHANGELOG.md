@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.1 (2026-06-24)
+
+### Changed
+
+- Package metadata: author now points to the **CommonerLLP** GitHub org; added maintainers (Sreeram N R and skishchampi) and an Organization link under project URLs.
+
 ## 0.4.0 (2026-06-22)
 
 ### Added

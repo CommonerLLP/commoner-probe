@@ -4,11 +4,15 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "commoner-probe"
-version = "0.4.0"
+version = "0.4.1"
 description = "Sousveillance infrastructure for state mandatory-disclosure portals — parliamentary questions, committee reports, budget data, and state assembly records."
 readme = "README.md"
 requires-python = ">=3.10"
-authors = [{ name = "Sreeram Ramasubramanian" }]
+authors = [{ name = "CommonerLLP" }]
+maintainers = [
+  { name = "Sreeram N R", email = "sreeram.nr@gmail.com" },
+  { name = "skishchampi", email = "996985+skishchampi@users.noreply.github.com" },
+]
 license = { text = "MIT" }
 keywords = [
   "parliament-of-india",
@@ -54,6 +58,7 @@ Source = "https://github.com/CommonerLLP/commoner-probe"
 Issues = "https://github.com/CommonerLLP/commoner-probe/issues"
 Documentation = "https://github.com/CommonerLLP/commoner-probe/blob/master/README.md"
 Changelog = "https://github.com/CommonerLLP/commoner-probe/blob/master/CHANGELOG.md"
+Organization = "https://github.com/CommonerLLP"
 
 [project.scripts]
 commoner-probe = "commoner_probe.cli:main"
