@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Name + context -> entity_id resolver.
 
 Single function: ``Resolver.resolve(name, context, kind_hint) -> ResolutionResult``.

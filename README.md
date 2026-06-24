@@ -461,12 +461,13 @@ See [`docs/ENDPOINTS.md`](docs/ENDPOINTS.md) for source-family endpoint notes.
 
 ## License
 
-GNU Affero General Public License v3 or later (AGPL-3.0-or-later).
+MIT License — see [`LICENSE`](LICENSE).
 
-`commoner-probe` is sousveillance infrastructure — built for the commons, not
-for commercial extraction. AGPL ensures that anyone running a modified version
-as a service must publish their source. Researchers, journalists, and civic
-tech organisations are unaffected.
+`commoner-probe` is sousveillance infrastructure, built for the commons. It is
+released under the permissive MIT license so it can serve as a shared
+acquisition floor that any downstream project — including the other repos in the
+CommonerLLP federation, whatever their own licenses — can build on without
+copyleft friction.
 
 ---
 

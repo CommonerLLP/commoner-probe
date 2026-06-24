@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Data-pulling crawler for Indian Parliament question corpora."""
 
 import re

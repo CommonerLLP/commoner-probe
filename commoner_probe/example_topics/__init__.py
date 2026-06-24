@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Built-in topic profile JSON files shipped with the package."""
 
 from __future__ import annotations

@@ -1,0 +1,1062 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>commoner-probe · interactive explainer</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --bg-soft: #161b22;
+    --bg-card: #1c2230;
+    --border: #2a3242;
+    --fg: #e6edf3;
+    --fg-dim: #9aa6b2;
+    --accent: #f0883e;       /* amber — "probe" */
+    --accent-2: #58a6ff;     /* blue — data */
+    --green: #3fb950;
+    --purple: #bc8cff;
+    --pink: #f778ba;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--sans);
+    line-height: 1.6;
+    font-size: 16px;
+  }
+  a { color: var(--accent-2); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code, .mono { font-family: var(--mono); }
+
+  /* ---------- layout ---------- */
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+  section { padding: 64px 0; border-top: 1px solid var(--border); }
+  section:first-of-type { border-top: none; }
+  h1, h2, h3 { line-height: 1.25; font-weight: 700; }
+  h2 { font-size: 28px; margin: 0 0 8px; }
+  h2 .num { color: var(--accent); font-family: var(--mono); font-size: 18px; margin-right: 10px; }
+  h3 { font-size: 19px; margin: 28px 0 10px; }
+  .lead { color: var(--fg-dim); font-size: 17px; max-width: 760px; }
+  .dim { color: var(--fg-dim); }
+
+  /* ---------- top nav ---------- */
+  nav.top {
+    position: sticky; top: 0; z-index: 50;
+    background: rgba(13,17,23,.85); backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--border);
+  }
+  nav.top .wrap { display: flex; align-items: center; gap: 18px; height: 54px; overflow-x: auto; }
+  nav.top .brand { font-weight: 700; white-space: nowrap; color: var(--fg); }
+  nav.top .brand .dot { color: var(--accent); }
+  nav.top a.link { color: var(--fg-dim); font-size: 14px; white-space: nowrap; }
+  nav.top a.link:hover { color: var(--fg); text-decoration: none; }
+
+  /* ---------- hero ---------- */
+  .hero { padding: 72px 0 56px; text-align: left; }
+  .hero h1 { font-size: 52px; margin: 0 0 4px; letter-spacing: -1px; }
+  .hero h1 .probe { color: var(--accent); }
+  .hero .tag { font-size: 21px; color: var(--fg-dim); margin: 0 0 24px; }
+  .pill {
+    display: inline-block; font-size: 12px; font-family: var(--mono);
+    padding: 3px 10px; border-radius: 999px; border: 1px solid var(--border);
+    color: var(--fg-dim); margin-right: 6px; margin-bottom: 6px; background: var(--bg-soft);
+  }
+  .pill.live { color: var(--green); border-color: #1f4426; }
+
+  /* ---------- cards ---------- */
+  .grid { display: grid; gap: 16px; }
+  .grid.cols-2 { grid-template-columns: 1fr 1fr; }
+  .grid.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+  .grid.cols-4 { grid-template-columns: repeat(4, 1fr); }
+  @media (max-width: 820px){ .grid.cols-2,.grid.cols-3,.grid.cols-4{grid-template-columns:1fr;} }
+  .card {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 18px 20px;
+  }
+  .card h4 { margin: 0 0 6px; font-size: 16px; }
+  .card p { margin: 0; color: var(--fg-dim); font-size: 14px; }
+  .card .ic { font-size: 22px; margin-bottom: 8px; display:block; }
+
+  /* ---------- code blocks ---------- */
+  .code {
+    position: relative; background: #0a0e14; border: 1px solid var(--border);
+    border-radius: 10px; margin: 14px 0; overflow: hidden;
+  }
+  .code .bar {
+    display:flex; align-items:center; justify-content:space-between;
+    padding: 7px 12px; border-bottom: 1px solid var(--border);
+    background: var(--bg-soft); font-size: 12px; color: var(--fg-dim);
+  }
+  .code pre { margin: 0; padding: 14px 16px; overflow-x: auto; font-size: 13.5px; line-height: 1.55; }
+  .code code { font-family: var(--mono); color: var(--fg); }
+  .copy {
+    cursor: pointer; border: 1px solid var(--border); background: var(--bg-card);
+    color: var(--fg-dim); border-radius: 6px; font-size: 11px; padding: 3px 9px;
+    font-family: var(--sans);
+  }
+  .copy:hover { color: var(--fg); border-color: var(--accent); }
+  .copy.ok { color: var(--green); border-color: var(--green); }
+
+  /* syntax tints */
+  .t-cmd { color: var(--accent); }
+  .t-flag { color: var(--accent-2); }
+  .t-str { color: var(--green); }
+  .t-key { color: var(--purple); }
+  .t-num { color: var(--pink); }
+  .t-com { color: #6b7686; font-style: italic; }
+  .t-punc { color: var(--fg-dim); }
+
+  /* ---------- pipeline ---------- */
+  .pipe { display: flex; align-items: stretch; gap: 0; flex-wrap: wrap; margin-top: 20px; }
+  .pipe .stage {
+    flex: 1 1 0; min-width: 150px; cursor: pointer; text-align: center;
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 10px; padding: 16px 12px; transition: .15s; position: relative;
+  }
+  .pipe .stage:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .pipe .stage.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  .pipe .stage .n { font-family: var(--mono); font-size: 11px; color: var(--accent); }
+  .pipe .stage .t { font-weight: 600; font-size: 14px; margin: 4px 0; }
+  .pipe .stage .f { font-family: var(--mono); font-size: 11px; color: var(--fg-dim); }
+  .pipe .arrow { display:flex; align-items:center; color: var(--fg-dim); font-size: 22px; padding: 0 6px; }
+  @media (max-width: 820px){ .pipe .arrow { transform: rotate(90deg); width:100%; justify-content:center; } }
+  .pipe-detail {
+    margin-top: 16px; background: var(--bg-soft); border: 1px solid var(--border);
+    border-left: 3px solid var(--accent); border-radius: 8px; padding: 18px 20px;
+    min-height: 60px;
+  }
+  .pipe-detail h4 { margin: 0 0 6px; }
+
+  /* ---------- tabs ---------- */
+  .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 18px 0 0; }
+  .tab {
+    cursor: pointer; padding: 7px 14px; border-radius: 8px 8px 0 0;
+    border: 1px solid transparent; color: var(--fg-dim); font-size: 14px; font-weight: 500;
+  }
+  .tab:hover { color: var(--fg); }
+  .tab.active { color: var(--fg); background: var(--bg-card); border-color: var(--border); border-bottom-color: var(--bg-card); }
+  .tabpanel { display: none; background: var(--bg-card); border: 1px solid var(--border); border-radius: 0 10px 10px 10px; padding: 20px; }
+  .tabpanel.active { display: block; }
+
+  /* ---------- record/json viewer ---------- */
+  .json { font-family: var(--mono); font-size: 13px; line-height: 1.7; white-space: pre-wrap; word-break: break-word; }
+  .field-note { display:inline-block; cursor: help; border-bottom: 1px dotted var(--accent); }
+
+  table.fields { width: 100%; border-collapse: collapse; font-size: 13.5px; margin-top: 10px; }
+  table.fields th, table.fields td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  table.fields th { color: var(--fg-dim); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+  table.fields td.k { font-family: var(--mono); color: var(--purple); white-space: nowrap; }
+  table.fields td.ty { font-family: var(--mono); color: var(--accent-2); font-size: 12px; }
+
+  /* ---------- accordion ---------- */
+  .acc { border: 1px solid var(--border); border-radius: 10px; margin: 10px 0; overflow: hidden; background: var(--bg-card); }
+  .acc summary {
+    cursor: pointer; padding: 14px 18px; font-weight: 600; list-style: none;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .acc summary::-webkit-details-marker { display: none; }
+  .acc summary .chev { color: var(--accent); transition: .2s; }
+  .acc[open] summary .chev { transform: rotate(90deg); }
+  .acc .body { padding: 0 18px 18px; }
+
+  /* ---------- architecture ---------- */
+  .arch-layers { display: flex; flex-direction: column; gap: 10px; margin-top: 20px; }
+  .layer {
+    border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
+    background: linear-gradient(90deg, var(--bg-card), var(--bg-soft));
+  }
+  .layer .head {
+    display: flex; align-items: center; gap: 14px; padding: 14px 18px; cursor: pointer;
+  }
+  .layer .badge {
+    font-family: var(--mono); font-size: 12px; font-weight: 700; padding: 4px 9px;
+    border-radius: 6px; white-space: nowrap;
+  }
+  .layer .head .ttl { font-weight: 600; }
+  .layer .head .sub { color: var(--fg-dim); font-size: 13px; margin-left: auto; text-align: right; }
+  .layer .modules { display: none; padding: 0 18px 16px; gap: 8px; flex-wrap: wrap; }
+  .layer.open .modules { display: flex; }
+  .mod {
+    font-family: var(--mono); font-size: 12.5px; background: var(--bg);
+    border: 1px solid var(--border); border-radius: 7px; padding: 8px 12px;
+    cursor: default;
+  }
+  .mod b { color: var(--accent); }
+  .mod span { color: var(--fg-dim); display: block; font-family: var(--sans); font-size: 12px; margin-top: 2px; }
+
+  .l0 .badge { background: #3a2a14; color: var(--accent); }
+  .l1 .badge { background: #102a4a; color: var(--accent-2); }
+  .l2 .badge { background: #14331c; color: var(--green); }
+  .l3 .badge { background: #2a1f3d; color: var(--purple); }
+
+  /* ---------- command builder ---------- */
+  .builder { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-top: 18px; }
+  .builder .row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+  .builder label { font-size: 13px; color: var(--fg-dim); min-width: 120px; }
+  .builder select, .builder input[type=text] {
+    background: var(--bg); border: 1px solid var(--border); color: var(--fg);
+    border-radius: 7px; padding: 7px 10px; font-family: var(--mono); font-size: 13px; min-width: 180px;
+  }
+  .builder .out {
+    background: #0a0e14; border: 1px solid var(--border); border-radius: 8px;
+    padding: 14px 16px; font-family: var(--mono); font-size: 13.5px; margin-top: 6px; line-height: 1.8;
+  }
+  .toggle { display:inline-flex; align-items:center; gap:6px; font-size:13px; color: var(--fg-dim); cursor:pointer; }
+
+  /* ---------- misc ---------- */
+  .kbd { font-family: var(--mono); font-size: 12px; background: var(--bg-soft); border:1px solid var(--border); border-bottom-width:2px; border-radius: 5px; padding: 1px 6px; }
+  .src-link { font-family: var(--mono); font-size: 12px; }
+  .callout { border-left: 3px solid var(--accent-2); background: var(--bg-soft); padding: 14px 18px; border-radius: 0 8px 8px 0; margin: 16px 0; color: var(--fg-dim); }
+  .callout b { color: var(--fg); }
+  footer { padding: 40px 0 60px; color: var(--fg-dim); font-size: 13px; }
+  .joinmap { font-family: var(--mono); font-size: 13px; background:#0a0e14; border:1px solid var(--border); border-radius:10px; padding:18px; overflow-x:auto; }
+  .joinmap .a { color: var(--accent); }
+  .joinmap .b { color: var(--accent-2); }
+  .joinmap .g { color: var(--green); }
+</style>
+</head>
+<body>
+
+<!-- ===================== NAV ===================== -->
+<nav class="top"><div class="wrap">
+  <span class="brand">commoner<span class="dot">·</span>probe</span>
+  <a class="link" href="#what">What</a>
+  <a class="link" href="#why">Why</a>
+  <a class="link" href="#pipeline">Pipeline</a>
+  <a class="link" href="#data">Real data</a>
+  <a class="link" href="#commands">Commands</a>
+  <a class="link" href="#builder">Try it</a>
+  <a class="link" href="#shapes">Record shapes</a>
+  <a class="link" href="#joins">Joins</a>
+  <a class="link" href="#architecture">Architecture</a>
+  <a class="link" href="#python">Python API</a>
+</div></nav>
+
+<!-- ===================== HERO ===================== -->
+<header class="hero"><div class="wrap">
+  <h1>commoner<span class="probe">·</span>probe</h1>
+  <p class="tag">Sousveillance infrastructure for the state's mandatory disclosure systems.</p>
+  <p class="lead">A commoner probes the state's own paperwork — parliamentary questions, committee
+  reports, state-assembly records, and executive disclosures like corporate-CSR and mineral-fund
+  spending — and turns it into clean, schema-validated evidence.
+  This page explains what the project does, shows you the <em>actual data</em> it produces, and lets
+  you assemble the commands that pull it.</p>
+  <div style="margin-top:22px">
+    <span class="pill">Python ≥ 3.9</span>
+    <span class="pill">v0.4.0</span>
+    <span class="pill">MIT License</span>
+    <span class="pill">JSONL output</span>
+    <span class="pill live">● Layer 0 — acquisition only</span>
+  </div>
+  <div class="code" style="margin-top:24px">
+    <div class="bar"><span>install</span><button class="copy" onclick="cp(this)">copy</button></div>
+    <pre><code><span class="t-cmd">pip</span> install <span class="t-str">"commoner-probe[all]"</span>     <span class="t-com"># requests + PDF extraction</span>
+<span class="t-cmd">pip</span> install <span class="t-str">"commoner-probe[all,dev]"</span> <span class="t-com"># + schema validation + tests</span></code></pre>
+  </div>
+</div></header>
+
+<!-- ===================== WHAT ===================== -->
+<section id="what"><div class="wrap">
+  <h2><span class="num">01</span>What it actually does</h2>
+  <p class="lead">One job, done reliably: <b>acquire</b> Indian legislative <em>and executive</em> disclosure into clean JSONL.
+  It deliberately does <em>not</em> classify, topic-model, or build dossiers — that is someone else's layer.</p>
+
+  <div class="grid cols-3" style="margin-top:24px">
+    <div class="card">
+      <span class="ic">🏛️</span>
+      <h4>Parliamentary questions</h4>
+      <p>Starred &amp; unstarred Q/A from <b>Lok Sabha</b> and <b>Rajya Sabha</b> — who asked, which ministry answered, the date, the session, and the PDF.</p>
+    </div>
+    <div class="card">
+      <span class="ic">📋</span>
+      <h4>Standing committee reports</h4>
+      <p>Budget scrutiny, bill examinations, subject investigations, and <b>Action Taken Reports</b> — with the ATR linked back to the report it answers.</p>
+    </div>
+    <div class="card">
+      <span class="ic">🗺️</span>
+      <h4>State assembly records</h4>
+      <p>Questions, members, and papers-to-be-laid from <b>NeVA</b> portals — the e-Vidhan platform that 28+ state legislatures are onboarding onto.</p>
+    </div>
+  </div>
+
+  <p class="dim" style="margin-top:26px">It also acquires <b>executive disclosure</b> — the spending the state reports about itself:</p>
+  <div class="grid cols-3" style="margin-top:12px">
+    <div class="card">
+      <span class="ic">🏢</span>
+      <h4>MCA CSR company spend</h4>
+      <p>Corporate Social Responsibility CSV exports from the <b>Ministry of Corporate Affairs</b> CDM portal — company, financial year, sector, and amount spent.</p>
+    </div>
+    <div class="card">
+      <span class="ic">⛏️</span>
+      <h4>Mines DMFT / PMKKKY</h4>
+      <p>Raw <b>Ministry of Mines</b> and <b>Odisha DMFT</b> disclosure files — District Mineral Foundation collections and project-fund snapshots, captured with hashes and provenance.</p>
+    </div>
+    <div class="card">
+      <span class="ic">🔗</span>
+      <h4>Cross-source evidence</h4>
+      <p>Bundle executive disclosure (Mines DMFT) beside parliamentary oversight (Sansad Q/A) <b>without flattening</b> unlike source families into one table.</p>
+    </div>
+  </div>
+
+  <div class="callout">
+    <b>The output is the contract.</b> Every probe writes append-only <code>manifest.jsonl</code> (one record per question/report),
+    downloads the source PDFs, and logs a full audit trail in <code>_runs.jsonl</code>. Downstream tools consume that corpus — they never re-scrape.
+  </div>
+</div></section>
+
+<!-- ===================== WHY ===================== -->
+<section id="why"><div class="wrap">
+  <h2><span class="num">02</span>Why it has to exist</h2>
+  <p class="lead">The data is <em>mandatory</em> disclosure — published under the
+  <a href="https://en.wikipedia.org/wiki/Right_to_Information_Act,_2005" target="_blank" rel="noopener">Right to Information Act 2005, §4</a>.
+  It exists. It is just engineered to be practically inaccessible.</p>
+
+  <div class="grid cols-2" style="margin-top:22px">
+    <div class="card"><h4>🚫 No documented API</h4><p>The endpoints sansad.in's own JavaScript calls are undocumented, version without announcement, and differ structurally between Lok Sabha and Rajya Sabha.</p></div>
+    <div class="card"><h4>📄 PDFs are the record</h4><p>Web metadata is sparse. The substance lives in PDFs that must be downloaded and text-extracted to be read programmatically.</p></div>
+    <div class="card"><h4>🌐 28+ bespoke portals</h4><p>Each NeVA state assembly has its own subdomain and state code. None publish a central registry or endpoint docs.</p></div>
+    <div class="card"><h4>📉 Unreliable uptime</h4><p>Portals throttle and 5xx <em>during sessions</em> — exactly when the data matters most — with no <code>Retry-After</code> headers.</p></div>
+  </div>
+
+  <p class="dim" style="margin-top:22px">General scrapers (Scrapy, httpx, Playwright) give you HTTP but zero domain knowledge.
+  They don't know that LS question search buckets by ministry while RS buckets by session number, that committee PDF
+  paths are <em>constructed</em> from <code>reportNo</code>+<code>uuid</code> rather than linked, or that any of those fields
+  need sanitising against path traversal before they touch your filesystem. <b>commoner-probe is that domain knowledge, made executable.</b></p>
+</div></section>
+
+<!-- ===================== PIPELINE ===================== -->
+<section id="pipeline"><div class="wrap">
+  <h2><span class="num">03</span>The acquisition pipeline</h2>
+  <p class="lead">Five stages, left to right. <b>Click a stage</b> to see what it consumes and produces.</p>
+
+  <div class="pipe" id="pipe">
+    <div class="stage" data-k="topic"><div class="n">YOU WRITE</div><div class="t">Topic profile</div><div class="f">topic.json</div></div>
+    <div class="arrow">→</div>
+    <div class="stage" data-k="probe"><div class="n">probe</div><div class="t">Crawl portals</div><div class="f">manifest.jsonl</div></div>
+    <div class="arrow">→</div>
+    <div class="stage" data-k="pdf"><div class="n">download</div><div class="t">Fetch PDFs</div><div class="f">pdfs/ls · pdfs/rs</div></div>
+    <div class="arrow">→</div>
+    <div class="stage" data-k="extract"><div class="n">extract-answers</div><div class="t">Parse text</div><div class="f">answers.jsonl</div></div>
+    <div class="arrow">→</div>
+    <div class="stage" data-k="load"><div class="n">analyse</div><div class="t">Your research</div><div class="f">probe.Corpus(...)</div></div>
+  </div>
+
+  <div class="pipe-detail" id="pipe-detail">
+    <h4>Click a stage above</h4>
+    <p class="dim">Each stage hands a clean artifact to the next. The boundary between stages is always a file on disk you can inspect, validate, and re-run independently.</p>
+  </div>
+</div></section>
+
+<!-- ===================== REAL DATA ===================== -->
+<section id="data"><div class="wrap">
+  <h2><span class="num">04</span>The real data you're dealing with</h2>
+  <p class="lead">These are <b>actual records</b> from the bundled smoke corpus and live portals — not mockups.
+  Switch tabs to see each kind, and follow the links to the real source documents.</p>
+
+  <div class="tabs" id="datatabs">
+    <div class="tab active" data-p="d-topic">① Topic profile</div>
+    <div class="tab" data-p="d-committee">② Committee report</div>
+    <div class="tab" data-p="d-qa">③ Q/A manifest</div>
+    <div class="tab" data-p="d-answer">④ Extracted answer</div>
+    <div class="tab" data-p="d-source">⑤ Source portals</div>
+  </div>
+
+  <div class="tabpanel active" id="d-topic">
+    <p>A topic profile is the <b>only thing you write</b>. It tells the probe what to search for and which ministries to filter.
+    This is the bundled <code>libraries</code> example — copy it, edit it, point a probe at it.</p>
+    <div class="code">
+      <div class="bar"><span>examples/topics/libraries.json</span><button class="copy" onclick="cp(this)">copy</button></div>
+      <pre><code>{
+  <span class="t-key">"name"</span>: <span class="t-str">"libraries"</span>,
+  <span class="t-key">"description"</span>: <span class="t-str">"Public library infrastructure and policy"</span>,
+  <span class="t-key">"search_groups"</span>: {
+    <span class="t-key">"public_libraries"</span>: [<span class="t-str">"public library"</span>, <span class="t-str">"rural library"</span>],
+    <span class="t-key">"policy"</span>: [<span class="t-str">"National Mission on Libraries"</span>, <span class="t-str">"RRRLF"</span>]
+  },
+  <span class="t-key">"lok_sabha_ministries"</span>: [<span class="t-str">"CULTURE"</span>, <span class="t-str">"EDUCATION"</span>],
+  <span class="t-key">"rajya_sabha_ministry_likes"</span>: [<span class="t-str">"CULTURE"</span>, <span class="t-str">"EDUCATION"</span>]
+}</code></pre>
+    </div>
+    <table class="fields">
+      <tr><th>Field</th><th>What it controls</th></tr>
+      <tr><td class="k">search_groups</td><td>Keyword groups for Lok Sabha full-text search. Each query runs independently; results are union-deduped on <code>key</code>.</td></tr>
+      <tr><td class="k">lok_sabha_ministries</td><td><b>Exact</b> ministry filter for LS (case-sensitive).</td></tr>
+      <tr><td class="k">rajya_sabha_ministry_likes</td><td><b>LIKE / prefix</b> match for RS — the two houses' APIs filter differently.</td></tr>
+    </table>
+    <p class="dim" style="margin-top:14px">Five profiles ship built-in: <code>libraries</code>, <code>affirmative_action</code>, <code>home_affairs_starred</code>, <code>mines_dmft_pmkkky</code>, <code>narcotics_substance</code>.
+    Drop one to disk with <code>commoner-probe init-topic --name libraries --out topic.json</code>.</p>
+  </div>
+
+  <div class="tabpanel" id="d-committee">
+    <p>One real committee-report record from <code>examples/corpora/committees-smoke/manifest.jsonl</code>. This is a
+    <b>Demands-for-Grants</b> report — the Finance committee dissecting a ministry's budget.</p>
+    <div class="code">
+      <div class="bar"><span>manifest.jsonl · kind = "committee_report"</span><button class="copy" onclick="cp(this)">copy</button></div>
+      <pre><code>{
+  <span class="t-key">"key"</span>: <span class="t-str">"LS|finance|35|18"</span>,
+  <span class="t-key">"kind"</span>: <span class="t-str">"committee_report"</span>,
+  <span class="t-key">"house"</span>: <span class="t-str">"Lok Sabha"</span>,
+  <span class="t-key">"report_type"</span>: <span class="t-str">"demands_for_grants"</span>,
+  <span class="t-key">"presented_via"</span>: <span class="t-str">"both_houses"</span>,
+  <span class="t-key">"committee_slug"</span>: <span class="t-str">"finance"</span>,
+  <span class="t-key">"committee_name"</span>: <span class="t-str">"Finance"</span>,
+  <span class="t-key">"report_no"</span>: <span class="t-num">35</span>,
+  <span class="t-key">"loksabha_no"</span>: <span class="t-num">18</span>,
+  <span class="t-key">"title"</span>: <span class="t-str">"Report on 'Demands for Grants (2026-27)' of the Ministry of Statistics and Programme Implementation."</span>,
+  <span class="t-key">"date"</span>: <span class="t-str">"2026-03-17"</span>,
+  <span class="t-key">"date_presented_ls"</span>: <span class="t-str">"2026-03-17"</span>,
+  <span class="t-key">"date_laid_rs"</span>: <span class="t-str">"2026-03-17"</span>,
+  <span class="t-key">"pdf_url"</span>: <span class="t-str">"https://sansad.in/getFile/app/lsscommittee/Finance/18_Finance_35.pdf?source=app"</span>,
+  <span class="t-key">"source"</span>: <span class="t-str">"sansad.in/api_ls/committee"</span>
+}</code></pre>
+    </div>
+    <p>The <code>report_type</code> field discriminates four shapes of committee work:</p>
+    <table class="fields">
+      <tr><th>report_type</th><th>What it is</th></tr>
+      <tr><td class="k">demands_for_grants</td><td>Annual budget scrutiny — the committee dissects ministry spending.</td></tr>
+      <tr><td class="k">bill</td><td>The committee's examination of a pending bill before it passes.</td></tr>
+      <tr><td class="k">subject</td><td>Own-initiative policy investigation — the deepest substantive record.</td></tr>
+      <tr><td class="k">action_taken</td><td>The government's formal response to the committee's recommendations (ATR).</td></tr>
+    </table>
+    <p style="margin-top:14px">→ The real PDF this record points at:
+      <a class="src-link" href="https://sansad.in/getFile/app/lsscommittee/Finance/18_Finance_35.pdf?source=app" target="_blank" rel="noopener">18_Finance_35.pdf ↗</a></p>
+  </div>
+
+  <div class="tabpanel" id="d-qa">
+    <p>A parliamentary-question manifest record. <b>Lok Sabha and Rajya Sabha diverge</b> — toggle below to compare the two shapes the probe emits.</p>
+    <div class="tabs" id="qatabs" style="margin-top:0">
+      <div class="tab active" data-p="qa-ls">Lok Sabha (Shape A)</div>
+      <div class="tab" data-p="qa-rs">Rajya Sabha (Shape B)</div>
+    </div>
+    <div class="tabpanel active" id="qa-ls" style="border-radius:0 10px 10px 10px">
+      <div class="code">
+        <div class="bar"><span>manifest.jsonl · house = "Lok Sabha"</span><button class="copy" onclick="cp(this)">copy</button></div>
+        <pre><code>{
+  <span class="t-key">"key"</span>: <span class="t-str">"LS|U|1247|2024-12-13"</span>,            <span class="t-com">// LS|{qtype}|{qno}|{date}</span>
+  <span class="t-key">"kind"</span>: <span class="t-str">"qa"</span>,
+  <span class="t-key">"house"</span>: <span class="t-str">"Lok Sabha"</span>,
+  <span class="t-key">"title"</span>: <span class="t-str">"Public Libraries in Rural Areas"</span>,
+  <span class="t-key">"date"</span>: <span class="t-str">"2024-12-13"</span>,
+  <span class="t-key">"qtype"</span>: <span class="t-str">"UNSTARRED"</span>,
+  <span class="t-key">"qno"</span>: <span class="t-str">"1247"</span>,
+  <span class="t-key">"ministry"</span>: <span class="t-str">"CULTURE"</span>,
+  <span class="t-key">"askers"</span>: [<span class="t-str">"Shri A. B. Member"</span>],
+  <span class="t-key">"asker_details"</span>: [{<span class="t-key">"name"</span>:<span class="t-str">"Shri A. B. Member"</span>,<span class="t-key">"party"</span>:<span class="t-str">"INC"</span>,<span class="t-key">"house"</span>:<span class="t-str">"ls"</span>}],
+  <span class="t-key">"found_via_group"</span>: <span class="t-str">"public_libraries"</span>,    <span class="t-com">// which topic group surfaced it</span>
+  <span class="t-key">"found_via_query"</span>: <span class="t-str">"rural library"</span>,
+  <span class="t-key">"pdf_url"</span>: <span class="t-str">"https://elibrary.sansad.in/.../AU1247.pdf"</span>,
+  <span class="t-key">"source"</span>: <span class="t-str">"elibrary.sansad.in"</span>
+}</code></pre>
+      </div>
+    </div>
+    <div class="tabpanel" id="qa-rs" style="border-radius:0 10px 10px 10px">
+      <div class="code">
+        <div class="bar"><span>manifest.jsonl · house = "Rajya Sabha"</span><button class="copy" onclick="cp(this)">copy</button></div>
+        <pre><code>{
+  <span class="t-key">"key"</span>: <span class="t-str">"RS|U|214|2024-12-05"</span>,
+  <span class="t-key">"kind"</span>: <span class="t-str">"qa"</span>,
+  <span class="t-key">"house"</span>: <span class="t-str">"Rajya Sabha"</span>,
+  <span class="t-key">"qslno"</span>: <span class="t-str">"214"</span>,                          <span class="t-com">// RS-only serial number</span>
+  <span class="t-key">"ses_no"</span>: <span class="t-num">266</span>,                            <span class="t-com">// RS buckets by SESSION, not date</span>
+  <span class="t-key">"title"</span>: <span class="t-str">"Funding for public libraries"</span>,
+  <span class="t-key">"date"</span>: <span class="t-str">"2024-12-05"</span>,
+  <span class="t-key">"qtype"</span>: <span class="t-str">"UNSTARRED"</span>,
+  <span class="t-key">"ministry"</span>: <span class="t-str">"CULTURE"</span>,
+  <span class="t-key">"question_text"</span>: <span class="t-str">"Whether the Government proposes to ..."</span>, <span class="t-com">// RS ships text in the API!</span>
+  <span class="t-key">"answer_text"</span>: <span class="t-str">"The Rashtriya Raksha ... (a) Yes ..."</span>,
+  <span class="t-key">"pdf_url"</span>: <span class="t-str">"https://rsdoc.nic.in/.../214.pdf"</span>,
+  <span class="t-key">"pdf_url_hindi"</span>: <span class="t-str">"https://rsdoc.nic.in/.../214_H.pdf"</span>,
+  <span class="t-key">"source"</span>: <span class="t-str">"rsdoc.nic.in"</span>
+}</code></pre>
+      </div>
+    </div>
+    <div class="callout">
+      <b>Why two shapes?</b> The two houses run different software. LS records carry <code>uuid</code>, <code>handle</code>, <code>session</code>,
+      <code>loksabhanumber</code>, <code>found_via_group</code>. RS records carry <code>qslno</code>, <code>ses_no</code>, inline
+      <code>question_text</code>/<code>answer_text</code>, and a Hindi PDF. Both share <code>key</code>, <code>kind</code>, <code>house</code>,
+      <code>date</code>, <code>qtype</code>, <code>ministry</code>, <code>askers</code>. The library normalises what it can and preserves the rest.
+    </div>
+  </div>
+
+  <div class="tabpanel" id="d-answer">
+    <p>After <code>extract-answers</code> parses the PDFs, each text unit becomes a record in <code>answers.jsonl</code>.
+    Three shapes, discriminated by <code>kind</code>:</p>
+    <div class="code">
+      <div class="bar"><span>answers.jsonl · kind = "atr_response"</span><button class="copy" onclick="cp(this)">copy</button></div>
+      <pre><code>{
+  <span class="t-key">"key"</span>: <span class="t-str">"LS|finance|41|18"</span>,            <span class="t-com">// joins back to the manifest record</span>
+  <span class="t-key">"kind"</span>: <span class="t-str">"atr_response"</span>,
+  <span class="t-key">"recommendation_no"</span>: <span class="t-num">7</span>,
+  <span class="t-key">"recommendation_text"</span>: <span class="t-str">"The Committee recommends that the Ministry expedite release of pending RRRLF grants to State library authorities..."</span>,
+  <span class="t-key">"response_text"</span>: <span class="t-str">"The Government has noted the recommendation. Funds amounting to Rs. 25 crore have been released..."</span>,
+  <span class="t-key">"confidence"</span>: <span class="t-num">0.9</span>,
+  <span class="t-key">"extractor"</span>: <span class="t-str">"answers_regex_v1"</span>,
+  <span class="t-key">"source_pdf"</span>: <span class="t-str">"pdfs/ls/18_Finance_41.pdf"</span>
+}</code></pre>
+    </div>
+    <table class="fields">
+      <tr><th>kind</th><th>From which PDF</th><th>Carries</th></tr>
+      <tr><td class="k">qa_response</td><td>Q/A PDFs</td><td><code>question_text</code> + <code>answer_text</code> pairs, split at a boundary marker</td></tr>
+      <tr><td class="k">atr_response</td><td>Action Taken Report PDFs</td><td><code>(recommendation_no, recommendation_text, response_text)</code> triples</td></tr>
+      <tr><td class="k">dfg_recommendation</td><td>DFG / bill / subject PDFs</td><td>numbered observation paragraphs</td></tr>
+    </table>
+    <p class="dim" style="margin-top:14px">Each record keeps a <code>confidence</code> score and the <code>extractor</code> version, so you can filter on parse quality and re-run as the extractor improves.</p>
+  </div>
+
+  <div class="tabpanel" id="d-source">
+    <p>Everything traces to a real, public, mandatory-disclosure portal. Go look at the originals:</p>
+    <div class="grid cols-2" style="margin-top:8px">
+      <div class="card"><h4>🏛️ sansad.in — LS e-library</h4><p>Lok Sabha questions &amp; committee reports. <br><a href="https://sansad.in" target="_blank" rel="noopener">sansad.in ↗</a> · <span class="mono">source: elibrary.sansad.in</span></p></div>
+      <div class="card"><h4>📜 rsdoc.nic.in</h4><p>Rajya Sabha question documents. <br><a href="https://rsdoc.nic.in" target="_blank" rel="noopener">rsdoc.nic.in ↗</a> · <span class="mono">source: rsdoc.nic.in</span></p></div>
+      <div class="card"><h4>🗺️ NeVA — National e-Vidhan</h4><p>State-assembly records, per-state subdomains. <br><a href="https://neva.gov.in" target="_blank" rel="noopener">neva.gov.in ↗</a> · e.g. <span class="mono">gujarat.neva.gov.in</span></p></div>
+      <div class="card"><h4>📄 Example PDF</h4><p>A live committee report this corpus indexes. <br><a href="https://sansad.in/getFile/app/lsscommittee/Finance/18_Finance_35.pdf?source=app" target="_blank" rel="noopener">18_Finance_35.pdf ↗</a></p></div>
+      <div class="card"><h4>🏢 MCA CDM — CSR data</h4><p>Company-wise CSR spend CSV exports. <br><a href="https://www.mcacdm.nic.in/csr-data" target="_blank" rel="noopener">mcacdm.nic.in ↗</a> · <span class="mono">source: mcacdm.nic.in</span></p></div>
+      <div class="card"><h4>⛏️ Ministry of Mines</h4><p>DMF collection &amp; project-fund CSV snapshots. <br><a href="https://mines.gov.in" target="_blank" rel="noopener">mines.gov.in ↗</a> · <span class="mono">source: mines-gov-in</span></p></div>
+      <div class="card"><h4>🗺️ Odisha DMF</h4><p>State District Mineral Foundation disclosures. <br><a href="https://dmf.odisha.gov.in" target="_blank" rel="noopener">dmf.odisha.gov.in ↗</a> · <span class="mono">source: odisha</span></p></div>
+    </div>
+    <p class="dim" style="margin-top:14px">No official API docs exist for any of these. The reverse-engineered endpoint reference the library is built on lives in
+    <code>docs/RATIONALE.md</code> and <code>docs/SCHEMAS.md</code>.</p>
+  </div>
+</div></section>
+
+<!-- ===================== COMMANDS ===================== -->
+<section id="commands"><div class="wrap">
+  <h2><span class="num">05</span>Every command, explained</h2>
+  <p class="lead">Ten subcommands plus an <code>init-topic</code> scaffolder. <b>Expand any one</b> to see what it does, its real flags, and a runnable example.</p>
+
+  <details class="acc" open><summary><span>🏛️ <code>sansad</code> — parliamentary questions</span><span class="chev">▸</span></summary>
+    <div class="body">
+      <p>Crawls Lok Sabha + Rajya Sabha questions matching your topic, writing one manifest record per question and (by default) downloading each PDF.</p>
+      <div class="code"><div class="bar"><span>example</span><button class="copy" onclick="cp(this)">copy</button></div>
+      <pre><code><span class="t-cmd">commoner-probe</span> sansad \
+  <span class="t-flag">--topic</span> topic.json \
+  <span class="t-flag">--out</span> data/climate \
+  <span class="t-flag">--house</span> both \
+  <span class="t-flag">--from-date</span> 2019-01-01 \
+  <span class="t-flag">--to-date</span> 2026-01-01</code></pre></div>
+      <table class="fields">
+        <tr><th>Flag</th><th>Default</th><th>Does</th></tr>
+        <tr><td class="k">--topic</td><td>required</td><td>Path to topic profile JSON</td></tr>
+        <tr><td class="k">--out</td><td>required</td><td>Output corpus directory</td></tr>
+        <tr><td class="k">--house</td><td>both</td><td><code>ls</code>, <code>rs</code>, or <code>both</code></td></tr>
+        <tr><td class="k">--from-date / --to-date</td><td>—</td><td>Date range (YYYY-MM-DD)</td></tr>
+        <tr><td class="k">--qtype</td><td>both</td><td><code>starred</code>, <code>unstarred</code>, or <code>both</code></td></tr>
+        <tr><td class="k">--sessions</td><td>1-267</td><td>Rajya Sabha session range</td></tr>
+        <tr><td class="k">--with-entities</td><td>off</td><td>Resolve asker names to stable <code>entity_id</code>s</td></tr>
+        <tr><td class="k">--max-records N</td><td>—</td><td>Smoke-test brake: stop after N new records/house</td></tr>
+        <tr><td class="k">--no-download</td><td>off</td><td>Metadata only, skip PDFs</td></tr>
+        <tr><td class="k">--reset</td><td>off</td><td>Wipe manifest and start fresh</td></tr>
+      </table>
+    </div>
+  </details>
+
+  <details class="acc"><summary><span>📋 <code>committees</code> — standing committee reports</span><span class="chev">▸</span></summary>
+    <div class="body">
+      <p>One record per DRSC report (Lok Sabha + Rajya Sabha department-related committees).</p>
+      <div class="code"><div class="bar"><span>example</span><button class="copy" onclick="cp(this)">copy</button></div>
+      <pre><code><span class="t-cmd">commoner-probe</span> committees \
+  <span class="t-flag">--topic</span> topic.json \
+  <span class="t-flag">--out</span> data/committees \
+  <span class="t-flag">--house</span> both \
+  <span class="t-flag">--committees</span> finance,education</code></pre></div>
+      <p><b>16 LS committees:</b> <span class="mono dim">agriculture, chemicals, coal, communications, consumer_affairs, defence, energy, external_affairs, finance, housing, labour, petroleum, railways, rural_development, social_justice, water_resources</span></p>
+      <p><b>8 RS committees:</b> <span class="mono dim">commerce, education, health, home_affairs, industry, personnel, science, transport</span></p>
+    </div>
+  </details>
+
+  <details class="acc"><summary><span>📄 <code>extract-answers</code> — parse PDFs → text</span><span class="chev">▸</span></summary>
+    <div class="body">
+      <p>Reads <code>manifest.jsonl</code> + downloaded PDFs and writes <code>answers.jsonl</code> with Q/A pairs, ATR recommendation/response triples, and DFG observation paragraphs. Requires <code>pip install "commoner-probe[pdf]"</code>.</p>
+      <div class="code"><div class="bar"><span>example</span><button class="copy" onclick="cp(this)">copy</button></div>
+      <pre><code><span class="t-cmd">commoner-probe</span> extract-answers <span class="t-flag">--out</span> data/climate
+<span class="t-cmd">commoner-probe</span> extract-answers <span class="t-flag">--out</span> data/climate <span class="t-flag">--refresh</span> <span class="t-com"># force re-parse</span></code></pre></div>
+    </div>
+  </details>
+
+  <details class="acc"><summary><span>🔗 <code>atr-linkage</code> — connect ATR → original report</span><span class="chev">▸</span></summary>
+    <div class="body">
+      <p>For every Action Taken Report, parses the title to find the original committee report it responds to, writing <code>atr_linkage.jsonl</code>. Idempotent — safe to re-run.</p>
+      <div class="code"><div class="bar"><span>example</span><button class="copy" onclick="cp(this)">copy</button></div>
+      <pre><code><span class="t-cmd">commoner-probe</span> atr-linkage <span class="t-flag">--out</span> data/committees</code></pre></div>
+      <p class="dim">This is what enables lifecycle analysis: <em>recommendation → government acceptance/rejection → follow-up</em>.</p>
+    </div>
+  </details>
+
+  <details class="acc"><summary><span>🗺️ <code>state-assembly</code> — NeVA portals</span><span class="chev">▸</span></summary>
+    <div class="body">
+      <p>Probes any NeVA state-assembly portal: listed + unlisted questions, member directory, and papers-to-be-laid.</p>
+      <div class="code"><div class="bar"><span>example</span><button class="copy" onclick="cp(this)">copy</button></div>
+      <pre><code><span class="t-cmd">commoner-probe</span> state-assembly \
+  <span class="t-flag">--portal</span> gujarat \
+  <span class="t-flag">--state</span> GJ \
+  <span class="t-flag">--out</span> data/gujarat \
+  <span class="t-flag">--assemblies</span> 15</code></pre></div>
+    </div>
+  </details>
+
+  <details class="acc"><summary><span>🏢 <code>mca-csr</code> — MCA CSR company-spend exports</span><span class="chev">▸</span></summary>
+    <div class="body">
+      <p>Downloads CSV exports from the Ministry of Corporate Affairs CDM CSR data page (<code>mcacdm.nic.in/csr-data</code> → <code>/cdm/export.php</code>) and writes one <code>manifest.jsonl</code> record per financial year (<code>kind: mca_csr_company_spend</code>).</p>
+      <div class="code"><div class="bar"><span>example</span><button class="copy" onclick="cp(this)">copy</button></div>
+      <pre><code><span class="t-cmd">commoner-probe</span> mca-csr \
+  <span class="t-flag">--out</span> data/mca-csr \
+  <span class="t-flag">--years</span> 2022-23,2021-22</code></pre></div>
+      <table class="fields">
+        <tr><th>Flag</th><th>Default</th><th>Does</th></tr>
+        <tr><td class="k">--out</td><td>required</td><td>Output corpus directory</td></tr>
+        <tr><td class="k">--years</td><td>required</td><td>Comma-separated financial years, e.g. <code>2022-23</code> or <code>FY 2022-23</code></td></tr>
+        <tr><td class="k">--sleep</td><td>2.0</td><td>Seconds between requests</td></tr>
+        <tr><td class="k">--dry-run</td><td>off</td><td>Print manifest records without a network session or writing <code>manifest.jsonl</code></td></tr>
+      </table>
+    </div>
+  </details>
+
+  <details class="acc"><summary><span>⛏️ <code>mines-dmft</code> — Ministry of Mines / DMFT files</span><span class="chev">▸</span></summary>
+    <div class="body">
+      <p>Acquires raw Ministry of Mines (<code>mines.gov.in</code>) and Odisha DMFT (<code>dmf.odisha.gov.in</code>) public disclosure files — DMF collections, project-fund status, and sector/state allocations — each captured with a SHA-256 hash and source metadata (<code>kind: mines_dmft_source_file</code>). Ministry CSVs are cumulative snapshots, not fiscal-year series.</p>
+      <div class="code"><div class="bar"><span>example</span><button class="copy" onclick="cp(this)">copy</button></div>
+      <pre><code><span class="t-cmd">commoner-probe</span> mines-dmft \
+  <span class="t-flag">--out</span> data/mines-dmft \
+  <span class="t-flag">--sources</span> mines-gov-in,odisha</code></pre></div>
+      <table class="fields">
+        <tr><th>Flag</th><th>Default</th><th>Does</th></tr>
+        <tr><td class="k">--out</td><td>required</td><td>Output corpus directory</td></tr>
+        <tr><td class="k">--sources</td><td>mines-gov-in,odisha</td><td>Comma-separated sources to fetch</td></tr>
+        <tr><td class="k">--sleep</td><td>1.0</td><td>Seconds between requests</td></tr>
+        <tr><td class="k">--ministry-endpoints / --odisha-endpoints</td><td>—</td><td>Optional comma-separated filenames for focused runs</td></tr>
+        <tr><td class="k">--dry-run</td><td>off</td><td>Print manifest records without network sessions or writing <code>manifest.jsonl</code></td></tr>
+      </table>
+    </div>
+  </details>
+
+  <details class="acc"><summary><span>🔗 <code>evidence dmft</code> — cross-source evidence bundle</span><span class="chev">▸</span></summary>
+    <div class="body">
+      <p>Pairs Ministry of Mines DMFT disclosure records (<code>executive_disclosure</code>) with Sansad Q/A oversight records (<code>parliamentary_oversight</code>) into one JSON bundle — keeping the source families side by side instead of flattening them into one table.</p>
+      <div class="code"><div class="bar"><span>example</span><button class="copy" onclick="cp(this)">copy</button></div>
+      <pre><code><span class="t-cmd">commoner-probe</span> evidence dmft \
+  <span class="t-flag">--mines-dmft-dir</span> data/mines-dmft \
+  <span class="t-flag">--sansad-dir</span> data/sansad/mines-dmft-pmkkky \
+  <span class="t-flag">--out</span> data/evidence/dmft.json</code></pre></div>
+      <table class="fields">
+        <tr><th>Flag</th><th>Default</th><th>Does</th></tr>
+        <tr><td class="k">--mines-dmft-dir</td><td>required</td><td>Ministry of Mines / DMFT disclosure corpus directory</td></tr>
+        <tr><td class="k">--sansad-dir</td><td>—</td><td>Sansad Q/A corpus directory</td></tr>
+        <tr><td class="k">--out</td><td>stdout</td><td>Write bundle JSON to this path; defaults to stdout</td></tr>
+        <tr><td class="k">--ministry</td><td>MINES</td><td>Sansad ministry filter</td></tr>
+        <tr><td class="k">--terms</td><td>DMFT/PMKKKY</td><td>Comma-separated filter terms; defaults to DMFT/PMKKKY terms</td></tr>
+      </table>
+    </div>
+  </details>
+
+  <details class="acc"><summary><span>📊 <code>stats</code> — corpus health</span><span class="chev">▸</span></summary>
+    <div class="body">
+      <p>Record counts, coverage, top ministries. Add <code>--json</code> for a machine-readable object.</p>
+      <div class="code"><div class="bar"><span>example</span><button class="copy" onclick="cp(this)">copy</button></div>
+      <pre><code><span class="t-cmd">commoner-probe</span> stats <span class="t-flag">--out</span> data/climate
+<span class="t-cmd">commoner-probe</span> stats <span class="t-flag">--out</span> data/climate <span class="t-flag">--json</span></code></pre></div>
+    </div>
+  </details>
+
+  <details class="acc"><summary><span>✅ <code>validate</code> — schema validation</span><span class="chev">▸</span></summary>
+    <div class="body">
+      <p>Validates every JSONL file against its JSON Schema; exits 1 on errors. Requires the <code>[dev]</code> extra.</p>
+      <div class="code"><div class="bar"><span>example</span><button class="copy" onclick="cp(this)">copy</button></div>
+      <pre><code><span class="t-cmd">commoner-probe</span> validate <span class="t-flag">--out</span> data/climate</code></pre></div>
+    </div>
+  </details>
+
+  <details class="acc"><summary><span>📝 <code>init-topic</code> — scaffold a topic profile</span><span class="chev">▸</span></summary>
+    <div class="body">
+      <p>Drops a built-in topic profile to disk so you can edit it instead of writing JSON from scratch.</p>
+      <div class="code"><div class="bar"><span>example</span><button class="copy" onclick="cp(this)">copy</button></div>
+      <pre><code><span class="t-cmd">commoner-probe</span> init-topic <span class="t-flag">--name</span> libraries <span class="t-flag">--out</span> topic.json</code></pre></div>
+      <p class="dim">Built-ins: <code>libraries</code> · <code>affirmative_action</code> · <code>home_affairs_starred</code> · <code>mines_dmft_pmkkky</code> · <code>narcotics_substance</code></p>
+    </div>
+  </details>
+</div></section>
+
+<!-- ===================== COMMAND BUILDER ===================== -->
+<section id="builder"><div class="wrap">
+  <h2><span class="num">06</span>Try it — build a command</h2>
+  <p class="lead">Pick options; the exact command assembles live below. Copy it into your terminal.</p>
+
+  <div class="builder">
+    <div class="row">
+      <label>Command</label>
+      <select id="b-cmd">
+        <option value="sansad">sansad — parliamentary questions</option>
+        <option value="committees">committees — committee reports</option>
+        <option value="state-assembly">state-assembly — NeVA portal</option>
+        <option value="mca-csr">mca-csr — MCA CSR exports</option>
+        <option value="mines-dmft">mines-dmft — Mines / DMFT files</option>
+        <option value="evidence-dmft">evidence dmft — cross-source bundle</option>
+      </select>
+    </div>
+    <div class="row" data-for="sansad committees">
+      <label>Topic profile</label>
+      <input id="b-topic" type="text" value="topic.json">
+    </div>
+    <div class="row" data-for="sansad committees state-assembly mca-csr mines-dmft">
+      <label>Output dir</label>
+      <input id="b-out" type="text" value="data/climate">
+    </div>
+    <div class="row" data-for="sansad committees">
+      <label>House</label>
+      <select id="b-house"><option>both</option><option>ls</option><option>rs</option></select>
+    </div>
+    <div class="row" data-for="sansad">
+      <label>Question type</label>
+      <select id="b-qtype"><option>both</option><option>starred</option><option>unstarred</option></select>
+    </div>
+    <div class="row" data-for="sansad">
+      <label>From date</label>
+      <input id="b-from" type="text" value="2019-01-01" placeholder="YYYY-MM-DD (optional)">
+    </div>
+    <div class="row" data-for="state-assembly">
+      <label>Portal / State</label>
+      <input id="b-portal" type="text" value="gujarat" style="min-width:120px">
+      <input id="b-state" type="text" value="GJ" style="min-width:70px">
+    </div>
+    <div class="row" data-for="state-assembly">
+      <label>Assemblies</label>
+      <input id="b-asm" type="text" value="15">
+    </div>
+    <div class="row" data-for="mca-csr">
+      <label>Financial years</label>
+      <input id="b-years" type="text" value="2022-23,2021-22">
+    </div>
+    <div class="row" data-for="mines-dmft">
+      <label>Sources</label>
+      <input id="b-sources" type="text" value="mines-gov-in,odisha">
+    </div>
+    <div class="row" data-for="evidence-dmft">
+      <label>Mines DMFT dir</label>
+      <input id="b-mdir" type="text" value="data/mines-dmft">
+    </div>
+    <div class="row" data-for="evidence-dmft">
+      <label>Sansad dir</label>
+      <input id="b-sdir" type="text" value="data/sansad/mines-dmft-pmkkky">
+    </div>
+    <div class="row" data-for="evidence-dmft">
+      <label>Output file</label>
+      <input id="b-eout" type="text" value="data/evidence/dmft.json">
+    </div>
+    <div class="row" data-for="sansad committees state-assembly">
+      <label>Options</label>
+      <span class="toggle"><input type="checkbox" id="b-nodl"> <code>--no-download</code> (metadata only)</span>
+      <span class="toggle" data-for="sansad"><input type="checkbox" id="b-ent"> <code>--with-entities</code></span>
+    </div>
+    <div class="out" id="b-out-text"></div>
+    <div style="text-align:right;margin-top:10px"><button class="copy" id="b-copy" onclick="cpText(document.getElementById('b-out-text').innerText, this)">copy command</button></div>
+  </div>
+</div></section>
+
+<!-- ===================== RECORD SHAPES ===================== -->
+<section id="shapes"><div class="wrap">
+  <h2><span class="num">07</span>The files a corpus contains</h2>
+  <p class="lead">A corpus directory is just files. Here's the full inventory and what writes each one.</p>
+  <table class="fields">
+    <tr><th>File</th><th>Contents</th><th>Written by</th></tr>
+    <tr><td class="k">manifest.jsonl</td><td>One record per question, committee report, CSR export year, or DMFT source file (append-only)</td><td class="ty">sansad · committees · mca-csr · mines-dmft</td></tr>
+    <tr><td class="k">source CSV / JSON / HTML files</td><td>Raw source files for source-specific probes (MCA CSR, Mines DMFT)</td><td class="ty">mca-csr · mines-dmft</td></tr>
+    <tr><td class="k">answers.jsonl</td><td>Extracted Q/A pairs &amp; recommendation/response triples</td><td class="ty">extract-answers</td></tr>
+    <tr><td class="k">atr_linkage.jsonl</td><td>Each ATR linked to the report it responds to</td><td class="ty">atr-linkage</td></tr>
+    <tr><td class="k">evidence/*.json</td><td>Cross-source bundle: executive disclosure + parliamentary oversight</td><td class="ty">evidence dmft</td></tr>
+    <tr><td class="k">_runs.jsonl</td><td>Audit log: scope, topic hash, errors, per-bucket counts</td><td class="ty">every crawl</td></tr>
+    <tr><td class="k">entities/*.jsonl</td><td>People + their MP / committee / ministerial memberships</td><td class="ty">--with-entities</td></tr>
+    <tr><td class="k">questions.jsonl · members.jsonl · papers_laid.jsonl</td><td>State-assembly records (NeVA)</td><td class="ty">state-assembly</td></tr>
+    <tr><td class="k">pdfs/ls/ · pdfs/rs/</td><td>Downloaded source PDFs</td><td class="ty">crawlers</td></tr>
+    <tr><td class="k">probe.log</td><td>Human-readable progress log</td><td class="ty">crawlers</td></tr>
+  </table>
+  <p class="dim" style="margin-top:14px">Full field-level documentation for every file: <code>docs/SCHEMAS.md</code>.</p>
+</div></section>
+
+<!-- ===================== JOINS ===================== -->
+<section id="joins"><div class="wrap">
+  <h2><span class="num">08</span>How the files join</h2>
+  <p class="lead">The keys are designed to cross-reference. This is what makes the corpus a <em>graph</em>, not just a pile of records.</p>
+  <div class="joinmap">
+<span class="a">manifest.jsonl</span>     .key            ←→  <span class="b">answers.jsonl</span>      .key
+<span class="a">manifest.jsonl</span>     .run_id         ←→  <span class="b">_runs.jsonl</span>        .run_id
+<span class="a">manifest.jsonl</span>     .key            ←→  <span class="b">atr_linkage.jsonl</span>  .atr_key            (ATR side)
+<span class="a">atr_linkage</span>       .references_report_key ←→ <span class="b">manifest.jsonl</span> .key      (original side)
+<span class="a">manifest.jsonl</span>     .asker_entity_ids[] ←→ <span class="b">entities/people.jsonl</span> .entity_id
+  </div>
+
+  <h3>The ATR life-cycle chain — the research-grade unit of analysis</h3>
+  <p class="dim">This is the payoff: trace a committee's recommendation all the way to the government's written response.</p>
+  <div class="joinmap">
+<span class="g">manifest</span> (committee_report · report_type = demands_for_grants | bill | subject)
+  └─ <span class="g">answers</span> (kind=dfg_recommendation)        ← the committee's original recommendation
+  └─ <span class="a">atr_linkage</span>.references_report_key
+       └─ <span class="g">manifest</span> (committee_report · report_type = action_taken)
+            └─ <span class="g">answers</span> (kind=atr_response)     ← the government's response
+  </div>
+</div></section>
+
+<!-- ===================== ARCHITECTURE ===================== -->
+<section id="architecture"><div class="wrap">
+  <h2><span class="num">09</span>High-level architecture</h2>
+  <p class="lead">Four layers, bottom to top. <b>Click a layer</b> to expand the modules inside it.
+  The whole library is "Layer 0" of a larger stack — it acquires; everything above analyses.</p>
+
+  <div class="arch-layers" id="arch">
+    <div class="layer l3" data-k="api">
+      <div class="head">
+        <span class="badge">CONSUME</span>
+        <span class="ttl">Python API &amp; analytics surface</span>
+        <span class="sub">what researchers import</span>
+      </div>
+      <div class="modules">
+        <div class="mod"><b>corpus.py</b><span>Corpus(): typed iterators, join_qa(), join_atr_chain(), to_dataframe()</span></div>
+        <div class="mod"><b>records.py</b><span>frozen dataclasses for every record shape</span></div>
+        <div class="mod"><b>stats.py</b><span>corpus health metrics &amp; top-ministry counts</span></div>
+        <div class="mod"><b>validate.py</b><span>JSON-Schema validation of every file</span></div>
+        <div class="mod"><b>evidence.py</b><span>cross-source evidence bundles (executive disclosure × oversight)</span></div>
+      </div>
+    </div>
+
+    <div class="layer l2" data-k="extract">
+      <div class="head">
+        <span class="badge">TRANSFORM</span>
+        <span class="ttl">Extraction &amp; linkage</span>
+        <span class="sub">PDFs &amp; titles → structured text</span>
+      </div>
+      <div class="modules">
+        <div class="mod"><b>answers.py</b><span>split_qa / split_atr / split_dfg — regex PDF extractors</span></div>
+        <div class="mod"><b>textparse.py</b><span>PDF text extraction &amp; boundary detection</span></div>
+        <div class="mod"><b>atr_linkage.py</b><span>title-parse ATR → original report</span></div>
+        <div class="mod"><b>entities.py / resolver.py</b><span>resolve asker names → stable entity IDs</span></div>
+      </div>
+    </div>
+
+    <div class="layer l1" data-k="probe">
+      <div class="head">
+        <span class="badge">ACQUIRE</span>
+        <span class="ttl">Source-specific probes</span>
+        <span class="sub">domain knowledge per portal</span>
+      </div>
+      <div class="modules">
+        <div class="mod"><b>sansad.py</b><span>SansadProbe — LS &amp; RS questions (two distinct APIs)</span></div>
+        <div class="mod"><b>committees.py</b><span>CommitteeProbe — DRSC reports + composition</span></div>
+        <div class="mod"><b>neva.py</b><span>StateAssemblyCrawler — NeVA state portals</span></div>
+        <div class="mod"><b>csr/mca.py</b><span>McaCsrProbe — MCA CDM CSR CSV exports</span></div>
+        <div class="mod"><b>dmft/mines.py</b><span>MinesDmftProbe — Mines &amp; Odisha DMFT source files</span></div>
+        <div class="mod"><b>members.py</b><span>MPRoster — LS/RS member rosters</span></div>
+        <div class="mod"><b>topics.py</b><span>TopicProfile loading &amp; hashing</span></div>
+      </div>
+    </div>
+
+    <div class="layer l0" data-k="base">
+      <div class="head">
+        <span class="badge">FOUNDATION</span>
+        <span class="ttl">Hardened HTTP &amp; corpus primitives</span>
+        <span class="sub">shared by every probe</span>
+      </div>
+      <div class="modules">
+        <div class="mod"><b>base.py</b><span>BaseProbe: append-only JSONL, dedup-on-key, safe PDF writes</span></div>
+        <div class="mod"><b>http_client.py</b><span>per-domain rate limit · backoff · robots.txt · stale-if-error cache</span></div>
+        <div class="mod"><b>url_safety.py</b><span>SSRF guard + path-traversal sanitisation</span></div>
+        <div class="mod"><b>runlog.py</b><span>RunRecord audit trail → _runs.jsonl</span></div>
+      </div>
+    </div>
+  </div>
+
+  <h3>Design principles that fall out of this</h3>
+  <div class="grid cols-2" style="margin-top:6px">
+    <div class="card"><h4>Boundaries are files</h4><p>Every layer hands the next a JSONL file on disk. You can inspect, validate, and re-run any stage independently — no hidden in-memory state.</p></div>
+    <div class="card"><h4>Provenance is preserved</h4><p>Session, question number, ministry, date, topic hash, and per-bucket counts travel with the data. The apparatus of acquisition is as auditable as the data it acquires.</p></div>
+    <div class="card"><h4>Idempotent &amp; resumable</h4><p>Records dedup on <code>key</code>; crawls resume from what's already in the manifest. Re-running is cheap and safe.</p></div>
+    <div class="card"><h4>Acquisition only</h4><p>No classification, no search index, no normative judgement. A sharp, testable scope keeps the contract — clean JSONL — stable for everything downstream.</p></div>
+  </div>
+
+  <div class="callout">
+    <b>Why "Layer 0"?</b> commoner-probe is the acquisition floor of the CommonerLLP toolchain
+    (imported as <code>import commoner_probe as probe</code>). Topic classification and semantic search live in a
+    <em>compose</em> layer above it that injects a <code>filter_fn</code> into the topic profile — out of scope here by design.
+  </div>
+</div></section>
+
+<!-- ===================== PYTHON API ===================== -->
+<section id="python"><div class="wrap">
+  <h2><span class="num">10</span>Loading a corpus in Python</h2>
+  <p class="lead">Once the JSONL exists, <code>probe.Corpus</code> gives you typed iterators and join helpers.</p>
+
+  <div class="code"><div class="bar"><span>quickstart.py</span><button class="copy" onclick="cp(this)">copy</button></div>
+  <pre><code><span class="t-cmd">import</span> commoner_probe <span class="t-cmd">as</span> probe
+<span class="t-cmd">from</span> collections <span class="t-cmd">import</span> Counter
+
+c = probe.Corpus(<span class="t-str">"data/climate"</span>)
+
+<span class="t-com"># Which ministries field the most questions on this topic?</span>
+counts = Counter(r.ministry <span class="t-cmd">for</span> r <span class="t-cmd">in</span> c.manifest_qa())
+<span class="t-cmd">for</span> ministry, n <span class="t-cmd">in</span> counts.most_common(<span class="t-num">10</span>):
+    print(<span class="t-str">f"{ministry}: {n}"</span>)
+
+<span class="t-com"># Join manifest records to their extracted answer text</span>
+<span class="t-cmd">for</span> pair <span class="t-cmd">in</span> c.join_qa():
+    <span class="t-cmd">if</span> pair.answers:
+        print(pair.manifest.title)
+        print(pair.answers[<span class="t-num">0</span>].question_text[:<span class="t-num">200</span>])
+
+<span class="t-com"># Walk the ATR life-cycle: recommendation → government response</span>
+<span class="t-cmd">for</span> chain <span class="t-cmd">in</span> c.join_atr_chain():
+    print(<span class="t-str">f"Report: {chain.original and chain.original.title}"</span>)
+    print(<span class="t-str">f"  recommendations: {len(chain.original_observations)}"</span>)
+    print(<span class="t-str">f"  govt responses:  {len(chain.atr_answers)}"</span>)
+
+<span class="t-com"># Straight to pandas (pip install commoner-probe[pandas])</span>
+df = c.to_dataframe(<span class="t-str">"manifest_committee_reports"</span>)</code></pre></div>
+
+  <h3>The typed iterators</h3>
+  <table class="fields">
+    <tr><th>Method</th><th>Yields</th></tr>
+    <tr><td class="k">c.manifest_qa()</td><td>ManifestQaRecord</td></tr>
+    <tr><td class="k">c.manifest_committee_reports()</td><td>ManifestCommitteeReportRecord</td></tr>
+    <tr><td class="k">c.manifest_mca_csr()</td><td>ManifestMcaCsrRecord</td></tr>
+    <tr><td class="k">c.manifest_mines_dmft()</td><td>ManifestMinesDmftRecord</td></tr>
+    <tr><td class="k">c.answers_qa() · answers_atr() · answers_dfg()</td><td>extracted-text records</td></tr>
+    <tr><td class="k">c.atr_linkages()</td><td>AtrLinkageRecord</td></tr>
+    <tr><td class="k">c.runs()</td><td>RunRecord (audit log)</td></tr>
+    <tr><td class="k">c.join_qa()</td><td>QaPair — manifest + answers together</td></tr>
+    <tr><td class="k">c.join_atr_chain()</td><td>AtrChain — ATR + original report + observations</td></tr>
+  </table>
+  <p class="dim" style="margin-top:14px">Runnable walkthrough: <code>python examples/usage.py examples/corpora/committees-smoke</code></p>
+</div></section>
+
+<footer><div class="wrap">
+  <p><b>commoner·probe</b> · v0.4.0 · MIT License · built for the commons.</p>
+  <p>This page is generated documentation. Source of truth: <code>README.md</code>, <code>docs/SCHEMAS.md</code>, <code>docs/RATIONALE.md</code>.
+  Examples are drawn from the bundled smoke corpus and live disclosure portals.</p>
+</div></footer>
+
+<script>
+// ---------- copy buttons ----------
+function cpText(text, btn){
+  navigator.clipboard.writeText(text.trim()).then(()=>{
+    const old = btn.textContent; btn.textContent='copied ✓'; btn.classList.add('ok');
+    setTimeout(()=>{btn.textContent=old; btn.classList.remove('ok');}, 1400);
+  });
+}
+function cp(btn){
+  const pre = btn.closest('.code').querySelector('pre');
+  cpText(pre.innerText, btn);
+}
+
+// ---------- pipeline ----------
+const PIPE = {
+  topic: {h:"① Topic profile — the only thing you write", b:"A small JSON file: keyword search-groups plus the ministries to filter on. It is hashed into every run record so you always know exactly what scope produced a corpus. Built-ins: libraries, affirmative_action, home_affairs_starred, mines_dmft_pmkkky, narcotics_substance."},
+  probe: {h:"② Probe the portals → manifest.jsonl", b:"commoner-probe sansad / committees / state-assembly crawl the (undocumented) portal APIs, while mca-csr / mines-dmft pull executive-disclosure files. Each dedups on key and appends one self-contained JSON object per question, report, or source file. Lok Sabha buckets by ministry; Rajya Sabha buckets by session number — the library hides that asymmetry."},
+  pdf:   {h:"③ Download the PDFs → pdfs/ls, pdfs/rs", b:"Each record's pdf_url is fetched through the hardened HTTP client (rate-limited, backed off, robots-aware, SSRF-guarded) and written to a path sanitised against traversal. pdf_path on the record points back at the local file. Skip with --no-download for metadata-only runs."},
+  extract:{h:"④ Extract text → answers.jsonl", b:"commoner-probe extract-answers parses the PDFs into structured text: Q/A pairs (qa_response), recommendation/response triples from Action Taken Reports (atr_response), and numbered observation paragraphs (dfg_recommendation). Each carries a confidence score and extractor version."},
+  load:  {h:"⑤ Analyse → probe.Corpus(...)", b:"Point probe.Corpus() at the directory and get typed iterators and join helpers — join_qa() stitches answers to manifest records, join_atr_chain() walks the recommendation→response life-cycle, to_dataframe() drops you into pandas."}
+};
+const pipeDetail = document.getElementById('pipe-detail');
+document.querySelectorAll('#pipe .stage').forEach(s=>{
+  s.addEventListener('click', ()=>{
+    document.querySelectorAll('#pipe .stage').forEach(x=>x.classList.remove('active'));
+    s.classList.add('active');
+    const d = PIPE[s.dataset.k];
+    pipeDetail.innerHTML = `<h4>${d.h}</h4><p class="dim">${d.b}</p>`;
+  });
+});
+
+// ---------- generic tabs ----------
+function wireTabs(containerId){
+  const root = document.getElementById(containerId);
+  if(!root) return;
+  const tabs = root.querySelectorAll(':scope > .tab');
+  tabs.forEach(t=>{
+    t.addEventListener('click', ()=>{
+      const scope = root.parentElement;
+      tabs.forEach(x=>x.classList.remove('active'));
+      t.classList.add('active');
+      // panels are siblings of the tabs container within the same parent
+      scope.querySelectorAll(':scope > .tabpanel').forEach(p=>p.classList.remove('active'));
+      const panel = document.getElementById(t.dataset.p);
+      if(panel) panel.classList.add('active');
+    });
+  });
+}
+wireTabs('datatabs');
+wireTabs('qatabs');
+
+// ---------- architecture layers ----------
+document.querySelectorAll('#arch .layer .head').forEach(h=>{
+  h.addEventListener('click', ()=> h.parentElement.classList.toggle('open'));
+});
+// open the foundation layer by default for a hint of interactivity
+document.querySelector('#arch .layer.l1').classList.add('open');
+
+// ---------- command builder ----------
+const B = {
+  cmd:   document.getElementById('b-cmd'),
+  topic: document.getElementById('b-topic'),
+  out:   document.getElementById('b-out'),
+  house: document.getElementById('b-house'),
+  qtype: document.getElementById('b-qtype'),
+  from:  document.getElementById('b-from'),
+  portal:document.getElementById('b-portal'),
+  state: document.getElementById('b-state'),
+  asm:   document.getElementById('b-asm'),
+  years: document.getElementById('b-years'),
+  sources: document.getElementById('b-sources'),
+  mdir:  document.getElementById('b-mdir'),
+  sdir:  document.getElementById('b-sdir'),
+  eout:  document.getElementById('b-eout'),
+  nodl:  document.getElementById('b-nodl'),
+  ent:   document.getElementById('b-ent'),
+};
+function syncRows(){
+  const cmd = B.cmd.value;
+  document.querySelectorAll('.builder [data-for]').forEach(el=>{
+    el.style.display = el.dataset.for.split(' ').includes(cmd) ? '' : 'none';
+  });
+}
+function esc(s){ return /[^A-Za-z0-9_\/.\-]/.test(s) ? `"${s}"` : s; }
+function buildCmd(){
+  const cmd = B.cmd.value;
+  const crawler = (cmd === 'sansad' || cmd === 'committees' || cmd === 'state-assembly');
+  let parts = cmd === 'evidence-dmft' ? ['commoner-probe', 'evidence', 'dmft'] : ['commoner-probe', cmd];
+  const add = (f,v)=>{ if(v!==undefined && v!=='') parts.push(`\\\n  ${f} ${esc(v)}`); };
+  if(cmd === 'state-assembly'){
+    add('--portal', B.portal.value);
+    add('--state', B.state.value);
+    add('--out', B.out.value);
+    add('--assemblies', B.asm.value);
+  } else if(cmd === 'mca-csr'){
+    add('--out', B.out.value);
+    add('--years', B.years.value);
+  } else if(cmd === 'mines-dmft'){
+    add('--out', B.out.value);
+    add('--sources', B.sources.value);
+  } else if(cmd === 'evidence-dmft'){
+    add('--mines-dmft-dir', B.mdir.value);
+    add('--sansad-dir', B.sdir.value);
+    add('--out', B.eout.value);
+  } else {
+    add('--topic', B.topic.value);
+    add('--out', B.out.value);
+    add('--house', B.house.value);
+    if(cmd === 'sansad'){
+      if(B.qtype.value !== 'both') add('--qtype', B.qtype.value);
+      add('--from-date', B.from.value);
+      if(B.ent.checked) parts.push('\\\n  --with-entities');
+    }
+  }
+  if(crawler && B.nodl.checked) parts.push('\\\n  --no-download');
+  return parts.join(' ').replace(/ \\\n/g,' \\\n');
+}
+function refresh(){ syncRows(); document.getElementById('b-out-text').textContent = buildCmd(); }
+Object.values(B).forEach(el=> el && el.addEventListener('input', refresh));
+B.cmd.addEventListener('change', refresh);
+refresh();
+</script>
+</body>
+</html>
