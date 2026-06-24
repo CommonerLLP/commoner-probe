@@ -64,9 +64,9 @@ def test_get_parser_dispatch_and_fallback():
 
     assert get_parser("iim_recruit") is iim_recruit.parse
     assert get_parser("generic") is generic.parse
-    # Unmigrated specialised parsers fall back to generic, not error.
-    assert "iit_rolling" in UNMIGRATED_PARSERS
-    assert get_parser("iit_rolling") is generic.parse
+    # Still-unmigrated specialised parsers fall back to generic, not error.
+    assert "iit_delhi" in UNMIGRATED_PARSERS
+    assert get_parser("iit_delhi") is generic.parse
     assert get_parser(None) is generic.parse
 
 

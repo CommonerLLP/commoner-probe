@@ -18,6 +18,7 @@ from __future__ import annotations
 import re
 import shutil
 import subprocess
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -142,6 +143,22 @@ def extract_text(pdf_path: Path) -> str | None:
         return None
 
 
+def extract_text_flow(pdf_path: Path) -> str | None:
+    """Reading-order text (no -layout) — used when -layout column-mashes a
+    two-column annexure (IIT Madras). pdftotext -> pdfminer fallback."""
+    text = _run_pdftotext([], pdf_path)
+    if text and text.strip():
+        return text
+    try:
+        from pdfminer.high_level import extract_text as _pdfminer_extract  # type: ignore
+    except ImportError:
+        return None
+    try:
+        return _strip_pagination_noise(_pdfminer_extract(str(pdf_path)))
+    except Exception:
+        return None
+
+
 # --- field extraction (regexes verbatim from origin pdf_extractor.py) --------
 
 DEADLINE_RES = [
@@ -254,3 +271,175 @@ def find_publications(text: str) -> str | None:
         seen.add(s)
         dedup.append(s)
     return " | ".join(dedup[:3])
+
+
+RESERVATION_NOTE_RES = [
+    re.compile(
+        r"(?:extent of reservation[^\n]{0,40}?(?:as follows)?\s*[:\-]?\s*)?"
+        r"(SC[-\s]\s*\d+(?:\.\d+)?%[^.\n]{0,200}"
+        r"(?:ST|OBC|EWS|PwBD|PwD|NCL)[^\n]{0,40}%)",
+        re.I,
+    ),
+    re.compile(
+        r"((?:SC|ST|OBC|EWS|PwBD|PwD)[-\s]\s*\d+(?:\.\d+)?%"
+        r"(?:\s*[;,&]\s*(?:SC|ST|OBC|EWS|PwBD|PwD|NCL)[^\n]{0,30}%){2,})",
+        re.I,
+    ),
+]
+
+
+def find_reservation_note(text: str) -> str | None:
+    """The institute-wide CEI(RTC) Act 2019 reservation percentage spread."""
+    text = re.sub(r"\s+", " ", text)
+    for r in RESERVATION_NOTE_RES:
+        m = r.search(text)
+        if m:
+            return m.group(1).strip().rstrip(".,;")
+    return None
+
+
+GENERAL_ELIGIBILITY_RES = [
+    re.compile(r"(Ph\.?D\.?[^\n]{0,30}?(?:first class|equivalent)[^.\n]{20,400}\.)", re.I),
+]
+
+
+def find_general_eligibility(text: str) -> str | None:
+    """The institute-wide PhD-and-experience preamble."""
+    text = re.sub(r"\s+", " ", text)
+    for r in GENERAL_ELIGIBILITY_RES:
+        m = r.search(text)
+        if m:
+            return m.group(1).strip()
+    return None
+
+
+# --- rolling-ad PDF unit splitting (used by iit_rolling) ---------------------
+
+_NAME_CONTINUATION_LOOKBACK = 12  # origin NAME_CONTINUATION_LOOKBACK
+_UNIT_NAME_MAX_CHARS = 80  # origin UNIT_NAME_MAX_CHARS
+
+
+@dataclass
+class UnitBlock:
+    """One academic-unit block extracted from a rolling-ad PDF."""
+
+    unit_num: int
+    unit_name: str
+    text: str
+
+
+def split_into_units_flow(text: str, dept_names: list[str]) -> dict[str, str]:
+    """Split reading-order text into per-department blocks using a known list of
+    department names as anchors. Returns {dept_name: body_text}."""
+    if not text or not dept_names:
+        return {}
+    by_pos: list[tuple[int, str]] = []
+    for name in dept_names:
+        flexible = re.escape(name).replace(r"\ ", r"\s+")
+        pattern = re.compile(r"(?:^|\n)\s*(?:\d{1,2}\s*\n\s*)?" + flexible + r"\s*\n", re.IGNORECASE)
+        m = pattern.search(text)
+        if m:
+            by_pos.append((m.end(), name))
+    by_pos.sort()
+    out: dict[str, str] = {}
+    for i, (pos, name) in enumerate(by_pos):
+        end = by_pos[i + 1][0] if i + 1 < len(by_pos) else len(text)
+        body = text[pos:end].strip()
+        if body:
+            out[name] = body
+    return out
+
+
+UNIT_HEADER_RE = re.compile(
+    r"^(?P<indent>[ \t]*)(?P<num>\d{1,2})[ \t]{2,}(?P<rest>[A-Z][^\n]{2,400})$", re.MULTILINE,
+)
+
+
+def _split_name_from_areas(rest: str) -> str:
+    """Isolate the unit-name column (ends at the first >=2-space gap)."""
+    m = re.match(r"(.+?)[ \t]{2,}\S", rest)
+    return (m.group(1) if m else rest).strip()
+
+
+def split_into_units(text: str) -> list[UnitBlock]:
+    """Split a rolling-ad PDF's text into per-unit blocks. Keeps header lines with
+    monotonically-increasing unit numbers, then carves body text between them."""
+    raw_matches = list(UNIT_HEADER_RE.finditer(text))
+    if not raw_matches:
+        return []
+
+    toc_double = re.compile(r"\d{1,2}[ \t]{2,}[A-Z][^\n]{2,30}[ \t]{2,}\d{1,2}[ \t]{2,}[A-Z]")
+    matches = []
+    for m in raw_matches:
+        line_start = text.rfind("\n", 0, m.start()) + 1
+        line_end = text.find("\n", m.start())
+        if line_end == -1:
+            line_end = len(text)
+        if toc_double.search(text[line_start:line_end]):
+            continue  # two unit headers on one line -> TOC
+        matches.append(m)
+    if not matches:
+        return []
+
+    by_num: dict[int, re.Match] = {}
+    for m in matches:
+        by_num[int(m.group("num"))] = m
+    matches = sorted(by_num.values(), key=lambda x: x.start())
+
+    kept: list[re.Match] = []
+    last_num = 0
+    for m in matches:
+        num = int(m.group("num"))
+        if last_num == 0 and num <= 3:
+            kept.append(m)
+            last_num = num
+        elif num == last_num + 1:
+            kept.append(m)
+            last_num = num
+        elif last_num < num <= last_num + 3:
+            kept.append(m)
+            last_num = num
+    if not kept:
+        return []
+
+    blocks: list[UnitBlock] = []
+    for i, m in enumerate(kept):
+        start = m.start()
+        end = kept[i + 1].start() if i + 1 < len(kept) else len(text)
+        body = text[start:end].rstrip()
+        name = _split_name_from_areas(m.group("rest"))
+
+        name_col = len(m.group("indent")) + len(m.group("num"))
+        nl = text.find("\n", m.start())
+        line0 = text[m.start():nl if nl != -1 else end]
+        gap_m = re.match(r"^\s*\d{1,2}(\s+)", line0)
+        if gap_m:
+            name_col += len(gap_m.group(1))
+
+        body_lines = body.splitlines()
+        gathered_after_break = False
+        for j in range(1, min(_NAME_CONTINUATION_LOOKBACK, len(body_lines))):
+            line = body_lines[j]
+            stripped = line.lstrip()
+            if not stripped:
+                continue
+            indent = len(line) - len(stripped)
+            if abs(indent - name_col) > 4:
+                gathered_after_break = True
+                continue
+            frag_m = re.match(r"^([A-Za-z][\w &/(),.\-]{1,40}?)(?:[ \t]{2,}\S|[ \t]*$)", stripped)
+            if not frag_m:
+                break
+            frag = frag_m.group(1).strip()
+            if len(frag.split()) > 6:
+                break
+            if gathered_after_break and len(name) > 60:
+                break
+            name += " " + frag
+
+        blocks.append(UnitBlock(
+            unit_num=int(m.group("num")),
+            unit_name=re.sub(r"\s+", " ", name).strip()[:_UNIT_NAME_MAX_CHARS],
+            text=body,
+        ))
+    return blocks

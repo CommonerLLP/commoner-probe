@@ -114,6 +114,8 @@ class AcademicJobsProbe:
             "publications_required": ad.get("publications_required"),
             "unit_eligibility": ad.get("unit_eligibility"),
             "annexure_pdf_url": ad.get("annexure_pdf_url"),
+            "reservation_note": ad.get("reservation_note"),
+            "general_eligibility": ad.get("general_eligibility"),
             "raw_text_excerpt": ad.get("raw_text_excerpt"),
             "parse_confidence": ad.get("parse_confidence"),
             "pdf_path": ad.get("pdf_path"),

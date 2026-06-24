@@ -136,6 +136,60 @@ def test_iit_indore_associates_title_with_pdf_link():
     assert ad["original_url"].endswith("advt2026.pdf")
 
 
+def test_iit_rolling_split_into_units():
+    from commoner_probe.academia.pdf_text import split_into_units
+
+    text = (
+        "1   Department of Physics      Condensed matter physics      Publications: 3 papers\n"
+        "2   Department of Chemistry    Organic chemistry             Publications: 4 papers\n"
+    )
+    blocks = split_into_units(text)
+    assert [b.unit_num for b in blocks] == [1, 2]
+    assert blocks[0].unit_name == "Department of Physics"
+    assert blocks[1].unit_name == "Department of Chemistry"
+
+
+def test_iit_rolling_parse_emits_per_unit_ads(monkeypatch):
+    pytest.importorskip("bs4")
+    from commoner_probe.academia.parsers import get_parser, iit_rolling
+
+    assert get_parser("iit_rolling") is iit_rolling.parse
+
+    body = (
+        "Rolling Advertisement No. IITD/AP/2026/1\n"
+        "Extent of reservation as follows: SC-15% ST-7.5% OBC(NCL)-27% EWS-10% PwBD-4%.\n"
+        "1   Department of Physics      Condensed matter physics\n"
+        "2   Department of Chemistry    Organic chemistry\n"
+    )
+    # extract_text is mocked, so the (non-existent) downloaded path is never read.
+    monkeypatch.setattr(iit_rolling, "extract_text", lambda p: body)
+
+    class FakeFetcher:
+        def download(self, url):
+            from pathlib import Path
+            return Path("/tmp/iitd-fake.pdf")
+
+    html = '<a href="/files/AP-1-rolling.pdf">Areas of Specialization AP-1</a>'
+    ads = iit_rolling.parse(html, "https://www.iitd.ac.in/jobs-iitd/index.html", FETCHED, FakeFetcher())
+
+    assert ads
+    depts = {a["department"] for a in ads}
+    assert "Department of Physics" in depts and "Department of Chemistry" in depts
+    assert all(a["pdf_parsed"] for a in ads)
+    assert all(a["post_type"] == "Faculty" for a in ads)
+    assert ads[0]["ad_number"] == "IITD/AP/2026/1"
+    assert ads[0]["reservation_note"] and "SC-15%" in ads[0]["reservation_note"]
+    assert ads[0]["apply_url"].startswith("https://ecampus.iitd.ac.in")
+
+
+def test_iit_rolling_returns_empty_without_fetcher():
+    from commoner_probe.academia.parsers import iit_rolling
+
+    # No Fetcher (--no-download): PDF-based parser produces nothing, no crash.
+    ads = iit_rolling.parse("<a href='AP-1.pdf'>x</a>", "https://www.iitd.ac.in/jobs", FETCHED, None)
+    assert ads == []
+
+
 def test_private_university_apu_degrades_without_fetcher():
     pytest.importorskip("bs4")
     from commoner_probe.academia.parsers import private_university

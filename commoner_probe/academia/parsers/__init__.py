@@ -25,6 +25,7 @@ from . import (
     iim_recruit,
     iit_indore,
     iit_kanpur,
+    iit_rolling,
     private_university,
 )
 
@@ -35,12 +36,14 @@ PARSERS: dict[str, Callable] = {
     "anna_university": anna_university.parse,
     "private_university": private_university.parse,
     "iit_indore": iit_indore.parse,
+    "iit_rolling": iit_rolling.parse,
 }
 
 #: Registry parser names that exist in the origin but are not yet migrated; they
 #: fall back to ``generic``. Tracked so callers/tests can see the coverage gap.
+#: (iit_delhi / jnu / samarth_curec are unreferenced by the current registry.)
 UNMIGRATED_PARSERS = frozenset({
-    "iit_rolling", "iit_delhi", "jnu", "samarth_curec",
+    "iit_delhi", "jnu", "samarth_curec",
 })
 
 

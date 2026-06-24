@@ -101,6 +101,12 @@
     "annexure_pdf_url": {
       "type": ["string", "null"]
     },
+    "reservation_note": {
+      "type": ["string", "null"]
+    },
+    "general_eligibility": {
+      "type": ["string", "null"]
+    },
     "raw_text_excerpt": {
       "type": ["string", "null"]
     },
