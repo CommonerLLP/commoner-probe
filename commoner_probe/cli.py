@@ -8,9 +8,11 @@ from pathlib import Path
 from .academia import AcademicJobsProbe
 from .answers import extract_answers
 from .atr_linkage import extract_atr_linkages
+from .bills import BILLS_API, BillsProbe
 from .budget import RBI_STATE_FINANCES_URL, BudgetProbe
 from .committees import CommitteeProbe, resolve_committees
 from .csr.mca import McaCsrProbe
+from .debates import LS_DEBATE_API, DebateProbe
 from .dmft.mines import MinesDmftProbe
 from .evidence import build_dmft_evidence_bundle
 from .example_topics import list_example_topics, load_example_topic_text
@@ -211,6 +213,40 @@ def budget_cmd(args: argparse.Namespace) -> None:
     records = probe.probe_sources(sources, dry_run=args.dry_run)
     for record in records:
         print(json.dumps(record, ensure_ascii=False))
+
+
+def bills_cmd(args: argparse.Namespace) -> None:
+    out = Path(args.out)
+    houses = _split_csv(args.house) if args.house != "both" else ["ls", "rs"]
+    probe = BillsProbe(out, sleep=args.sleep, houses=houses, api_url=args.api_url)
+    records = probe.probe(dry_run=args.dry_run)
+    for record in records:
+        print(json.dumps(record, ensure_ascii=False))
+
+
+def debates_cmd(args: argparse.Namespace) -> None:
+    topic = load_topic(args.topic)
+    out = Path(args.out)
+    if args.reset and (out / "manifest.jsonl").exists():
+        (out / "manifest.jsonl").unlink()
+    probe = DebateProbe(
+        topic,
+        out,
+        sleep=args.sleep,
+        lok_sabha_no=args.lok_sabha_no,
+        topic_path=args.topic,
+        api_url=args.api_url,
+    )
+    seen = probe.load_seen()
+    added = probe.probe(
+        seen,
+        ls_no=args.lok_sabha_no,
+        from_date=args.from_date,
+        to_date=args.to_date,
+        max_records=args.max_records,
+        download=not args.no_download,
+    )
+    probe.log(f"DONE added={added} total={len(seen)}")
 
 
 def academic_jobs_cmd(args: argparse.Namespace) -> None:
@@ -434,6 +470,45 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     budget.set_defaults(func=budget_cmd)
+
+    bills = sub.add_parser(
+        "bills",
+        help="Probe sansad.in bills / legislation (PROVISIONAL: live contract unconfirmed).",
+    )
+    bills.add_argument("--out", required=True, help="Output corpus directory")
+    bills.add_argument("--house", choices=["both", "ls", "rs"], default="both")
+    bills.add_argument(
+        "--api-url",
+        default=BILLS_API,
+        help="Override the bills API base URL (the bundled default is unverified).",
+    )
+    bills.add_argument("--sleep", type=float, default=0.5)
+    bills.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Emit one planning record per house without fetching.",
+    )
+    bills.set_defaults(func=bills_cmd)
+
+    debates = sub.add_parser(
+        "debates",
+        help="Probe Lok Sabha floor debates (PROVISIONAL: live sansad.in contract unconfirmed).",
+    )
+    debates.add_argument("--topic", required=True, help="Path to topic profile JSON")
+    debates.add_argument("--out", required=True, help="Output corpus directory")
+    debates.add_argument("--lok-sabha-no", type=int, default=18, help="Lok Sabha number (default 18)")
+    debates.add_argument("--from-date")
+    debates.add_argument("--to-date")
+    debates.add_argument("--max-records", type=int, help="Stop after N new records (smoke-test brake)")
+    debates.add_argument(
+        "--api-url",
+        default=LS_DEBATE_API,
+        help="Override the debate API base URL (the bundled default is unverified).",
+    )
+    debates.add_argument("--sleep", type=float, default=0.25)
+    debates.add_argument("--no-download", action="store_true")
+    debates.add_argument("--reset", action="store_true")
+    debates.set_defaults(func=debates_cmd)
 
     academic_jobs = sub.add_parser(
         "academic-jobs",

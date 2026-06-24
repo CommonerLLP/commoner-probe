@@ -282,6 +282,74 @@ class ManifestAcademicJobRecord:
         return _from_dict(cls, d)
 
 
+@dataclass
+class ManifestFloorDebateRecord:
+    """One Lok Sabha floor-debate record (kind='floor_debate').
+
+    NOTE: the live sansad.in contract is provisional — most fields are
+    nullable until a real response is captured (bead sansad-crawler-5ht).
+    """
+
+    key: str
+    kind: str
+    house: str
+    source: str
+    probed_at: str
+    run_id: str | None = None
+    ls_no: int | None = None
+    date: str | None = None
+    business_type: str | None = None
+    member_name: str | None = None
+    member_party: str | None = None
+    constituency: str | None = None
+    debate_title: str | None = None
+    verbatim_text: str | None = None
+    language_classified: list = field(default_factory=list)
+    pdf_url: str | None = None
+    pdf_path: str | None = None
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "ManifestFloorDebateRecord":
+        return _from_dict(cls, d)
+
+
+@dataclass
+class ManifestBillRecord:
+    """One sansad.in bill record (kind='bill_record').
+
+    NOTE: the live sansad.in contract is provisional — most fields are
+    nullable until a real response is captured (bead sansad-crawler-4xd).
+    """
+
+    key: str
+    kind: str
+    record_type: str
+    source: str
+    house: str
+    fetch_status: str
+    probed_at: str
+    bill_no: Any = None
+    bill_name: str | None = None
+    bill_type: str | None = None
+    ministry: str | None = None
+    introduced_date: str | None = None
+    introduced_house: str | None = None
+    passed_ls_date: str | None = None
+    passed_rs_date: str | None = None
+    assent_date: str | None = None
+    current_stage: str | None = None
+    status: str | None = None
+    pdf_url: str | None = None
+    pdf_path: str | None = None
+    api_url: str | None = None
+    fetched_at: str | None = None
+    error: str | None = None
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "ManifestBillRecord":
+        return _from_dict(cls, d)
+
+
 # ---------------------------------------------------------------------------
 # answers.jsonl records
 # ---------------------------------------------------------------------------

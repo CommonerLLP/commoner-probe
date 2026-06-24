@@ -47,8 +47,10 @@ from .records import (
     AnswerQaResponse,
     AtrLinkageRecord,
     ManifestAcademicJobRecord,
+    ManifestBillRecord,
     ManifestBudgetRecord,
     ManifestCommitteeReportRecord,
+    ManifestFloorDebateRecord,
     ManifestMcaCsrRecord,
     ManifestMinesDmftRecord,
     ManifestQaRecord,
@@ -150,6 +152,18 @@ class Corpus:
         for d in _iter_jsonl(self.out_dir / "manifest.jsonl"):
             if d.get("kind") == "academic_job_posting":
                 yield ManifestAcademicJobRecord.from_dict(d)
+
+    def manifest_floor_debates(self) -> Iterator[ManifestFloorDebateRecord]:
+        """Stream Lok Sabha floor-debate records from manifest.jsonl."""
+        for d in _iter_jsonl(self.out_dir / "manifest.jsonl"):
+            if d.get("kind") == "floor_debate":
+                yield ManifestFloorDebateRecord.from_dict(d)
+
+    def manifest_bills(self) -> Iterator[ManifestBillRecord]:
+        """Stream sansad.in bill records from manifest.jsonl."""
+        for d in _iter_jsonl(self.out_dir / "manifest.jsonl"):
+            if d.get("kind") == "bill_record":
+                yield ManifestBillRecord.from_dict(d)
 
     # --- Answers ---
 
@@ -279,6 +293,8 @@ class Corpus:
         "manifest_mines_dmft": "manifest_mines_dmft",
         "manifest_budget": "manifest_budget",
         "manifest_academic_jobs": "manifest_academic_jobs",
+        "manifest_floor_debates": "manifest_floor_debates",
+        "manifest_bills": "manifest_bills",
         "answers_qa": "answers_qa",
         "answers_atr": "answers_atr",
         "answers_dfg": "answers_dfg",

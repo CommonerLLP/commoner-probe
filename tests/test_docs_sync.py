@@ -40,6 +40,8 @@ class CliCommandSyncTests(unittest.TestCase):
                 "mines-dmft",
                 "budget",
                 "academic-jobs",
+                "debates",
+                "bills",
                 "atr-linkage",
                 "evidence",
                 "stats",

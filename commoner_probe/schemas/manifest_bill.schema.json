@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CommonerLLP/commoner-probe/schemas/v1/manifest_bill.json",
+  "title": "manifest.jsonl — Bill / legislation record",
+  "description": "One sansad.in bill record. NOTE: live contract is provisional; non-core fields are nullable until a real response is captured (bead sansad-crawler-4xd).",
+  "type": "object",
+  "required": [
+    "key",
+    "kind",
+    "record_type",
+    "source",
+    "house",
+    "fetch_status",
+    "probed_at"
+  ],
+  "properties": {
+    "key": {
+      "type": "string",
+      "pattern": "^BILL\\|[a-z]+\\|.+$"
+    },
+    "kind": {
+      "type": "string",
+      "const": "bill_record"
+    },
+    "record_type": {
+      "type": "string",
+      "const": "bill_record"
+    },
+    "source": {
+      "type": "string"
+    },
+    "house": {
+      "type": "string"
+    },
+    "bill_no": {
+      "type": ["string", "integer", "null"]
+    },
+    "bill_name": {
+      "type": ["string", "null"]
+    },
+    "bill_type": {
+      "type": ["string", "null"]
+    },
+    "ministry": {
+      "type": ["string", "null"]
+    },
+    "introduced_date": {
+      "type": ["string", "null"]
+    },
+    "introduced_house": {
+      "type": ["string", "null"]
+    },
+    "passed_ls_date": {
+      "type": ["string", "null"]
+    },
+    "passed_rs_date": {
+      "type": ["string", "null"]
+    },
+    "assent_date": {
+      "type": ["string", "null"]
+    },
+    "current_stage": {
+      "type": ["string", "null"]
+    },
+    "status": {
+      "type": ["string", "null"]
+    },
+    "pdf_url": {
+      "type": ["string", "null"]
+    },
+    "pdf_path": {
+      "type": ["string", "null"]
+    },
+    "fetch_status": {
+      "type": "string",
+      "enum": ["ok", "dry_run", "fetch_error"]
+    },
+    "api_url": {
+      "type": "string"
+    },
+    "fetched_at": {
+      "type": "string"
+    },
+    "probed_at": {
+      "type": "string"
+    },
+    "error": {
+      "type": "string"
+    }
+  }
+}

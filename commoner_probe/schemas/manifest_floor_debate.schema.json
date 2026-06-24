@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CommonerLLP/commoner-probe/schemas/v1/manifest_floor_debate.json",
+  "title": "manifest.jsonl — Lok Sabha floor debate",
+  "description": "One Lok Sabha floor-debate speaker turn. NOTE: live sansad.in contract is provisional; non-core fields are nullable until a real response is captured (bead sansad-crawler-5ht).",
+  "type": "object",
+  "required": [
+    "key",
+    "kind",
+    "house",
+    "source",
+    "probed_at"
+  ],
+  "properties": {
+    "key": {
+      "type": "string",
+      "pattern": "^DEBATE\\|\\d+\\|.+$"
+    },
+    "kind": {
+      "type": "string",
+      "const": "floor_debate"
+    },
+    "house": {
+      "type": "string"
+    },
+    "ls_no": {
+      "type": ["integer", "null"]
+    },
+    "date": {
+      "type": ["string", "null"]
+    },
+    "business_type": {
+      "type": ["string", "null"]
+    },
+    "member_name": {
+      "type": ["string", "null"]
+    },
+    "member_party": {
+      "type": ["string", "null"]
+    },
+    "constituency": {
+      "type": ["string", "null"]
+    },
+    "debate_title": {
+      "type": ["string", "null"]
+    },
+    "verbatim_text": {
+      "type": ["string", "null"]
+    },
+    "language_classified": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "source": {
+      "type": "string"
+    },
+    "pdf_url": {
+      "type": ["string", "null"]
+    },
+    "pdf_path": {
+      "type": ["string", "null"]
+    },
+    "run_id": {
+      "type": ["string", "null"]
+    },
+    "probed_at": {
+      "type": "string"
+    }
+  }
+}

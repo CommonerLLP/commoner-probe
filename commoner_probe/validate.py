@@ -51,6 +51,10 @@ def _pick_schema_name(rec: dict) -> str | None:
         return "manifest_budget"
     if kind == "academic_job_posting":
         return "manifest_academic_job"
+    if kind == "floor_debate":
+        return "manifest_floor_debate"
+    if kind == "bill_record":
+        return "manifest_bill"
     return None
 
 
