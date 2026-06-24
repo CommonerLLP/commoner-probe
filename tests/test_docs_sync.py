@@ -39,6 +39,7 @@ class CliCommandSyncTests(unittest.TestCase):
                 "mca-csr",
                 "mines-dmft",
                 "budget",
+                "academic-jobs",
                 "atr-linkage",
                 "evidence",
                 "stats",

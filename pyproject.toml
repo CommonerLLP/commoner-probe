@@ -47,11 +47,13 @@ pdf = ["pdfminer.six>=20231228"]
 http = ["requests>=2.31.0"]
 pandas = ["pandas>=2.0"]
 budget = ["lxml>=5.0"]
-dev = ["jsonschema>=4.20", "pytest>=7", "ruff>=0.4", "lxml>=5.0"]
+academia = ["beautifulsoup4>=4.12", "pdfminer.six>=20231228"]
+dev = ["jsonschema>=4.20", "pytest>=7", "ruff>=0.4", "lxml>=5.0", "beautifulsoup4>=4.12"]
 all = [
   "pdfminer.six>=20231228",
   "requests>=2.31.0",
   "lxml>=5.0",
+  "beautifulsoup4>=4.12",
 ]
 
 [project.urls]
@@ -72,6 +74,7 @@ namespaces = false
 [tool.setuptools.package-data]
 "commoner_probe.schemas" = ["*.json"]
 "commoner_probe.example_topics" = ["*.json"]
+"commoner_probe.academia" = ["*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

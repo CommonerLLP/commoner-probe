@@ -5,6 +5,7 @@ import argparse
 import json
 from pathlib import Path
 
+from .academia import AcademicJobsProbe
 from .answers import extract_answers
 from .atr_linkage import extract_atr_linkages
 from .budget import RBI_STATE_FINANCES_URL, BudgetProbe
@@ -208,6 +209,19 @@ def budget_cmd(args: argparse.Namespace) -> None:
         rbi_url=args.rbi_url,
     )
     records = probe.probe_sources(sources, dry_run=args.dry_run)
+    for record in records:
+        print(json.dumps(record, ensure_ascii=False))
+
+
+def academic_jobs_cmd(args: argparse.Namespace) -> None:
+    out = Path(args.out)
+    probe = AcademicJobsProbe(
+        out,
+        sleep=args.sleep,
+        institutions=_split_csv(args.institutions),
+        registry_path=args.registry,
+    )
+    records = probe.probe(download=not args.no_download, dry_run=args.dry_run)
     for record in records:
         print(json.dumps(record, ensure_ascii=False))
 
@@ -420,6 +434,32 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     budget.set_defaults(func=budget_cmd)
+
+    academic_jobs = sub.add_parser(
+        "academic-jobs",
+        help="Crawl Indian HEI career pages for faculty-recruitment advertisements.",
+    )
+    academic_jobs.add_argument("--out", required=True, help="Output directory")
+    academic_jobs.add_argument(
+        "--institutions",
+        help="Comma-separated institution ids (e.g. iit-kharagpur); default = all in registry",
+    )
+    academic_jobs.add_argument(
+        "--registry",
+        help="Path to an alternative institutions_registry.json; default = bundled registry",
+    )
+    academic_jobs.add_argument(
+        "--no-download",
+        action="store_true",
+        help="Skip PDF download + text extraction (listing-page heuristics only).",
+    )
+    academic_jobs.add_argument("--sleep", type=float, default=1.0)
+    academic_jobs.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="List which institutions would be probed (one record each) without fetching.",
+    )
+    academic_jobs.set_defaults(func=academic_jobs_cmd)
 
     atr_link = sub.add_parser(
         "atr-linkage",

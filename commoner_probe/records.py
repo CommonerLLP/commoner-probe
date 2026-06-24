@@ -239,6 +239,49 @@ class ManifestBudgetRecord:
         return _from_dict(cls, d)
 
 
+@dataclass
+class ManifestAcademicJobRecord:
+    """One Indian HEI faculty-recruitment advertisement / coverage record."""
+
+    key: str
+    kind: str
+    record_type: str
+    source_family: str
+    institution_id: str
+    title: str
+    original_url: str
+    fetch_status: str
+    probed_at: str
+    institution_name: str | None = None
+    institution_short_name: str | None = None
+    institution_type: str | None = None
+    state: str | None = None
+    parser: str | None = None
+    ad_number: str | None = None
+    department: str | None = None
+    discipline: str | None = None
+    post_type: str | None = None
+    contract_status: str | None = None
+    category_breakdown: dict | None = None
+    number_of_posts: int | None = None
+    pay_scale: str | None = None
+    publication_date: str | None = None
+    closing_date: str | None = None
+    info_url: str | None = None
+    apply_url: str | None = None
+    publications_required: str | None = None
+    raw_text_excerpt: str | None = None
+    parse_confidence: float | None = None
+    pdf_path: str | None = None
+    pdf_parsed: bool = False
+    snapshot_fetched_at: str | None = None
+    error: str | None = None
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "ManifestAcademicJobRecord":
+        return _from_dict(cls, d)
+
+
 # ---------------------------------------------------------------------------
 # answers.jsonl records
 # ---------------------------------------------------------------------------
