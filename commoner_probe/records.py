@@ -207,6 +207,38 @@ class ManifestMinesDmftRecord:
         return _from_dict(cls, d)
 
 
+@dataclass
+class ManifestBudgetRecord:
+    """One Union Budget / RBI State-Finances raw source-file record."""
+
+    key: str
+    kind: str
+    record_type: str
+    source_family: str
+    source_name: str
+    publisher: str
+    fiscal_year: str
+    document_type: str
+    filename: str
+    dest: str
+    url: str
+    status: str
+    media_type: str
+    fetched_at: str
+    probed_at: str
+    demand_no: str | None = None
+    section: str | None = None
+    source_last_modified: str | None = None
+    source_last_modified_raw: str | None = None
+    sha256: str | None = None
+    http_status: int | None = None
+    error: str | None = None
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "ManifestBudgetRecord":
+        return _from_dict(cls, d)
+
+
 # ---------------------------------------------------------------------------
 # answers.jsonl records
 # ---------------------------------------------------------------------------

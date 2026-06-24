@@ -38,6 +38,7 @@ class CliCommandSyncTests(unittest.TestCase):
                 "state-assembly",
                 "mca-csr",
                 "mines-dmft",
+                "budget",
                 "atr-linkage",
                 "evidence",
                 "stats",

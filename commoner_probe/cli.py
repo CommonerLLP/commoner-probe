@@ -7,6 +7,7 @@ from pathlib import Path
 
 from .answers import extract_answers
 from .atr_linkage import extract_atr_linkages
+from .budget import RBI_STATE_FINANCES_URL, BudgetProbe
 from .committees import CommitteeProbe, resolve_committees
 from .csr.mca import McaCsrProbe
 from .dmft.mines import MinesDmftProbe
@@ -196,6 +197,21 @@ def mines_dmft_cmd(args: argparse.Namespace) -> None:
         print(json.dumps(record, ensure_ascii=False))
 
 
+def budget_cmd(args: argparse.Namespace) -> None:
+    out = Path(args.out)
+    sources = _split_csv(args.sources) or ["union-budget"]
+    demands = _split_csv(args.demands) or ["101"]
+    probe = BudgetProbe(
+        out,
+        sleep=args.sleep,
+        demands=demands,
+        rbi_url=args.rbi_url,
+    )
+    records = probe.probe_sources(sources, dry_run=args.dry_run)
+    for record in records:
+        print(json.dumps(record, ensure_ascii=False))
+
+
 def extract_answers_cmd(args: argparse.Namespace) -> None:
     out = Path(args.out)
     if not (out / "manifest.jsonl").exists():
@@ -374,6 +390,37 @@ def build_parser() -> argparse.ArgumentParser:
     )
     mines_dmft.set_defaults(func=mines_dmft_cmd)
 
+    budget = sub.add_parser(
+        "budget",
+        help="Download Union Budget SBE spreadsheets and RBI State-Finances source files.",
+    )
+    budget.add_argument("--out", required=True, help="Output directory")
+    budget.add_argument(
+        "--sources",
+        default="union-budget",
+        help="Comma-separated sources: union-budget, rbi-state-finances",
+    )
+    budget.add_argument(
+        "--demands",
+        default="101",
+        help="Comma-separated Union Budget demand numbers, e.g. 101,1,33",
+    )
+    budget.add_argument(
+        "--rbi-url",
+        default=RBI_STATE_FINANCES_URL,
+        help="RBI State-Finances publication page to discover documents from.",
+    )
+    budget.add_argument("--sleep", type=float, default=1.0)
+    budget.add_argument(
+        "--dry-run",
+        action="store_true",
+        help=(
+            "Print manifest records without writing manifest.jsonl. Fully offline "
+            "for union-budget; rbi-state-finances still fetches the index page to enumerate."
+        ),
+    )
+    budget.set_defaults(func=budget_cmd)
+
     atr_link = sub.add_parser(
         "atr-linkage",
         help=(
@@ -464,3 +511,7 @@ def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
     args.func(args)
+
+
+if __name__ == "__main__":
+    main()

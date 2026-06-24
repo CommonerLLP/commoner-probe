@@ -46,10 +46,12 @@ dependencies = []
 pdf = ["pdfminer.six>=20231228"]
 http = ["requests>=2.31.0"]
 pandas = ["pandas>=2.0"]
-dev = ["jsonschema>=4.20", "pytest>=7", "ruff>=0.4"]
+budget = ["lxml>=5.0"]
+dev = ["jsonschema>=4.20", "pytest>=7", "ruff>=0.4", "lxml>=5.0"]
 all = [
   "pdfminer.six>=20231228",
   "requests>=2.31.0",
+  "lxml>=5.0",
 ]
 
 [project.urls]

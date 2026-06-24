@@ -47,6 +47,8 @@ def _pick_schema_name(rec: dict) -> str | None:
         return "manifest_mca_csr"
     if kind == "mines_dmft_source_file":
         return "manifest_mines_dmft"
+    if kind == "budget_source_file":
+        return "manifest_budget"
     return None
 
 
