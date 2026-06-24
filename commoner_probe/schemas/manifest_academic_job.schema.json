@@ -95,6 +95,12 @@
     "publications_required": {
       "type": ["string", "null"]
     },
+    "unit_eligibility": {
+      "type": ["string", "null"]
+    },
+    "annexure_pdf_url": {
+      "type": ["string", "null"]
+    },
     "raw_text_excerpt": {
       "type": ["string", "null"]
     },

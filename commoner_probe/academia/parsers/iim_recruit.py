@@ -77,7 +77,7 @@ def parse(html: str, url: str, fetched_at: Any, pdf: Callable | None = None) -> 
         pdf_parsed = False
 
         if pdf is not None:
-            pdf_path, text = pdf(pdf_url)
+            pdf_path, text = pdf.pdf_text(pdf_url)
             if text and text.strip():
                 pdf_parsed = True
                 joined = re.sub(r"\s+", " ", text).strip()

@@ -270,6 +270,8 @@ class ManifestAcademicJobRecord:
     info_url: str | None = None
     apply_url: str | None = None
     publications_required: str | None = None
+    unit_eligibility: str | None = None
+    annexure_pdf_url: str | None = None
     raw_text_excerpt: str | None = None
     parse_confidence: float | None = None
     pdf_path: str | None = None

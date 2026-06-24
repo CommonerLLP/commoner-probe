@@ -32,6 +32,40 @@ def has_pdftotext() -> bool:
     return _PDFTOTEXT is not None
 
 
+class Fetcher:
+    """Per-run network helper handed to parsers that need to fetch beyond the
+    listing page (PDF transcripts, per-position sub-pages). Routes through the
+    probe session (SSRF guard / robots / rate-limit). ``None`` is passed instead
+    when download is disabled, and parsers degrade to listing-page-only output.
+    """
+
+    def __init__(self, session: Any, pdf_dir: Path, out_dir: Path) -> None:
+        self.session = session
+        self.pdf_dir = pdf_dir
+        self.out_dir = out_dir
+
+    def get_html(self, url: str, *, timeout: float = 45.0) -> str | None:
+        try:
+            r = self.session.get(url, timeout=timeout)
+            r.raise_for_status()
+            return r.text
+        except Exception:
+            return None
+
+    def download(self, url: str) -> Path | None:
+        return download_pdf(self.session, url, self.pdf_dir)
+
+    def rel(self, path: Path) -> str:
+        return str(path.relative_to(self.out_dir))
+
+    def pdf_text(self, url: str) -> tuple[str | None, str | None]:
+        """Download a PDF and extract its text. Returns (rel_path, text)."""
+        path = self.download(url)
+        if not path:
+            return None, None
+        return self.rel(path), extract_text(path)
+
+
 def download_pdf(session: Any, url: str, dest_dir: Path, *, timeout: float = 60.0) -> Path | None:
     """Download a PDF via the probe session. Returns the local path or None.
 

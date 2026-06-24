@@ -22,7 +22,7 @@ from pathlib import Path
 from commoner_probe.http_client import make_session
 
 from .parsers import get_parser
-from .pdf_text import download_pdf, extract_text
+from .pdf_text import Fetcher
 from .registry import load_registry, select_institutions
 
 
@@ -78,19 +78,12 @@ class AcademicJobsProbe:
         r.raise_for_status()
         return r.text
 
-    def _pdf_callable(self, enabled: bool):
-        """Return a ``pdf_url -> (rel_pdf_path | None, text | None)`` callable, or None."""
+    def _fetcher(self, enabled: bool) -> Fetcher | None:
+        """A Fetcher (PDF download + per-position HTML sub-page helper), or None
+        when download is disabled (parsers then degrade to listing-page output)."""
         if not enabled:
             return None
-
-        def fetch(pdf_url: str) -> tuple[str | None, str | None]:
-            path = download_pdf(self.session, pdf_url, self.pdf_dir)
-            if not path:
-                return None, None
-            text = extract_text(path)
-            return str(path.relative_to(self.out_dir)), text
-
-        return fetch
+        return Fetcher(self.session, self.pdf_dir, self.out_dir)
 
     def _record(self, ad: dict, inst: dict, *, status: str = "ok") -> dict:
         return {
@@ -119,10 +112,12 @@ class AcademicJobsProbe:
             "info_url": ad.get("info_url"),
             "apply_url": ad.get("apply_url"),
             "publications_required": ad.get("publications_required"),
+            "unit_eligibility": ad.get("unit_eligibility"),
+            "annexure_pdf_url": ad.get("annexure_pdf_url"),
             "raw_text_excerpt": ad.get("raw_text_excerpt"),
             "parse_confidence": ad.get("parse_confidence"),
             "pdf_path": ad.get("pdf_path"),
-            "pdf_parsed": bool(ad.get("pdf_parsed")),
+            "pdf_parsed": bool(ad.get("pdf_parsed") or ad.get("_pdf_parsed")),
             "fetch_status": status,
             "snapshot_fetched_at": ad.get("snapshot_fetched_at"),
             "probed_at": _now_iso(),
@@ -175,7 +170,7 @@ class AcademicJobsProbe:
         import time
 
         seen = self.load_seen()
-        pdf = self._pdf_callable(download and not dry_run)
+        pdf = self._fetcher(download and not dry_run)
         out: list[dict] = []
         for inst in self.selected_institutions():
             records = self.probe_institution(inst, pdf=pdf, dry_run=dry_run)

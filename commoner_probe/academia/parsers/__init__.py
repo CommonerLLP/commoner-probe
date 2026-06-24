@@ -19,18 +19,20 @@ from __future__ import annotations
 
 from typing import Callable
 
-from . import generic, iim_recruit
+from . import anna_university, generic, iim_recruit, iit_kanpur, private_university
 
 PARSERS: dict[str, Callable] = {
     "generic": generic.parse,
     "iim_recruit": iim_recruit.parse,
+    "iit_kanpur": iit_kanpur.parse,
+    "anna_university": anna_university.parse,
+    "private_university": private_university.parse,
 }
 
 #: Registry parser names that exist in the origin but are not yet migrated; they
 #: fall back to ``generic``. Tracked so callers/tests can see the coverage gap.
 UNMIGRATED_PARSERS = frozenset({
-    "iit_rolling", "iit_kanpur", "iit_indore", "iit_delhi",
-    "jnu", "anna_university", "private_university", "samarth_curec",
+    "iit_rolling", "iit_indore", "iit_delhi", "jnu", "samarth_curec",
 })
 
 

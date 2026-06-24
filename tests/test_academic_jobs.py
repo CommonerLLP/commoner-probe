@@ -112,10 +112,11 @@ def test_iim_recruit_parses_pdf_fields():
         "Candidates must have a minimum of FIVE publications in reputed journals."
     )
 
-    def fake_pdf(pdf_url):
-        return ("pdfs/strategy.pdf", pdf_text)
+    class FakeFetcher:
+        def pdf_text(self, pdf_url):
+            return ("pdfs/strategy.pdf", pdf_text)
 
-    ads = iim_recruit.parse(html, "https://iimdemo.example.ac.in/faculty", datetime(2026, 6, 1), fake_pdf)
+    ads = iim_recruit.parse(html, "https://iimdemo.example.ac.in/faculty", datetime(2026, 6, 1), FakeFetcher())
     assert len(ads) == 1
     ad = ads[0]
     assert ad["pdf_parsed"] is True
