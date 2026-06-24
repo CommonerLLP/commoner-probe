@@ -284,29 +284,27 @@ class ManifestAcademicJobRecord:
 
 @dataclass
 class ManifestFloorDebateRecord:
-    """One Lok Sabha floor-debate record (kind='floor_debate').
+    """One Lok Sabha sitting-day debate transcript (kind='floor_debate').
 
-    NOTE: the live sansad.in contract is provisional — most fields are
-    nullable until a real response is captured (bead sansad-crawler-5ht).
+    The live API serves one PDF per sitting day (api_ls/debate/text-of-debate);
+    per-speaker structured text is a downstream extraction concern.
     """
 
     key: str
     kind: str
-    house: str
+    record_type: str
     source: str
+    house: str
+    fetch_status: str
     probed_at: str
-    run_id: str | None = None
-    ls_no: int | None = None
+    loksabha: int | None = None
+    session_no: Any = None
     date: str | None = None
-    business_type: str | None = None
-    member_name: str | None = None
-    member_party: str | None = None
-    constituency: str | None = None
-    debate_title: str | None = None
-    verbatim_text: str | None = None
-    language_classified: list = field(default_factory=list)
     pdf_url: str | None = None
     pdf_path: str | None = None
+    sha256: str | None = None
+    fetched_at: str | None = None
+    error: str | None = None
 
     @classmethod
     def from_dict(cls, d: dict) -> "ManifestFloorDebateRecord":
@@ -315,11 +313,7 @@ class ManifestFloorDebateRecord:
 
 @dataclass
 class ManifestBillRecord:
-    """One sansad.in bill record (kind='bill_record').
-
-    NOTE: the live sansad.in contract is provisional — most fields are
-    nullable until a real response is captured (bead sansad-crawler-4xd).
-    """
+    """One sansad.in bill record (kind='bill_record', api_rs/legislation/getBills)."""
 
     key: str
     kind: str
@@ -331,16 +325,28 @@ class ManifestBillRecord:
     bill_no: Any = None
     bill_name: str | None = None
     bill_type: str | None = None
+    bill_category: str | None = None
     ministry: str | None = None
-    introduced_date: str | None = None
+    bill_year: Any = None
     introduced_house: str | None = None
+    introduced_by: str | None = None
+    introduced_date: str | None = None
+    introduced_file: str | None = None
     passed_ls_date: str | None = None
+    passed_ls_file: str | None = None
     passed_rs_date: str | None = None
+    passed_rs_file: str | None = None
+    passed_both_houses_file: str | None = None
+    referred_to_committee_date: str | None = None
+    report_presented_date: str | None = None
+    report_file: str | None = None
+    act_no: Any = None
+    act_year: Any = None
     assent_date: str | None = None
-    current_stage: str | None = None
+    gazetted_file: str | None = None
+    synopsis_file: str | None = None
+    errata_file: str | None = None
     status: str | None = None
-    pdf_url: str | None = None
-    pdf_path: str | None = None
     api_url: str | None = None
     fetched_at: str | None = None
     error: str | None = None

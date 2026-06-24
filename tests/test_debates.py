@@ -1,146 +1,152 @@
 """Tests for the floor-debate probe.
 
-The live sansad.in debate contract is unconfirmed (see commoner_probe/debates.py
-PROVISIONAL note / bead sansad-crawler-5ht). These tests pin the record-shaping,
-pagination, dedup, and runlog behaviour against the assumed committee-style
-envelope via a fake session — NOT the live contract. When a real response is
-captured, swap the fixture payloads below for the real shape.
+The live API serves one transcript PDF per sitting day. Fixtures mirror the two
+captured endpoints: the session/date catalog (AllLoksabhaAndSessionDates) and
+the per-day text-of-debate call ({"pdfUrl": ...} or {}). No network.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
-import tempfile
-from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
-from commoner_probe.debates import DebateProbe, debate_key
-from commoner_probe.topics import TopicProfile
+from commoner_probe.debates import DebateProbe, date_to_iso, date_to_mdy
+
+CATALOG = [
+    {"loksabha": 18, "sessions": [
+        {"sessionNo": 7, "dates": ["28/01/2026", "29/01/2026", "01/02/2026"]},
+        {"sessionNo": 6, "dates": ["01/12/2025"]},
+    ]},
+    {"loksabha": 17, "sessions": [{"sessionNo": 1, "dates": ["17/06/2019"]}]},
+]
+
+# Keyed by the M/D/YYYY value the debate API receives. Missing => no transcript.
+PDF_FOR = {
+    "1/28/2026": "https://sansad.in/getFile/dms/fetch/abc?source=dsp2",
+    "1/29/2026": "https://sansad.in/getFile/dms/fetch/def?source=dsp2",
+    "12/1/2025": "https://sansad.in/getFile/dms/fetch/ghi?source=dsp2",
+}
+PDF_BODY = b"%PDF-1.4 fake debate transcript body that is over one thousand bytes " + b"x" * 1100
 
 
 class FakeResponse:
-    def __init__(self, payload: dict | None = None, status: int = 200):
-        self._payload = payload or {}
+    def __init__(self, payload=None, *, content=None, status=200):
+        self._payload = payload
+        self.content = content
         self.status_code = status
 
-    def json(self) -> dict:
+    def json(self):
         return self._payload
 
-    def raise_for_status(self) -> None:
+    def raise_for_status(self):
         if self.status_code >= 400:
             raise RuntimeError(f"HTTP {self.status_code}")
 
-    def iter_content(self, chunk_size: int = 16384):
-        yield b""
-
 
 class FakeSession:
-    def __init__(self, routes: dict[str, dict]):
-        self.routes = routes
+    def __init__(self, *, catalog=CATALOG, fail_catalog=False):
+        self.catalog = catalog
+        self.fail_catalog = fail_catalog
         self.calls: list[str] = []
 
-    def get(self, url: str, **kwargs) -> FakeResponse:
+    def get(self, url, **kwargs):
         self.calls.append(url)
-        for needle, payload in self.routes.items():
-            if needle in url:
-                return FakeResponse(payload)
-        raise AssertionError(f"FakeSession had no route matching: {url}")
+        if "AllLoksabhaAndSessionDates" in url:
+            if self.fail_catalog:
+                return FakeResponse(status=503)
+            return FakeResponse(self.catalog)
+        if "text-of-debate" in url:
+            date = parse_qs(urlparse(url).query).get("debateDate", [""])[0]
+            pdf = PDF_FOR.get(date)
+            return FakeResponse({"pdfUrl": pdf} if pdf else {})
+        if "getFile" in url:  # PDF download
+            return FakeResponse(content=PDF_BODY)
+        raise AssertionError(f"unrouted url: {url}")
 
 
-def _topic(**kw) -> TopicProfile:
-    return TopicProfile(
-        name=kw.get("name", "test"),
-        description="",
-        search_groups={},
-        lok_sabha_ministries=[],
-        rajya_sabha_ministry_likes=[],
-        filter_fn=kw.get("filter_fn"),
-    )
-
-
-def _raw(seq: int, **overrides) -> dict:
-    rec = {
-        "debateDate": "17-Mar-2026",
-        "businessType": "Zero Hour",
-        "memberName": f"Member {seq}",
-        "debateText": f"Verbatim text number {seq}.",
-        "debateTitle": "Matter of urgent public importance",
-        "loksabha": 18,
-    }
-    rec.update(overrides)
-    return rec
-
-
-def _probe(tmp, routes, **kw) -> DebateProbe:
-    probe = DebateProbe(_topic(**kw), Path(tmp), sleep=0, lok_sabha_no=18, topic_path=None)
-    probe.session = FakeSession(routes)
+def _probe(tmp_path, **kw):
+    probe = DebateProbe(tmp_path, sleep=0, **kw)
+    probe.session = FakeSession()
     return probe
 
 
-def test_debate_key_is_stable_across_field_churn():
-    raw = {"a": 1, "b": 2}
-    k1 = debate_key(18, "2026-03-17", raw)
-    k2 = debate_key(18, "2026-03-17", {"b": 2, "a": 1})  # key order differs
-    assert k1 == k2
-    assert k1.startswith("DEBATE|18|2026-03-17|")
+def test_date_converters():
+    assert date_to_iso("28/01/2026") == "2026-01-28"
+    assert date_to_mdy("28/01/2026") == "1/28/2026"
+    assert date_to_mdy("01/12/2025") == "12/1/2025"
 
 
-def test_probe_emits_floor_debate_records():
-    page1 = {"_metadata": {"totalPages": 1}, "records": [_raw(1), _raw(2)]}
-    with tempfile.TemporaryDirectory() as tmp:
-        probe = _probe(tmp, {"api_ls/debate": page1})
-        added = probe.probe(set(), ls_no=18, max_records=None, download=False)
-        assert added == 2
-        records = [json.loads(line) for line in (Path(tmp) / "manifest.jsonl").read_text().splitlines()]
+def test_probe_records_days_with_transcripts_only(tmp_path):
+    probe = _probe(tmp_path, loksabhas=[18], sessions=[7])
+    records = probe.probe()
 
-    for r in records:
-        assert r["kind"] == "floor_debate"
-        assert r["house"] == "Lok Sabha"
-        assert r["ls_no"] == 18
-        assert r["date"] == "2026-03-17"
-        assert r["verbatim_text"].startswith("Verbatim text")
-        assert r["source"] == "sansad.in/api_ls/debate"
-        assert r["run_id"]
+    # session 7 has 3 dates; only 28th and 29th have a pdfUrl (1 Feb -> {} -> skipped)
+    assert len(records) == 2
+    keys = {r["key"] for r in records}
+    assert keys == {"DEBATE|18|7|2026-01-28", "DEBATE|18|7|2026-01-29"}
+    r = next(r for r in records if r["key"].endswith("2026-01-28"))
+    assert r["kind"] == "floor_debate"
+    assert r["house"] == "Lok Sabha"
+    assert r["loksabha"] == 18 and r["session_no"] == 7
+    assert r["date"] == "2026-01-28"
+    assert r["pdf_url"].endswith("abc?source=dsp2")
+    assert r["fetch_status"] == "ok"
+    assert r["pdf_path"] is None  # not downloaded by default
 
-
-def test_probe_dedup_on_rerun():
-    page1 = {"_metadata": {"totalPages": 1}, "records": [_raw(1)]}
-    with tempfile.TemporaryDirectory() as tmp:
-        probe = _probe(tmp, {"api_ls/debate": page1})
-        probe.probe(set(), ls_no=18, download=False)
-        seen = probe.load_seen()
-        assert len(seen) == 1
-        added2 = probe.probe(seen, ls_no=18, download=False)
-        assert added2 == 0
+    manifest = [json.loads(line) for line in (tmp_path / "manifest.jsonl").read_text().splitlines()]
+    assert manifest == records
 
 
-def test_probe_topic_filter_fn_is_applied():
-    page1 = {"_metadata": {"totalPages": 1}, "records": [
-        _raw(1, debateText="mentions libraries and reading rooms"),
-        _raw(2, debateText="about agriculture subsidies"),
-    ]}
-    # Keep only debates whose text mentions "librar".
-    topic_filter = lambda title, text: "librar" in (text or "").lower()  # noqa: E731
-    with tempfile.TemporaryDirectory() as tmp:
-        probe = _probe(tmp, {"api_ls/debate": page1}, filter_fn=topic_filter)
-        added = probe.probe(set(), ls_no=18, download=False)
-        assert added == 1
-        rec = json.loads((Path(tmp) / "manifest.jsonl").read_text().splitlines()[0])
-        assert "librar" in rec["verbatim_text"].lower()
+def test_session_filter_and_multiple_loksabhas(tmp_path):
+    probe = _probe(tmp_path, loksabhas=[18])  # all sessions
+    records = probe.probe()
+    # session 7: 28th + 29th; session 6: 1 Dec 2025 -> 12/1/2025 has a pdf
+    assert {r["key"] for r in records} == {
+        "DEBATE|18|7|2026-01-28", "DEBATE|18|7|2026-01-29", "DEBATE|18|6|2025-12-01",
+    }
 
 
-def test_provisional_endpoint_failure_is_recorded_not_raised():
-    # An unverified endpoint may 4xx; the probe must finish cleanly with a run-log error.
-    class BoomSession:
-        def get(self, *a, **k):
-            raise RuntimeError("HTTP 400")
+def test_date_range_filter(tmp_path):
+    probe = _probe(tmp_path, loksabhas=[18], from_date="2026-01-01", to_date="2026-01-28")
+    records = probe.probe()
+    assert {r["key"] for r in records} == {"DEBATE|18|7|2026-01-28"}
 
-    with tempfile.TemporaryDirectory() as tmp:
-        probe = DebateProbe(_topic(), Path(tmp), sleep=0, topic_path=None)
-        probe.session = BoomSession()
-        added = probe.probe(set(), ls_no=18, download=False)
-        assert added == 0
-        run = json.loads((Path(tmp) / "_runs.jsonl").read_text().splitlines()[0])
-        assert run["errors"]  # the failure was recorded, not raised
+
+def test_dry_run_lists_candidates_without_fetching_pdfs(tmp_path):
+    probe = _probe(tmp_path, loksabhas=[18], sessions=[7])
+    records = probe.probe(dry_run=True)
+    # all 3 candidate dates are listed (not just the ones with transcripts)
+    assert len(records) == 3
+    assert all(r["fetch_status"] == "dry_run" for r in records)
+    assert all(r["pdf_url"] is None for r in records)
+    # catalog fetched, but no per-day text-of-debate calls
+    assert any("AllLoksabhaAndSessionDates" in u for u in probe.session.calls)
+    assert not any("text-of-debate" in u for u in probe.session.calls)
+    assert not (tmp_path / "manifest.jsonl").exists()
+
+
+def test_download_writes_pdf_and_sha256(tmp_path):
+    probe = _probe(tmp_path, loksabhas=[18], sessions=[7])
+    records = probe.probe(download=True, max_records=1)
+    assert len(records) == 1
+    rec = records[0]
+    assert rec["pdf_path"] == "pdfs/debates/ls18_s7_2026-01-28.pdf"
+    assert rec["sha256"] == hashlib.sha256(PDF_BODY).hexdigest()
+    assert (tmp_path / rec["pdf_path"]).read_bytes() == PDF_BODY
+
+
+def test_dedup_on_rerun(tmp_path):
+    _probe(tmp_path, loksabhas=[18], sessions=[7]).probe()
+    assert _probe(tmp_path, loksabhas=[18], sessions=[7]).probe() == []
+
+
+def test_catalog_fetch_error_is_recorded(tmp_path):
+    probe = DebateProbe(tmp_path, sleep=0, loksabhas=[18])
+    probe.session = FakeSession(fail_catalog=True)
+    records = probe.probe()
+    assert len(records) == 1
+    assert records[0]["fetch_status"] == "fetch_error"
 
 
 def test_schema_bundled_and_validates(tmp_path):
@@ -152,17 +158,19 @@ def test_schema_bundled_and_validates(tmp_path):
 
     assert "manifest_floor_debate" in schemas.list_all()
     record = {
-        "key": "DEBATE|18|2026-03-17|abcdef123456",
+        "key": "DEBATE|18|7|2026-01-28",
         "kind": "floor_debate",
+        "record_type": "floor_debate",
+        "source": "sansad.in/api_ls/debate/text-of-debate",
         "house": "Lok Sabha",
-        "ls_no": 18,
-        "date": "2026-03-17",
-        "business_type": "Zero Hour",
-        "member_name": "Member 1",
-        "verbatim_text": "Verbatim text.",
-        "language_classified": ["en"],
-        "source": "sansad.in/api_ls/debate",
-        "run_id": "r1",
+        "loksabha": 18,
+        "session_no": 7,
+        "date": "2026-01-28",
+        "pdf_url": "https://sansad.in/getFile/dms/fetch/abc?source=dsp2",
+        "pdf_path": None,
+        "sha256": None,
+        "fetch_status": "ok",
+        "fetched_at": "2026-06-24T10:00:00Z",
         "probed_at": "2026-06-24T10:00:00Z",
     }
     (tmp_path / "manifest.jsonl").write_text(json.dumps(record) + "\n", encoding="utf-8")
@@ -173,14 +181,18 @@ def test_corpus_streams_floor_debates(tmp_path):
     from commoner_probe import Corpus
 
     record = {
-        "key": "DEBATE|18|2026-03-17|abcdef123456",
+        "key": "DEBATE|18|7|2026-01-28",
         "kind": "floor_debate",
+        "record_type": "floor_debate",
+        "source": "sansad.in/api_ls/debate/text-of-debate",
         "house": "Lok Sabha",
-        "source": "sansad.in/api_ls/debate",
+        "loksabha": 18,
+        "session_no": 7,
+        "date": "2026-01-28",
+        "fetch_status": "ok",
         "probed_at": "2026-06-24T10:00:00Z",
-        "verbatim_text": "x",
     }
     (tmp_path / "manifest.jsonl").write_text(json.dumps(record) + "\n", encoding="utf-8")
     records = list(Corpus(tmp_path).manifest_floor_debates())
     assert len(records) == 1
-    assert records[0].house == "Lok Sabha"
+    assert records[0].loksabha == 18 and records[0].session_no == 7

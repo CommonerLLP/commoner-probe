@@ -1,70 +1,33 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/CommonerLLP/commoner-probe/schemas/v1/manifest_floor_debate.json",
-  "title": "manifest.jsonl — Lok Sabha floor debate",
-  "description": "One Lok Sabha floor-debate speaker turn. NOTE: live sansad.in contract is provisional; non-core fields are nullable until a real response is captured (bead sansad-crawler-5ht).",
+  "title": "manifest.jsonl — Lok Sabha floor-debate transcript (per sitting day)",
+  "description": "One Lok Sabha sitting-day debate transcript (PDF) acquisition record (api_ls/debate/text-of-debate). Per-speaker structured text is a downstream extraction concern, not part of this acquisition record.",
   "type": "object",
   "required": [
     "key",
     "kind",
-    "house",
+    "record_type",
     "source",
+    "house",
+    "fetch_status",
     "probed_at"
   ],
   "properties": {
-    "key": {
-      "type": "string",
-      "pattern": "^DEBATE\\|\\d+\\|.+$"
-    },
-    "kind": {
-      "type": "string",
-      "const": "floor_debate"
-    },
-    "house": {
-      "type": "string"
-    },
-    "ls_no": {
-      "type": ["integer", "null"]
-    },
-    "date": {
-      "type": ["string", "null"]
-    },
-    "business_type": {
-      "type": ["string", "null"]
-    },
-    "member_name": {
-      "type": ["string", "null"]
-    },
-    "member_party": {
-      "type": ["string", "null"]
-    },
-    "constituency": {
-      "type": ["string", "null"]
-    },
-    "debate_title": {
-      "type": ["string", "null"]
-    },
-    "verbatim_text": {
-      "type": ["string", "null"]
-    },
-    "language_classified": {
-      "type": "array",
-      "items": { "type": "string" }
-    },
-    "source": {
-      "type": "string"
-    },
-    "pdf_url": {
-      "type": ["string", "null"]
-    },
-    "pdf_path": {
-      "type": ["string", "null"]
-    },
-    "run_id": {
-      "type": ["string", "null"]
-    },
-    "probed_at": {
-      "type": "string"
-    }
+    "key": { "type": "string", "pattern": "^DEBATE\\|" },
+    "kind": { "type": "string", "const": "floor_debate" },
+    "record_type": { "type": "string", "const": "floor_debate" },
+    "source": { "type": "string" },
+    "house": { "type": "string" },
+    "loksabha": { "type": ["integer", "null"] },
+    "session_no": { "type": ["integer", "string", "null"] },
+    "date": { "type": ["string", "null"] },
+    "pdf_url": { "type": ["string", "null"] },
+    "pdf_path": { "type": ["string", "null"] },
+    "sha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
+    "fetch_status": { "type": "string", "enum": ["ok", "dry_run", "fetch_error"] },
+    "fetched_at": { "type": "string" },
+    "probed_at": { "type": "string" },
+    "error": { "type": "string" }
   }
 }

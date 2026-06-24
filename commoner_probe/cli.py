@@ -217,36 +217,39 @@ def budget_cmd(args: argparse.Namespace) -> None:
 
 def bills_cmd(args: argparse.Namespace) -> None:
     out = Path(args.out)
-    houses = _split_csv(args.house) if args.house != "both" else ["ls", "rs"]
-    probe = BillsProbe(out, sleep=args.sleep, houses=houses, api_url=args.api_url)
-    records = probe.probe(dry_run=args.dry_run)
+    houses = [args.house] if args.house != "both" else ["ls", "rs"]
+    probe = BillsProbe(
+        out,
+        sleep=args.sleep,
+        houses=houses,
+        bill_type=args.bill_type,
+        api_url=args.api_url,
+    )
+    records = probe.probe(max_records=args.max_records, dry_run=args.dry_run)
     for record in records:
         print(json.dumps(record, ensure_ascii=False))
 
 
 def debates_cmd(args: argparse.Namespace) -> None:
-    topic = load_topic(args.topic)
     out = Path(args.out)
-    if args.reset and (out / "manifest.jsonl").exists():
-        (out / "manifest.jsonl").unlink()
+    loksabhas = [int(x) for x in (_split_csv(args.loksabhas) or ["18"])]
+    sessions = [int(x) for x in (_split_csv(args.sessions) or [])] or None
     probe = DebateProbe(
-        topic,
         out,
         sleep=args.sleep,
-        lok_sabha_no=args.lok_sabha_no,
-        topic_path=args.topic,
-        api_url=args.api_url,
-    )
-    seen = probe.load_seen()
-    added = probe.probe(
-        seen,
-        ls_no=args.lok_sabha_no,
+        loksabhas=loksabhas,
+        sessions=sessions,
         from_date=args.from_date,
         to_date=args.to_date,
-        max_records=args.max_records,
-        download=not args.no_download,
+        api_url=args.api_url,
     )
-    probe.log(f"DONE added={added} total={len(seen)}")
+    records = probe.probe(
+        max_records=args.max_records,
+        download=args.download,
+        dry_run=args.dry_run,
+    )
+    for record in records:
+        print(json.dumps(record, ensure_ascii=False))
 
 
 def academic_jobs_cmd(args: argparse.Namespace) -> None:
@@ -473,15 +476,17 @@ def build_parser() -> argparse.ArgumentParser:
 
     bills = sub.add_parser(
         "bills",
-        help="Probe sansad.in bills / legislation (PROVISIONAL: live contract unconfirmed).",
+        help="Probe sansad.in bills / legislation (api_rs/legislation/getBills).",
     )
     bills.add_argument("--out", required=True, help="Output corpus directory")
     bills.add_argument("--house", choices=["both", "ls", "rs"], default="both")
     bills.add_argument(
-        "--api-url",
-        default=BILLS_API,
-        help="Override the bills API base URL (the bundled default is unverified).",
+        "--bill-type",
+        default="",
+        help="Filter by bill type, e.g. 'Government' or 'Private Member'; default = all types.",
     )
+    bills.add_argument("--max-records", type=int, help="Stop after N new records per house (smoke-test brake)")
+    bills.add_argument("--api-url", default=BILLS_API, help="Override the bills API base URL.")
     bills.add_argument("--sleep", type=float, default=0.5)
     bills.add_argument(
         "--dry-run",
@@ -492,22 +497,22 @@ def build_parser() -> argparse.ArgumentParser:
 
     debates = sub.add_parser(
         "debates",
-        help="Probe Lok Sabha floor debates (PROVISIONAL: live sansad.in contract unconfirmed).",
+        help="Probe Lok Sabha per-day floor-debate transcript PDFs (api_ls/debate/text-of-debate).",
     )
-    debates.add_argument("--topic", required=True, help="Path to topic profile JSON")
     debates.add_argument("--out", required=True, help="Output corpus directory")
-    debates.add_argument("--lok-sabha-no", type=int, default=18, help="Lok Sabha number (default 18)")
-    debates.add_argument("--from-date")
-    debates.add_argument("--to-date")
-    debates.add_argument("--max-records", type=int, help="Stop after N new records (smoke-test brake)")
+    debates.add_argument("--loksabhas", default="18", help="Comma-separated Lok Sabha numbers, e.g. 17,18")
+    debates.add_argument("--sessions", help="Comma-separated session numbers to limit to; default = all")
+    debates.add_argument("--from-date", help="ISO date lower bound (YYYY-MM-DD)")
+    debates.add_argument("--to-date", help="ISO date upper bound (YYYY-MM-DD)")
+    debates.add_argument("--max-records", type=int, help="Stop after N new records per Lok Sabha (smoke-test brake)")
+    debates.add_argument("--download", action="store_true", help="Download each day's transcript PDF (+ sha256)")
+    debates.add_argument("--api-url", default=LS_DEBATE_API, help="Override the debate API base URL.")
+    debates.add_argument("--sleep", type=float, default=0.5)
     debates.add_argument(
-        "--api-url",
-        default=LS_DEBATE_API,
-        help="Override the debate API base URL (the bundled default is unverified).",
+        "--dry-run",
+        action="store_true",
+        help="List candidate sitting dates (from the session catalog) without fetching per-day PDFs.",
     )
-    debates.add_argument("--sleep", type=float, default=0.25)
-    debates.add_argument("--no-download", action="store_true")
-    debates.add_argument("--reset", action="store_true")
     debates.set_defaults(func=debates_cmd)
 
     academic_jobs = sub.add_parser(

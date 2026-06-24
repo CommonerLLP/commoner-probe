@@ -2,35 +2,25 @@
 """Bills / legislation probe (sansad.in).
 
 Roadmap source (README "Upcoming"): every bill since independence with
-introduction date, debate dates, and stage status — enables tracking
-legislative velocity, committee-scrutiny rates, and private-member-bill outcomes.
+introduction date, stage dates, and status — enables tracking legislative
+velocity, committee-scrutiny rates, and private-member-bill outcomes.
 
-Topic-less: the bills list is an exhaustive catalog (no thematic search
-buckets), so this follows the dmft/mca "fetch the known catalog, dedup by stable
-key" shape rather than the topic/searches machinery.
+Topic-less: the bills list is an exhaustive catalog, so this follows the
+mca/dmft "fetch the known catalog, dedup by stable key" shape.
 
-============================  PROVISIONAL CONTRACT  ===========================
-The live sansad.in bills API is NOT yet confirmed. The README names the HTML
-route ``sansad.in/ls/legislation/bills``, but that is a Next.js page whose bill
-list is fetched client-side from a Strapi-style backend; the listing endpoint is
-not exposed in the page's SSR data and could not be recovered by black-box
-probing (every guessed ``api_ls/...`` path 404s).
+Contract (captured live via the bills page's network calls):
 
-This module is wired end-to-end EXCEPT the live contract:
+    GET https://sansad.in/api_rs/legislation/getBills
+        ?house=Lok Sabha            # or "Rajya Sabha"; blank = both houses
+        &billType=Government        # or "Private Member"; blank = all
+        &page=1&size=200&locale=en
+        &sortOn=billIntroducedDate&sortBy=desc
+        (+ optional: ministryName, billCategory, billStatus, billName,
+         loksabha, sessionNo, introductionDateFrom/To, passedInLs/RsDateFrom/To)
 
-* ``BILLS_API`` is a best-guess default, overridable via constructor / ``--api-url``.
-* Pagination assumes the committee API's ``{"records": [...],
-  "_metadata": {"totalPages": N}}`` envelope.
-* Field extraction tries several plausible key names and tolerates misses
-  (non-core fields are nullable in the schema).
-* The dedup ``key`` uses the bill number if present, else a hash of the raw
-  record — stable across re-runs regardless of canonical field names.
-
-TO FINALISE (see bead sansad-crawler-4xd): capture one real response from the
-bills page Network tab, then (1) set ``BILLS_API`` + page params in
-``bills_page``, (2) map real field names in ``_record``, (3) tighten the schema
-``required`` list, (4) replace the FakeSession fixture in tests/test_bills.py.
-==============================================================================
+Note the endpoint lives under ``api_rs`` even for Lok Sabha bills. Response is
+the committee-style envelope ``{"_metadata": {"totalPages": N, ...},
+"records": [...]}``. ~10k bills total (6.7k LS + 3.4k RS).
 """
 
 from __future__ import annotations
@@ -41,11 +31,11 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterator
+from urllib.parse import urlencode
 
 from .http_client import make_session
 
-# PROVISIONAL — unverified. See module docstring / bead sansad-crawler-4xd.
-BILLS_API = "https://sansad.in/api_ls/legislation/bills"
+BILLS_API = "https://sansad.in/api_rs/legislation/getBills"
 
 HEADERS = {
     "Accept": "application/json",
@@ -53,6 +43,8 @@ HEADERS = {
     "Referer": "https://sansad.in/ls/legislation/bills",
 }
 
+# Internal house code -> sansad ``house`` query value.
+_HOUSE_PARAM = {"ls": "Lok Sabha", "rs": "Rajya Sabha"}
 VALID_HOUSES = ("ls", "rs")
 
 
@@ -60,19 +52,20 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
-def _first(raw: dict, *keys: str) -> object | None:
-    for k in keys:
-        v = raw.get(k)
-        if v not in (None, ""):
-            return v
-    return None
+def _date(value: object) -> str | None:
+    """sansad dates arrive as ``"2026-04-16 00:00:00.0"`` — keep the ISO date."""
+    if not isinstance(value, str) or not value.strip():
+        return None
+    return value.strip()[:10]
 
 
 def bill_key(house: str, raw: dict) -> str:
-    """Stable dedup key: bill number if available, else a raw-record hash."""
-    bill_no = _first(raw, "billNumber", "billNo", "number", "billNum")
+    """Stable dedup key. (house, billYear, billNumber) is unique; fall back to
+    a raw-record hash if the number is missing."""
+    bill_no = raw.get("billNumber")
+    year = raw.get("billYear")
     if bill_no not in (None, ""):
-        return f"BILL|{house}|{bill_no}"
+        return f"BILL|{house}|{year or 'NA'}|{bill_no}"
     digest = hashlib.sha1(
         json.dumps(raw, sort_keys=True, ensure_ascii=False).encode("utf-8")
     ).hexdigest()[:12]
@@ -88,11 +81,13 @@ class BillsProbe:
         *,
         sleep: float = 0.5,
         houses: list[str] | None = None,
+        bill_type: str | None = None,
         api_url: str = BILLS_API,
     ) -> None:
         self.out_dir = out_dir
         self.sleep = sleep
         self.houses = [h for h in (houses or list(VALID_HOUSES)) if h in VALID_HOUSES]
+        self.bill_type = bill_type or ""
         self.api_url = api_url
         self.manifest = out_dir / "manifest.jsonl"
         self.session = make_session()
@@ -117,10 +112,21 @@ class BillsProbe:
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
     def bills_page(self, house: str, page: int, size: int = 200) -> dict:
-        # PROVISIONAL param names — adjust once the live contract is captured.
-        from urllib.parse import urlencode
-
-        params = {"house": house.upper(), "page": page, "size": size}
+        params = {
+            "house": _HOUSE_PARAM.get(house, ""),
+            "billType": self.bill_type,
+            "ministryName": "",
+            "billCategory": "",
+            "billStatus": "",
+            "billName": "",
+            "loksabha": "",
+            "sessionNo": "",
+            "page": page,
+            "size": size,
+            "locale": "en",
+            "sortOn": "billIntroducedDate",
+            "sortBy": "desc",
+        }
         url = f"{self.api_url}?{urlencode(params)}"
         r = self.session.get(url, headers=HEADERS, timeout=45)
         r.raise_for_status()
@@ -141,28 +147,40 @@ class BillsProbe:
             page += 1
             time.sleep(self.sleep)
 
-    def _record(self, raw: dict, house: str, *, fetch_status: str = "ok") -> dict:
+    def _record(self, raw: dict, house: str) -> dict:
         now = _now_iso()
         return {
             "key": bill_key(house, raw),
             "kind": "bill_record",
             "record_type": "bill_record",
-            "source": "sansad.in/legislation",
+            "source": "sansad.in/api_rs/legislation/getBills",
             "house": house,
-            "bill_no": _first(raw, "billNumber", "billNo", "number", "billNum"),
-            "bill_name": _first(raw, "billName", "name", "title"),
-            "bill_type": _first(raw, "billType", "type", "category"),
-            "ministry": _first(raw, "ministry", "ministryName"),
-            "introduced_date": _first(raw, "introducedDate", "dateOfIntroduction", "introductionDate"),
-            "introduced_house": _first(raw, "introducedHouse", "houseOfIntroduction"),
-            "passed_ls_date": _first(raw, "passedLsDate", "lsPassedDate"),
-            "passed_rs_date": _first(raw, "passedRsDate", "rsPassedDate"),
-            "assent_date": _first(raw, "assentDate", "dateOfAssent"),
-            "current_stage": _first(raw, "currentStage", "stage"),
-            "status": _first(raw, "status", "billStatus"),
-            "pdf_url": _first(raw, "url", "pdfUrl", "fileUrl"),
-            "pdf_path": None,
-            "fetch_status": fetch_status,
+            "bill_no": raw.get("billNumber"),
+            "bill_name": raw.get("billName"),
+            "bill_type": raw.get("billType"),
+            "bill_category": raw.get("billCategory"),
+            "ministry": raw.get("ministryName"),
+            "bill_year": raw.get("billYear"),
+            "introduced_house": raw.get("billIntroducedInHouse"),
+            "introduced_by": raw.get("billIntroducedBy"),
+            "introduced_date": _date(raw.get("billIntroducedDate")),
+            "introduced_file": raw.get("billIntroducedFile"),
+            "passed_ls_date": _date(raw.get("billPassedInLSDate")),
+            "passed_ls_file": raw.get("billPassedInLSFile"),
+            "passed_rs_date": _date(raw.get("billPassedInRSDate")),
+            "passed_rs_file": raw.get("billPassedInRSFile"),
+            "passed_both_houses_file": raw.get("billPassedInBothHousesFile"),
+            "referred_to_committee_date": _date(raw.get("referredToCommitteeDate")),
+            "report_presented_date": _date(raw.get("reportPresentedDate")),
+            "report_file": raw.get("reportFile"),
+            "act_no": raw.get("actNo"),
+            "act_year": raw.get("actYear"),
+            "assent_date": _date(raw.get("billAssentedDate")),
+            "gazetted_file": raw.get("billGazettedFile"),
+            "synopsis_file": raw.get("billSynopsisFile"),
+            "errata_file": raw.get("errataFile"),
+            "status": raw.get("status"),
+            "fetch_status": "ok",
             "fetched_at": now,
             "probed_at": now,
         }
@@ -173,21 +191,8 @@ class BillsProbe:
             "key": f"BILL|{house}|_{fetch_status}",
             "kind": "bill_record",
             "record_type": "bill_record",
-            "source": "sansad.in/legislation",
+            "source": "sansad.in/api_rs/legislation/getBills",
             "house": house,
-            "bill_no": None,
-            "bill_name": None,
-            "bill_type": None,
-            "ministry": None,
-            "introduced_date": None,
-            "introduced_house": None,
-            "passed_ls_date": None,
-            "passed_rs_date": None,
-            "assent_date": None,
-            "current_stage": None,
-            "status": None,
-            "pdf_url": None,
-            "pdf_path": None,
             "fetch_status": fetch_status,
             "api_url": self.api_url,
             "fetched_at": now,
@@ -197,13 +202,14 @@ class BillsProbe:
             rec["error"] = error[:500]
         return rec
 
-    def probe(self, *, dry_run: bool = False) -> list[dict]:
+    def probe(self, *, max_records: int | None = None, dry_run: bool = False) -> list[dict]:
         seen = self.load_seen()
         out: list[dict] = []
         for house in self.houses:
             if dry_run:
                 out.append(self._status_record(house, fetch_status="dry_run"))
                 continue
+            added = 0
             try:
                 for raw in self.bills_all(house):
                     rec = self._record(raw, house)
@@ -212,7 +218,10 @@ class BillsProbe:
                     seen.add(rec["key"])
                     self.append_manifest(rec)
                     out.append(rec)
-            except Exception as exc:  # noqa: BLE001 — provisional endpoint may 4xx
+                    added += 1
+                    if max_records is not None and added >= max_records:
+                        break
+            except Exception as exc:  # noqa: BLE001
                 rec = self._status_record(house, fetch_status="fetch_error", error=str(exc))
                 self.append_manifest(rec)
                 out.append(rec)
