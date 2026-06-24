@@ -118,6 +118,24 @@ def test_private_university_apu_follows_subpages_via_fetcher():
     assert ad["unit_eligibility"] and "PhD" in ad["unit_eligibility"]
 
 
+def test_iit_indore_associates_title_with_pdf_link():
+    pytest.importorskip("bs4")
+    from commoner_probe.academia.parsers import get_parser, iit_indore
+
+    assert get_parser("iit_indore") is iit_indore.parse
+    html = (
+        "<div><p><strong>Advt. No. IITI/Rectt/Faculty/2026/01 — Faculty Positions</strong></p>"
+        "<p><a href='/public/storage/recruitments/advt2026.pdf'>Download</a></p></div>"
+    )
+    ads = iit_indore.parse(html, "https://www.iiti.ac.in/recruitments/faculty-positions", FETCHED)
+    assert len(ads) == 1
+    ad = ads[0]
+    assert ad["post_type"] == "Faculty"
+    assert ad["contract_status"] == "Regular"
+    assert ad["ad_number"] == "IITI/Rectt/Faculty/2026/01"
+    assert ad["original_url"].endswith("advt2026.pdf")
+
+
 def test_private_university_apu_degrades_without_fetcher():
     pytest.importorskip("bs4")
     from commoner_probe.academia.parsers import private_university
