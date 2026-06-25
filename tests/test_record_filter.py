@@ -62,7 +62,7 @@ def _manifest(out_dir: Path) -> list[dict]:
     path = out_dir / "manifest.jsonl"
     if not path.exists():
         return []
-    return [json.loads(l) for l in path.read_text(encoding="utf-8").splitlines() if l.strip()]
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
 
 
 # Keep only rows whose answer_text mentions "library" — a field filter_fn
