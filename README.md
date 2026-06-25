@@ -15,9 +15,10 @@ import commoner_probe as probe   # alias used throughout CommonerLLP toolchain
 
 ## Why this exists
 
-Parliamentary questions, committee reports, state assembly records, CSR
-exports, and public mining-district disclosures are mandatory or official
-public disclosures. The data exists. The problem
+Parliamentary questions, committee reports, floor debates, bills, state
+assembly records, CSR exports, public mining-district disclosures, Union
+Budget files, and faculty-recruitment ads from public universities are
+mandatory or official public disclosures. The data exists. The problem
 is that it lives across undocumented portals with inconsistent APIs, no bulk
 export, and PDFs that require extraction to read programmatically.
 
@@ -160,6 +161,36 @@ for chain in c.join_atr_chain():
     print(f"  Government responses: {len(chain.atr_answers)}")
 ```
 
+### Floor debates (Lok Sabha)
+
+`debates` acquires the Lok Sabha "text of debate" record: one PDF transcript per
+*sitting day*. It enumerates sitting dates per Lok Sabha / session, then fetches
+each day's transcript (optionally downloading the PDF with a SHA-256). It is a
+day-by-day document acquisition — verbatim text and per-speaker segmentation are
+left to a downstream extraction step. The richest longitudinal record of what is
+said on the floor.
+
+```bash
+commoner-probe debates \
+  --out data/debates \
+  --loksabhas 18 \
+  --download
+```
+
+### Bills and legislation
+
+`bills` fetches the sansad.in legislation catalog — every bill with its
+introduction date, stage dates, and status — deduplicated by a stable key (no
+topic profile needed; the bill list is an exhaustive catalog). Enables tracking
+legislative velocity, committee-scrutiny rates, and private-member-bill outcomes.
+
+```bash
+commoner-probe bills \
+  --out data/bills \
+  --house both \
+  --bill-type "Private Member"
+```
+
 ### State assembly records (NeVA portals)
 
 From 2020, sub-national governments have been adopting NIC's NeVA (National
@@ -216,6 +247,36 @@ commoner-probe evidence dmft \
   --mines-dmft-dir data/mines-dmft \
   --sansad-dir data/sansad/mines-dmft-pmkkky \
   --out data/evidence/dmft.json
+```
+
+### Union Budget & RBI State-Finances
+
+`budget` acquires fiscal source files: Union Budget SBE (Statement of Budget
+Estimates) spreadsheets — a static table of per-fiscal-year URL templates expanded
+across the requested demand numbers — and RBI State-Finances documents discovered
+from the RBI publication page. Each file is downloaded with existence-skip and a
+SHA-256, one `budget_source_file` record per file. Acquisition only: the
+spreadsheet→rows parsing stays downstream (it needs pandas).
+
+```bash
+commoner-probe budget \
+  --out data/budget \
+  --sources union-budget,rbi-state-finances \
+  --demands 101,1,33
+```
+
+### Academic faculty-recruitment ads
+
+`academic-jobs` crawls Indian higher-education-institution (HEI) career pages for
+faculty-recruitment advertisements, driven by a bundled institution registry. Each
+ad becomes one `academic_job_posting` record; fetch/parse failures and
+empty-result cases are recorded so coverage gaps are visible rather than silent.
+(Migrated from the academiaindia project.)
+
+```bash
+commoner-probe academic-jobs \
+  --out data/academic-jobs \
+  --institutions iit-kharagpur,iit-bombay
 ```
 
 ---
@@ -331,6 +392,74 @@ commoner-probe mines-dmft \
 Downloads raw Ministry of Mines static CSV snapshots and Odisha DMFT public
 JSON/report surfaces. Use `--dry-run` to print manifest records without opening
 network sessions.
+
+### `commoner-probe bills` — bills & legislation catalog
+
+```bash
+commoner-probe bills \
+  --out data/bills \
+  --house both
+```
+
+| Flag | Default | What it does |
+|---|---|---|
+| `--out` | required | Output corpus directory |
+| `--house` | `both` | `ls`, `rs`, or `both` (the endpoint lives under `api_rs` for both) |
+| `--bill-type` | all types | Filter by bill type, e.g. `Government` or `Private Member` |
+| `--max-records` | — | Stop after N new records per house (smoke-test brake) |
+| `--dry-run` | off | Emit one planning record per house without fetching |
+
+### `commoner-probe debates` — Lok Sabha floor-debate transcripts
+
+```bash
+commoner-probe debates \
+  --out data/debates \
+  --loksabhas 18 \
+  --download
+```
+
+| Flag | Default | What it does |
+|---|---|---|
+| `--out` | required | Output corpus directory |
+| `--loksabhas` | `18` | Comma-separated Lok Sabha numbers, e.g. `17,18` |
+| `--sessions` | all | Comma-separated session numbers to limit to |
+| `--from-date` / `--to-date` | — | ISO date bounds (YYYY-MM-DD) |
+| `--max-records` | — | Stop after N new records per Lok Sabha |
+| `--download` | off | Download each day's transcript PDF (+ sha256) |
+| `--dry-run` | off | List candidate sitting dates without fetching PDFs |
+
+### `commoner-probe budget` — Union Budget & RBI State-Finances files
+
+```bash
+commoner-probe budget \
+  --out data/budget \
+  --sources union-budget \
+  --demands 101
+```
+
+| Flag | Default | What it does |
+|---|---|---|
+| `--out` | required | Output directory |
+| `--sources` | `union-budget` | Comma-separated: `union-budget`, `rbi-state-finances` |
+| `--demands` | `101` | Comma-separated Union Budget demand numbers, e.g. `101,1,33` |
+| `--rbi-url` | RBI default | RBI State-Finances publication page to discover documents from |
+| `--dry-run` | off | Print manifest records without writing (offline for `union-budget`) |
+
+### `commoner-probe academic-jobs` — HEI faculty-recruitment ads
+
+```bash
+commoner-probe academic-jobs \
+  --out data/academic-jobs \
+  --institutions iit-kharagpur
+```
+
+| Flag | Default | What it does |
+|---|---|---|
+| `--out` | required | Output directory |
+| `--institutions` | all in registry | Comma-separated institution ids (e.g. `iit-kharagpur`) |
+| `--registry` | bundled | Path to an alternative `institutions_registry.json` |
+| `--no-download` | off | Skip PDF download + text extraction (listing-page heuristics only) |
+| `--dry-run` | off | List which institutions would be probed without fetching |
 
 ### `commoner-probe evidence dmft` — cross-source evidence bundle
 
@@ -472,19 +601,6 @@ copyleft friction.
 ---
 
 ## Upcoming
-
-### Floor debates
-
-sansad.in exposes full debate proceedings via `api_ls/debate/text-of-debate`
-(structured JSON, 17th Lok Sabha onwards). Each record covers a single day:
-type of business, member who spoke, and verbatim text. The richest longitudinal
-record of what MPs say on the floor.
-
-### Bills and legislation
-
-`sansad.in/ls/legislation/bills` lists every bill since independence with
-introduction date, debate dates, and status at each stage. Enables tracking
-legislative velocity, committee scrutiny rates, and private member bill outcomes.
 
 ### MP profiles and career timelines
 

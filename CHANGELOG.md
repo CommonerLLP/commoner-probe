@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.5.1 (2026-06-25)
+
+### Added
+
+- **`TopicProfile.record_filter_fn`** — an optional record-level acquisition filter, `record_filter_fn(record) -> bool`, applied in `probe_ls`/`probe_rs` after the full Q/A record is built but before it is downloaded, enriched, appended, added to `seen`, or counted. Unlike `filter_fn` (which sees only `title`+`query` at acquisition), it sees the whole record — including fields such as `answer_text` that exist only post-construction — so callers that must match on those can filter at acquisition time instead of dropping rows afterwards. This keeps `--max-records` and the per-bucket `no_match`/`kept` counters aligned with the rows actually kept. `None` (the default) preserves existing behaviour.
+
+- **`academic-jobs` fetch resilience** — `AcademicJobsProbe` now keeps institutions visible when their listing page misbehaves: a 4xx that still serves a substantial body is parsed (some Drupal career portals answer the listing alongside a 404); a registry `robots_override: true` retries past a blanket robots disallow for official public-recruitment sources (the `http_client` session gains a per-call `respect_robots` opt-out); and a registry `fallback_pdf_url` is parsed directly when the listing fetch or parse fails (keeps e.g. IIT Madras visible when its portal is down). Each ad record now carries a `source_method` (`official scrape` / `public-interest override` / `fallback PDF`), and `fetch_status` gains `robots_blocked`.
+
+### Fixed
+
+- **RS per-bucket `no_match` counter**: the normal end-of-bucket audit record in `probe_rs` hardcoded `no_match=0`, so `filter_fn` drops were under-reported in `_runs.jsonl` on every bucket that did not hit `max_records`. It now records the actual `bkt_no_match`, matching the early-return path and `probe_ls`.
+
 ## 0.5.0 (2026-06-25)
 
 ### Added

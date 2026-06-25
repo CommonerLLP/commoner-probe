@@ -279,6 +279,12 @@ class SansadProbe(BaseProbe):
                             "found_via_query": query,
                             "probed_at": now(),
                         }
+                        if (
+                            self.topic.record_filter_fn is not None
+                            and not self.topic.record_filter_fn(rec)
+                        ):
+                            bkt_no_match += 1
+                            continue
                         if download:
                             pdf_url = self.ls_pdf_url(uuid)
                             if pdf_url:
@@ -428,6 +434,12 @@ class SansadProbe(BaseProbe):
                         "status": (row.get("status") or "").strip(),
                         "probed_at": now(),
                     }
+                    if (
+                        self.topic.record_filter_fn is not None
+                        and not self.topic.record_filter_fn(rec)
+                    ):
+                        bkt_no_match += 1
+                        continue
                     if download and rec.get("pdf_url"):
                         qtype_seg = safe_filename_segment((qtype or "U").upper()[:1])
                         qno_seg = safe_filename_segment(qno or "X")
@@ -460,7 +472,7 @@ class SansadProbe(BaseProbe):
                 self.runlog.record_bucket(
                     kind="rs_qa", session=ses_no, ministry=ministry,
                     raw_returned=bkt_raw, after_date_filter=bkt_after_date,
-                    no_match=0, kept=bkt_kept,
+                    no_match=bkt_no_match, kept=bkt_kept,
                     skipped_seen=bkt_skipped_seen,
                     elapsed_ms=round((time.monotonic() - bkt_t0) * 1000, 1),
                     error=None,

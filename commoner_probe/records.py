@@ -278,6 +278,7 @@ class ManifestAcademicJobRecord:
     parse_confidence: float | None = None
     pdf_path: str | None = None
     pdf_parsed: bool = False
+    source_method: str | None = None
     snapshot_fetched_at: str | None = None
     error: str | None = None
 

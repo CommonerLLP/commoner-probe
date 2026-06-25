@@ -121,7 +121,11 @@
     },
     "fetch_status": {
       "type": "string",
-      "enum": ["ok", "dry_run", "no_url", "no_ads", "fetch_error", "parse_error"]
+      "enum": ["ok", "dry_run", "no_url", "no_ads", "fetch_error", "parse_error", "robots_blocked"]
+    },
+    "source_method": {
+      "type": ["string", "null"],
+      "description": "How the ad was acquired: 'official scrape', 'fallback PDF', or 'public-interest override'."
     },
     "snapshot_fetched_at": {
       "type": ["string", "null"]

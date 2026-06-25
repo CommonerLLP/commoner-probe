@@ -278,3 +278,90 @@ def test_corpus_streams_academic_jobs(tmp_path):
     assert len(records) == 1
     assert records[0].institution_id == "iim-demo"
     assert records[0].fetch_status == "ok"
+
+
+# --------------------------------------------------------------------------- #
+# Fetch resilience (served-body 4xx, robots override, fallback PDF)           #
+# --------------------------------------------------------------------------- #
+
+_AD_HTML = '<a href="/careers/advt-2026.pdf">Faculty Recruitment Advertisement</a> last date 30/06/2026'
+
+
+def test_probe_institution_accepts_served_body_4xx(tmp_path):
+    """A 4xx that still serves a substantial listing body is parsed (e.g. iimcal 404)."""
+    pytest.importorskip("bs4")
+    from commoner_probe.academia import AcademicJobsProbe
+
+    inst = {"id": "demo-univ", "career_page_url_guess": "https://demo.example.ac.in/careers",
+            "parser": "generic"}
+    probe = AcademicJobsProbe(tmp_path, sleep=0, registry_path=_registry(tmp_path, [inst]))
+    big_body = _AD_HTML + ("padding " * 400)  # > 2000 chars
+    probe.session = FakeSession({"demo.example.ac.in/careers": FakeResp(big_body, 404)})
+
+    records = probe.probe_institution(inst, pdf=None, dry_run=False)
+    assert len(records) == 1
+    assert records[0]["fetch_status"] == "ok"
+    assert records[0]["source_method"] == "official scrape"
+
+
+def test_probe_institution_robots_override(tmp_path):
+    """robots_override=True retries past a robots block and tags provenance."""
+    pytest.importorskip("bs4")
+    from commoner_probe.academia import AcademicJobsProbe
+
+    inst = {"id": "iit-x", "career_page_url_guess": "https://iitx.ac.in/jobs",
+            "parser": "generic", "robots_override": True}
+    probe = AcademicJobsProbe(tmp_path, sleep=0, registry_path=_registry(tmp_path, [inst]))
+
+    class RobotsSession:
+        def get(self, url, *, respect_robots=True, **kwargs):
+            if respect_robots:
+                raise PermissionError("Disallowed by robots.txt")
+            return FakeResp(_AD_HTML)
+
+    probe.session = RobotsSession()
+    records = probe.probe_institution(inst, pdf=None, dry_run=False)
+    assert len(records) == 1
+    assert records[0]["fetch_status"] == "ok"
+    assert records[0]["source_method"] == "public-interest override"
+
+
+def test_probe_institution_robots_blocked_without_override(tmp_path):
+    from commoner_probe.academia import AcademicJobsProbe
+
+    inst = {"id": "iit-x", "career_page_url_guess": "https://iitx.ac.in/jobs", "parser": "generic"}
+    probe = AcademicJobsProbe(tmp_path, sleep=0, registry_path=_registry(tmp_path, [inst]))
+
+    class RobotsSession:
+        def get(self, url, *, respect_robots=True, **kwargs):
+            raise PermissionError("Disallowed by robots.txt")
+
+    probe.session = RobotsSession()
+    records = probe.probe_institution(inst, pdf=None, dry_run=False)
+    assert records[0]["fetch_status"] == "robots_blocked"  # no override -> recorded, not parsed
+
+
+def test_probe_institution_falls_back_to_pdf_on_fetch_failure(tmp_path, monkeypatch):
+    """When the listing fetch fails, a registry fallback_pdf_url keeps the institution visible."""
+    from commoner_probe.academia import AcademicJobsProbe
+    from commoner_probe.academia import probe as probe_mod
+
+    inst = {"id": "iit-madras", "career_page_url_guess": "https://iitm.ac.in/jobs",
+            "parser": "iit_rolling", "fallback_pdf_url": "https://iitm.ac.in/cached/ad.pdf"}
+    probe = AcademicJobsProbe(tmp_path, sleep=0, registry_path=_registry(tmp_path, [inst]))
+
+    class FailSession:
+        def get(self, url, **kwargs):
+            raise RuntimeError("listing down")
+
+    probe.session = FailSession()
+
+    def fake_parser(html, url, fetched_at, pdf):
+        assert html == "" and url == "https://iitm.ac.in/cached/ad.pdf"
+        return [{"id": "a1", "title": "Faculty — Aerospace", "original_url": url, "post_type": "Faculty"}]
+
+    monkeypatch.setattr(probe_mod, "get_parser", lambda name: fake_parser)
+    records = probe.probe_institution(inst, pdf=None, dry_run=False)
+    assert len(records) == 1
+    assert records[0]["fetch_status"] == "ok"
+    assert records[0]["source_method"] == "fallback PDF"

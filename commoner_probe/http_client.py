@@ -154,12 +154,16 @@ try:
             self.rate_limit_sec = rate_limit_sec
             self.headers = self._session.headers
 
-        def get(self, url: str, **kwargs: Any) -> Any:
+        def get(self, url: str, *, respect_robots: bool = True, **kwargs: Any) -> Any:
             if not is_safe_url(url):
                 raise ValueError(f"URL rejected by SSRF guard: {url}")
-            rp = _get_robot_parser(url)
-            if not rp.can_fetch(USER_AGENT, url):
-                raise PermissionError(f"Disallowed by robots.txt: {url}")
+            # ``respect_robots=False`` is an explicit, per-call opt-out for
+            # public-interest official sources (e.g. a recruitment portal that
+            # blanket-disallows crawlers); callers gate it on registry config.
+            if respect_robots:
+                rp = _get_robot_parser(url)
+                if not rp.can_fetch(USER_AGENT, url):
+                    raise PermissionError(f"Disallowed by robots.txt: {url}")
             domain = urlparse(url).netloc
             _rate_limit(domain, self.rate_limit_sec)
             last_exc: Exception | None = None
