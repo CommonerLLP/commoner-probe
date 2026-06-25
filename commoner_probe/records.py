@@ -207,6 +207,159 @@ class ManifestMinesDmftRecord:
         return _from_dict(cls, d)
 
 
+@dataclass
+class ManifestBudgetRecord:
+    """One Union Budget / RBI State-Finances raw source-file record."""
+
+    key: str
+    kind: str
+    record_type: str
+    source_family: str
+    source_name: str
+    publisher: str
+    fiscal_year: str
+    document_type: str
+    filename: str
+    dest: str
+    url: str
+    status: str
+    media_type: str
+    fetched_at: str
+    probed_at: str
+    demand_no: str | None = None
+    section: str | None = None
+    source_last_modified: str | None = None
+    source_last_modified_raw: str | None = None
+    sha256: str | None = None
+    http_status: int | None = None
+    error: str | None = None
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "ManifestBudgetRecord":
+        return _from_dict(cls, d)
+
+
+@dataclass
+class ManifestAcademicJobRecord:
+    """One Indian HEI faculty-recruitment advertisement / coverage record."""
+
+    key: str
+    kind: str
+    record_type: str
+    source_family: str
+    institution_id: str
+    title: str
+    original_url: str
+    fetch_status: str
+    probed_at: str
+    institution_name: str | None = None
+    institution_short_name: str | None = None
+    institution_type: str | None = None
+    state: str | None = None
+    parser: str | None = None
+    ad_number: str | None = None
+    department: str | None = None
+    discipline: str | None = None
+    post_type: str | None = None
+    contract_status: str | None = None
+    category_breakdown: dict | None = None
+    number_of_posts: int | None = None
+    pay_scale: str | None = None
+    publication_date: str | None = None
+    closing_date: str | None = None
+    info_url: str | None = None
+    apply_url: str | None = None
+    publications_required: str | None = None
+    unit_eligibility: str | None = None
+    annexure_pdf_url: str | None = None
+    reservation_note: str | None = None
+    general_eligibility: str | None = None
+    raw_text_excerpt: str | None = None
+    parse_confidence: float | None = None
+    pdf_path: str | None = None
+    pdf_parsed: bool = False
+    snapshot_fetched_at: str | None = None
+    error: str | None = None
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "ManifestAcademicJobRecord":
+        return _from_dict(cls, d)
+
+
+@dataclass
+class ManifestFloorDebateRecord:
+    """One Lok Sabha sitting-day debate transcript (kind='floor_debate').
+
+    The live API serves one PDF per sitting day (api_ls/debate/text-of-debate);
+    per-speaker structured text is a downstream extraction concern.
+    """
+
+    key: str
+    kind: str
+    record_type: str
+    source: str
+    house: str
+    fetch_status: str
+    probed_at: str
+    loksabha: int | None = None
+    session_no: Any = None
+    date: str | None = None
+    pdf_url: str | None = None
+    pdf_path: str | None = None
+    sha256: str | None = None
+    fetched_at: str | None = None
+    error: str | None = None
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "ManifestFloorDebateRecord":
+        return _from_dict(cls, d)
+
+
+@dataclass
+class ManifestBillRecord:
+    """One sansad.in bill record (kind='bill_record', api_rs/legislation/getBills)."""
+
+    key: str
+    kind: str
+    record_type: str
+    source: str
+    house: str
+    fetch_status: str
+    probed_at: str
+    bill_no: Any = None
+    bill_name: str | None = None
+    bill_type: str | None = None
+    bill_category: str | None = None
+    ministry: str | None = None
+    bill_year: Any = None
+    introduced_house: str | None = None
+    introduced_by: str | None = None
+    introduced_date: str | None = None
+    introduced_file: str | None = None
+    passed_ls_date: str | None = None
+    passed_ls_file: str | None = None
+    passed_rs_date: str | None = None
+    passed_rs_file: str | None = None
+    passed_both_houses_file: str | None = None
+    referred_to_committee_date: str | None = None
+    report_presented_date: str | None = None
+    report_file: str | None = None
+    act_no: Any = None
+    act_year: Any = None
+    assent_date: str | None = None
+    gazetted_file: str | None = None
+    synopsis_file: str | None = None
+    errata_file: str | None = None
+    status: str | None = None
+    api_url: str | None = None
+    fetched_at: str | None = None
+    error: str | None = None
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "ManifestBillRecord":
+        return _from_dict(cls, d)
+
+
 # ---------------------------------------------------------------------------
 # answers.jsonl records
 # ---------------------------------------------------------------------------

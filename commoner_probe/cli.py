@@ -5,10 +5,14 @@ import argparse
 import json
 from pathlib import Path
 
+from .academia import AcademicJobsProbe
 from .answers import extract_answers
 from .atr_linkage import extract_atr_linkages
+from .bills import BILLS_API, BillsProbe
+from .budget import RBI_STATE_FINANCES_URL, BudgetProbe
 from .committees import CommitteeProbe, resolve_committees
 from .csr.mca import McaCsrProbe
+from .debates import LS_DEBATE_API, DebateProbe
 from .dmft.mines import MinesDmftProbe
 from .evidence import build_dmft_evidence_bundle
 from .example_topics import list_example_topics, load_example_topic_text
@@ -196,6 +200,71 @@ def mines_dmft_cmd(args: argparse.Namespace) -> None:
         print(json.dumps(record, ensure_ascii=False))
 
 
+def budget_cmd(args: argparse.Namespace) -> None:
+    out = Path(args.out)
+    sources = _split_csv(args.sources) or ["union-budget"]
+    demands = _split_csv(args.demands) or ["101"]
+    probe = BudgetProbe(
+        out,
+        sleep=args.sleep,
+        demands=demands,
+        rbi_url=args.rbi_url,
+    )
+    records = probe.probe_sources(sources, dry_run=args.dry_run)
+    for record in records:
+        print(json.dumps(record, ensure_ascii=False))
+
+
+def bills_cmd(args: argparse.Namespace) -> None:
+    out = Path(args.out)
+    houses = [args.house] if args.house != "both" else ["ls", "rs"]
+    probe = BillsProbe(
+        out,
+        sleep=args.sleep,
+        houses=houses,
+        bill_type=args.bill_type,
+        api_url=args.api_url,
+    )
+    records = probe.probe(max_records=args.max_records, dry_run=args.dry_run)
+    for record in records:
+        print(json.dumps(record, ensure_ascii=False))
+
+
+def debates_cmd(args: argparse.Namespace) -> None:
+    out = Path(args.out)
+    loksabhas = [int(x) for x in (_split_csv(args.loksabhas) or ["18"])]
+    sessions = [int(x) for x in (_split_csv(args.sessions) or [])] or None
+    probe = DebateProbe(
+        out,
+        sleep=args.sleep,
+        loksabhas=loksabhas,
+        sessions=sessions,
+        from_date=args.from_date,
+        to_date=args.to_date,
+        api_url=args.api_url,
+    )
+    records = probe.probe(
+        max_records=args.max_records,
+        download=args.download,
+        dry_run=args.dry_run,
+    )
+    for record in records:
+        print(json.dumps(record, ensure_ascii=False))
+
+
+def academic_jobs_cmd(args: argparse.Namespace) -> None:
+    out = Path(args.out)
+    probe = AcademicJobsProbe(
+        out,
+        sleep=args.sleep,
+        institutions=_split_csv(args.institutions),
+        registry_path=args.registry,
+    )
+    records = probe.probe(download=not args.no_download, dry_run=args.dry_run)
+    for record in records:
+        print(json.dumps(record, ensure_ascii=False))
+
+
 def extract_answers_cmd(args: argparse.Namespace) -> None:
     out = Path(args.out)
     if not (out / "manifest.jsonl").exists():
@@ -374,6 +443,104 @@ def build_parser() -> argparse.ArgumentParser:
     )
     mines_dmft.set_defaults(func=mines_dmft_cmd)
 
+    budget = sub.add_parser(
+        "budget",
+        help="Download Union Budget SBE spreadsheets and RBI State-Finances source files.",
+    )
+    budget.add_argument("--out", required=True, help="Output directory")
+    budget.add_argument(
+        "--sources",
+        default="union-budget",
+        help="Comma-separated sources: union-budget, rbi-state-finances",
+    )
+    budget.add_argument(
+        "--demands",
+        default="101",
+        help="Comma-separated Union Budget demand numbers, e.g. 101,1,33",
+    )
+    budget.add_argument(
+        "--rbi-url",
+        default=RBI_STATE_FINANCES_URL,
+        help="RBI State-Finances publication page to discover documents from.",
+    )
+    budget.add_argument("--sleep", type=float, default=1.0)
+    budget.add_argument(
+        "--dry-run",
+        action="store_true",
+        help=(
+            "Print manifest records without writing manifest.jsonl. Fully offline "
+            "for union-budget; rbi-state-finances still fetches the index page to enumerate."
+        ),
+    )
+    budget.set_defaults(func=budget_cmd)
+
+    bills = sub.add_parser(
+        "bills",
+        help="Probe sansad.in bills / legislation (api_rs/legislation/getBills).",
+    )
+    bills.add_argument("--out", required=True, help="Output corpus directory")
+    bills.add_argument("--house", choices=["both", "ls", "rs"], default="both")
+    bills.add_argument(
+        "--bill-type",
+        default="",
+        help="Filter by bill type, e.g. 'Government' or 'Private Member'; default = all types.",
+    )
+    bills.add_argument("--max-records", type=int, help="Stop after N new records per house (smoke-test brake)")
+    bills.add_argument("--api-url", default=BILLS_API, help="Override the bills API base URL.")
+    bills.add_argument("--sleep", type=float, default=0.5)
+    bills.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Emit one planning record per house without fetching.",
+    )
+    bills.set_defaults(func=bills_cmd)
+
+    debates = sub.add_parser(
+        "debates",
+        help="Probe Lok Sabha per-day floor-debate transcript PDFs (api_ls/debate/text-of-debate).",
+    )
+    debates.add_argument("--out", required=True, help="Output corpus directory")
+    debates.add_argument("--loksabhas", default="18", help="Comma-separated Lok Sabha numbers, e.g. 17,18")
+    debates.add_argument("--sessions", help="Comma-separated session numbers to limit to; default = all")
+    debates.add_argument("--from-date", help="ISO date lower bound (YYYY-MM-DD)")
+    debates.add_argument("--to-date", help="ISO date upper bound (YYYY-MM-DD)")
+    debates.add_argument("--max-records", type=int, help="Stop after N new records per Lok Sabha (smoke-test brake)")
+    debates.add_argument("--download", action="store_true", help="Download each day's transcript PDF (+ sha256)")
+    debates.add_argument("--api-url", default=LS_DEBATE_API, help="Override the debate API base URL.")
+    debates.add_argument("--sleep", type=float, default=0.5)
+    debates.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="List candidate sitting dates (from the session catalog) without fetching per-day PDFs.",
+    )
+    debates.set_defaults(func=debates_cmd)
+
+    academic_jobs = sub.add_parser(
+        "academic-jobs",
+        help="Crawl Indian HEI career pages for faculty-recruitment advertisements.",
+    )
+    academic_jobs.add_argument("--out", required=True, help="Output directory")
+    academic_jobs.add_argument(
+        "--institutions",
+        help="Comma-separated institution ids (e.g. iit-kharagpur); default = all in registry",
+    )
+    academic_jobs.add_argument(
+        "--registry",
+        help="Path to an alternative institutions_registry.json; default = bundled registry",
+    )
+    academic_jobs.add_argument(
+        "--no-download",
+        action="store_true",
+        help="Skip PDF download + text extraction (listing-page heuristics only).",
+    )
+    academic_jobs.add_argument("--sleep", type=float, default=1.0)
+    academic_jobs.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="List which institutions would be probed (one record each) without fetching.",
+    )
+    academic_jobs.set_defaults(func=academic_jobs_cmd)
+
     atr_link = sub.add_parser(
         "atr-linkage",
         help=(
@@ -464,3 +631,7 @@ def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
     args.func(args)
+
+
+if __name__ == "__main__":
+    main()

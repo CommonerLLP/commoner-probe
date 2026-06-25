@@ -58,6 +58,11 @@ USER_AGENT = (
 DEFAULT_RATE_LIMIT_SEC = 1.0
 CACHE_TTL_SEC = 6 * 3600
 MAX_RETRIES = 3
+# Bound on the robots.txt fetch. urllib.robotparser.RobotFileParser.read()
+# calls urlopen() with no timeout and will hang indefinitely against a host
+# that accepts the connection but never responds (observed against some
+# government portals). We fetch robots.txt ourselves with this timeout instead.
+ROBOTS_TIMEOUT_SEC = 10.0
 
 _last_request_by_domain: dict[str, float] = {}
 _robot_parsers: dict[str, urllib.robotparser.RobotFileParser] = {}
@@ -66,9 +71,15 @@ _robot_parsers: dict[str, urllib.robotparser.RobotFileParser] = {}
 def _get_robot_parser(url: str) -> urllib.robotparser.RobotFileParser:
     """Return a cached RobotFileParser for the domain of *url*.
 
-    Fail-open: if robots.txt cannot be fetched (network error, 404, etc.)
-    the returned parser allows all paths. Government portals routinely omit
-    robots.txt; a fetch failure must never block legitimate archival work.
+    Fail-open: if robots.txt cannot be fetched (network error, timeout, 404,
+    etc.) the returned parser allows all paths. Government portals routinely
+    omit robots.txt; a fetch failure must never block legitimate archival work.
+
+    Unlike ``RobotFileParser.read()`` — which calls ``urlopen`` with no timeout
+    and can hang indefinitely against a host that never responds — this fetches
+    robots.txt with a bounded ``ROBOTS_TIMEOUT_SEC`` timeout, then hands the body
+    to ``RobotFileParser.parse``. HTTP-status handling mirrors ``read()``:
+    401/403 disallow everything, other failures fail open.
     """
     parsed = urlparse(url)
     domain = parsed.netloc
@@ -77,8 +88,19 @@ def _get_robot_parser(url: str) -> urllib.robotparser.RobotFileParser:
         robots_url = f"{parsed.scheme}://{domain}/robots.txt"
         rp.set_url(robots_url)
         try:
-            rp.read()
+            req = urllib.request.Request(robots_url, headers={"User-Agent": USER_AGENT})
+            with urllib.request.urlopen(req, timeout=ROBOTS_TIMEOUT_SEC) as resp:
+                raw = resp.read()
+            rp.parse(raw.decode("utf-8", errors="replace").splitlines())
+        except urllib.error.HTTPError as err:
+            # Mirror RobotFileParser.read(): unauthorized/forbidden robots.txt
+            # means "disallow all"; any other 4xx/5xx falls through to fail-open.
+            if err.code in (401, 403):
+                rp.disallow_all = True
+            else:
+                rp.allow_all = True
         except Exception:
+            # Network error, timeout, or malformed body — fail open.
             rp.allow_all = True
         _robot_parsers[domain] = rp
     return _robot_parsers[domain]

@@ -1,0 +1,136 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CommonerLLP/commoner-probe/schemas/v1/manifest_academic_job.json",
+  "title": "manifest.jsonl — Academic job posting",
+  "description": "One Indian HEI faculty-recruitment advertisement (or per-institution coverage status) record.",
+  "type": "object",
+  "required": [
+    "key",
+    "kind",
+    "record_type",
+    "source_family",
+    "institution_id",
+    "title",
+    "original_url",
+    "fetch_status",
+    "probed_at"
+  ],
+  "properties": {
+    "key": {
+      "type": "string",
+      "pattern": "^ACAD\\|[^|]+\\|.+$"
+    },
+    "kind": {
+      "type": "string",
+      "const": "academic_job_posting"
+    },
+    "record_type": {
+      "type": "string",
+      "const": "academic_job_posting"
+    },
+    "source_family": {
+      "type": "string",
+      "const": "academia-india"
+    },
+    "institution_id": {
+      "type": "string"
+    },
+    "institution_name": {
+      "type": ["string", "null"]
+    },
+    "institution_short_name": {
+      "type": ["string", "null"]
+    },
+    "institution_type": {
+      "type": ["string", "null"]
+    },
+    "state": {
+      "type": ["string", "null"]
+    },
+    "parser": {
+      "type": ["string", "null"]
+    },
+    "ad_number": {
+      "type": ["string", "null"]
+    },
+    "title": {
+      "type": "string"
+    },
+    "department": {
+      "type": ["string", "null"]
+    },
+    "discipline": {
+      "type": ["string", "null"]
+    },
+    "post_type": {
+      "type": ["string", "null"]
+    },
+    "contract_status": {
+      "type": ["string", "null"]
+    },
+    "category_breakdown": {
+      "type": ["object", "null"]
+    },
+    "number_of_posts": {
+      "type": ["integer", "null"]
+    },
+    "pay_scale": {
+      "type": ["string", "null"]
+    },
+    "publication_date": {
+      "type": ["string", "null"]
+    },
+    "closing_date": {
+      "type": ["string", "null"]
+    },
+    "original_url": {
+      "type": "string"
+    },
+    "info_url": {
+      "type": ["string", "null"]
+    },
+    "apply_url": {
+      "type": ["string", "null"]
+    },
+    "publications_required": {
+      "type": ["string", "null"]
+    },
+    "unit_eligibility": {
+      "type": ["string", "null"]
+    },
+    "annexure_pdf_url": {
+      "type": ["string", "null"]
+    },
+    "reservation_note": {
+      "type": ["string", "null"]
+    },
+    "general_eligibility": {
+      "type": ["string", "null"]
+    },
+    "raw_text_excerpt": {
+      "type": ["string", "null"]
+    },
+    "parse_confidence": {
+      "type": ["number", "null"]
+    },
+    "pdf_path": {
+      "type": ["string", "null"]
+    },
+    "pdf_parsed": {
+      "type": "boolean"
+    },
+    "fetch_status": {
+      "type": "string",
+      "enum": ["ok", "dry_run", "no_url", "no_ads", "fetch_error", "parse_error"]
+    },
+    "snapshot_fetched_at": {
+      "type": ["string", "null"]
+    },
+    "probed_at": {
+      "type": "string"
+    },
+    "error": {
+      "type": "string"
+    }
+  }
+}
