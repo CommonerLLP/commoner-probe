@@ -203,3 +203,73 @@ def test_private_university_apu_degrades_without_fetcher():
         index_html, "https://azimpremjiuniversity.edu.in/jobs/role:faculty", FETCHED, None
     )
     assert isinstance(ads, list)  # graceful, may be empty or index-only
+
+
+# --------------------------------------------------------------------------- #
+# jnu parser (column-band PDF table)                                          #
+# --------------------------------------------------------------------------- #
+
+
+def _jnu_row(num: int, school: str, cadre: str, cat: str, quals: str) -> str:
+    """Place fields at JNU's fixed column bands (school col 6, cadre 36, cat 51, quals 66)."""
+    cells = [(f"{num}.", 0), (school, 6), (cadre, 36), (cat, 51), (quals, 66)]
+    width = max(col + len(s) for s, col in cells)
+    line = [" "] * width
+    for s, col in cells:
+        line[col:col + len(s)] = list(s)
+    return "".join(line)
+
+
+def test_get_parser_resolves_jnu():
+    from commoner_probe.academia.parsers import UNMIGRATED_PARSERS, get_parser, jnu
+
+    assert get_parser("jnu") is jnu.parse
+    assert "jnu" not in UNMIGRATED_PARSERS  # ported referenced parser
+
+
+def test_jnu_parse_posts_from_text():
+    from commoner_probe.academia.parsers import jnu
+
+    text = "\n".join([
+        "JAWAHARLAL NEHRU UNIVERSITY",
+        "Advertisement RC/75/2026",
+        "Post   School/Centre   Cadre   Category   Qualifications",
+        "", "", "", "",  # gap so the header is outside post 1's column windows
+        _jnu_row(1, "School of Arts &", "Professor", "UR", "Ph.D. in History required"),
+        _jnu_row(2, "Centre for Studies (CCS)", "Professor", "SC", "Politics; publications expected"),
+        "",
+    ])
+    posts = jnu._parse_posts_from_text(
+        text, "https://www.jnu.ac.in/adv/JNU_AdvtNo.pdf", "RC/75/2026",
+        "https://www.jnu.ac.in/career", FETCHED,
+    )
+    assert len(posts) == 2
+    p1, p2 = posts
+    assert p1["department"] == "School of Arts &"
+    assert p1["category_breakdown"] == {"UR": 1}
+    assert p1["ad_number"] == "RC/75/2026"
+    assert p1["post_type"] == "Faculty"
+    assert p1["contract_status"] == "Regular"
+    assert p1["number_of_posts"] == 1
+    assert p1["pdf_parsed"] is True
+    assert p2["department"] == "Centre for Studies (CCS)"
+    assert p2["category_breakdown"] == {"SC": 1}
+    assert p2["unit_eligibility"] and "publications" in p2["unit_eligibility"]
+
+
+def test_jnu_listing_fallback_without_fetcher():
+    pytest.importorskip("bs4")
+    from commoner_probe.academia.parsers import jnu
+
+    html = (
+        '<p>Faculty recruitment RC/75/2026 — '
+        '<a href="/adv/JNU_AdvtNo_RC_75_2026.pdf">advertisement (PDF)</a></p>'
+        '<p><a href="/adv/JNU_shortlist.pdf">Shortlist of candidates</a></p>'
+    )
+    # No Fetcher (--no-download): no PDF table parse; one listing-level record for
+    # the initial notice, and the shortlist (update hint) is skipped.
+    ads = jnu.parse(html, "https://www.jnu.ac.in/career", FETCHED, None)
+    assert len(ads) == 1
+    assert ads[0]["pdf_parsed"] is False
+    assert ads[0]["post_type"] == "Faculty"
+    assert ads[0]["original_url"].endswith("JNU_AdvtNo_RC_75_2026.pdf")

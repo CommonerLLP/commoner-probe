@@ -9,10 +9,11 @@ rather than absent).
 
 Explicit dict (not dynamic ``importlib``) so packaging/imports are predictable.
 
-Migrated from academiaindia: ``generic``, ``iim_recruit``. Remaining origin
-parsers (``iit_rolling``, ``iit_kanpur``, ``iit_indore``, ``iit_delhi``,
-``jnu``, ``anna_university``, ``private_university``, ``samarth_curec``) are
-follow-on ports — until then they resolve to ``generic``.
+Migrated from academiaindia: every parser referenced by the current registry —
+``generic``, ``iim_recruit``, ``iit_kanpur``, ``anna_university``,
+``private_university``, ``iit_indore``, ``iit_rolling``, ``jnu``. The only origin
+parsers not ported are ``iit_delhi`` and ``samarth_curec``, which no registry row
+references (dead in the origin); they resolve to ``generic`` if ever named.
 """
 
 from __future__ import annotations
@@ -26,6 +27,7 @@ from . import (
     iit_indore,
     iit_kanpur,
     iit_rolling,
+    jnu,
     private_university,
 )
 
@@ -37,13 +39,14 @@ PARSERS: dict[str, Callable] = {
     "private_university": private_university.parse,
     "iit_indore": iit_indore.parse,
     "iit_rolling": iit_rolling.parse,
+    "jnu": jnu.parse,
 }
 
-#: Registry parser names that exist in the origin but are not yet migrated; they
-#: fall back to ``generic``. Tracked so callers/tests can see the coverage gap.
-#: (iit_delhi / jnu / samarth_curec are unreferenced by the current registry.)
+#: Origin parser names not migrated to the probe; they fall back to ``generic``.
+#: Both are unreferenced by the current registry (dead in the origin), tracked so
+#: callers/tests can see the coverage gap.
 UNMIGRATED_PARSERS = frozenset({
-    "iit_delhi", "jnu", "samarth_curec",
+    "iit_delhi", "samarth_curec",
 })
 
 
