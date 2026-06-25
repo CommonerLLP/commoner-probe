@@ -24,6 +24,18 @@ class TopicProfile:
     filter_fn: Callable[[str, str], bool] | None = field(
         default=None, compare=False, hash=False, repr=False
     )
+    # Optional record-level filter, injected the same way as filter_fn.
+    # Called as record_filter_fn(record) -> bool AFTER the full record is
+    # built but before it is kept (downloaded/enriched/appended/counted).
+    # Unlike filter_fn, which only sees title+query at acquisition, this sees
+    # the whole record — including fields such as answer_text that exist only
+    # post-construction — so a caller that must match on those can filter at
+    # acquisition time rather than dropping rows after append(). Deciding here
+    # keeps max_records and the per-bucket no_match/kept counters aligned with
+    # the rows actually kept. None means keep everything that passed filter_fn.
+    record_filter_fn: Callable[[dict], bool] | None = field(
+        default=None, compare=False, hash=False, repr=False
+    )
 
     def searches(self, max_buckets: int | None = None) -> list[tuple[str, str]]:
         pairs: list[tuple[str, str]] = []
