@@ -40,7 +40,7 @@ SESSION_DATES_API = "https://sansad.in/api_ls/business/AllLoksabhaAndSessionDate
 
 HEADERS = {
     "Accept": "application/json",
-    "User-Agent": "commoner-probe/0.4.1 (github.com/CommonerLLP/commoner-probe; public-interest research; rate-limited)",
+    "User-Agent": "commoner-probe/0.5.0 (github.com/CommonerLLP/commoner-probe; public-interest research; rate-limited)",
     "Referer": "https://sansad.in/ls/debates/text-of-debates",
 }
 

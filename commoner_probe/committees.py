@@ -37,7 +37,7 @@ DEFAULT_LOK_SABHA = 18
 
 LS_HEADERS = {
     "Accept": "application/json",
-    "User-Agent": "commoner-probe/0.3.0 (+https://github.com/CommonerLLP/commoner-probe; public-interest research; rate-limited)",
+    "User-Agent": "commoner-probe/0.5.0 (+https://github.com/CommonerLLP/commoner-probe; public-interest research; rate-limited)",
 }
 RS_HEADERS = {**LS_HEADERS, "Referer": "https://sansad.in/rs/committees"}
 

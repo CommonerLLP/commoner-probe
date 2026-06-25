@@ -19,7 +19,7 @@ LS_CATEGORY_QA = "Part 1(Questions And Answers)"
 
 HEADERS = {
     "Accept": "application/json",
-    "User-Agent": "commoner-probe/0.3.0 (+https://github.com/CommonerLLP/commoner-probe; public-interest research; rate-limited)",
+    "User-Agent": "commoner-probe/0.5.0 (+https://github.com/CommonerLLP/commoner-probe; public-interest research; rate-limited)",
 }
 RS_HEADERS = {
     **HEADERS,
