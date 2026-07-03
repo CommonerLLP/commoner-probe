@@ -22,9 +22,14 @@ from .._common import stable_id
 from ..ad_factory import make_ad
 from .parser_utils import classify_post_type, extract_department, iter_recruitment_links
 
-# Skip result notifications and cancellations — not job listings.
+# Skip result notifications and cancellations — not job listings. The live
+# site's actual wording ("Notification of faculty recruitment results", "List
+# of Provisionally Selected Candidates") has words between "of" and "results"
+# and an inflected "provisionally" that a naive exact-phrase match misses.
 _SKIP_RE = re.compile(
-    r"\b(notification\s+of\s+results?|list\s+of\s+provisional|cancellation\s+of\s+advertisement)\b",
+    r"\bnotification\s+of\s+(?:[\w/()-]+\s+){0,5}results?\b"
+    r"|\blist\s+of\s+provisionally?\b"
+    r"|\bcancellation\s+of\s+advertisement\b",
     re.I,
 )
 

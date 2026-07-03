@@ -48,14 +48,48 @@ _PIPE_DEPT_RE = re.compile(
     re.I,
 )
 
+# The live page's pipe-delimited list has no closing terminator, so the
+# regex's final (non-repeated) segment can bleed into trailing nav-menu
+# text; and a section sub-heading ("Interdisciplinary Centers") is
+# sometimes glued onto a department name with no separating pipe at all.
+# Neither is discoverable from the regex alone — both were only found by
+# running against the live page, not any synthetic fixture — so split on
+# these known noise phrases as a post-processing pass.
+_DEPT_NOISE_RE = re.compile(
+    r"\b(?:find out more|apply now|interdisciplinary centers?)\b", re.I,
+)
+_MAX_DEPT_WORDS = 6  # longest real name observed is 4 words; leaves headroom
+
+
+def _split_department_segment(raw: str, *, is_last: bool) -> list[str]:
+    """Split one pipe-delimited segment on embedded noise, dropping garbage.
+
+    Non-last segments are still pipe-bounded on both sides, so content on
+    *either* side of an embedded noise phrase (e.g. a sub-heading) may be a
+    real department name — keep both. The last segment has no closing pipe,
+    so once a noise phrase appears, everything from there on is presumed
+    nav-menu chrome and discarded — keep only what precedes it.
+    """
+    pieces = _DEPT_NOISE_RE.split(raw)
+    if is_last:
+        pieces = pieces[:1]
+    names = []
+    for piece in pieces:
+        name = piece.strip(" |")
+        if name and len(name.split()) <= _MAX_DEPT_WORDS:
+            names.append(name)
+    return names
+
 
 def _extract_pop_departments(text: str) -> list[str]:
     m = _PIPE_DEPT_RE.search(text)
-    if m:
-        depts = [d.strip() for d in m.group(1).split("|") if d.strip()]
-        if len(depts) >= 3:
-            return depts
-    return []
+    if not m:
+        return []
+    raw_segments = m.group(1).split("|")
+    depts: list[str] = []
+    for i, raw in enumerate(raw_segments):
+        depts.extend(_split_department_segment(raw, is_last=(i == len(raw_segments) - 1)))
+    return depts if len(depts) >= 3 else []
 
 
 def parse(html: str, url: str, fetched_at: Any, pdf: Callable | None = None) -> list[dict]:

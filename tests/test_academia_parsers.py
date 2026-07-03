@@ -232,6 +232,37 @@ def test_iit_gandhinagar_pop_page_explodes_departments():
     assert {a["department"] for a in ads} == {"Physics", "Chemistry", "Mathematics"}
 
 
+def test_iit_gandhinagar_pop_page_drops_embedded_heading_and_trailing_nav_noise():
+    """Regression test for a live-page bug: iitgn.ac.in/careers/pop's pipe list has
+    no closing terminator, and embeds a section sub-heading ("Interdisciplinary
+    Centers") between two department names with no separating pipe. This exact
+    text was captured live from the production page — a naive split previously
+    produced "Physics Interdisciplinary Centers Archaeological Sciences" (merged)
+    and "Sustainable Development Find Out More Apply Now Staff Non" (nav bleed).
+    """
+    pytest.importorskip("bs4")
+    from commoner_probe.academia.parsers import iit_gandhinagar
+
+    url = "https://iitgn.ac.in/careers/pop"
+    html = "<p>" + (
+        "Disciplines Biological Engineering | Chemical Engineering |Chemistry | "
+        "Civil Engineering | Computer Science and Engineering | Earth Sciences | "
+        "Electrical Engineering | Humanities and Social Sciences | "
+        "Materials Science and Engineering | Mathematics | Mechanical Engineering | "
+        "Physics Interdisciplinary Centers Archaeological Sciences | "
+        "Biomedical Engineering | Cognitive Science | Design and Innovation | Safety | "
+        "Sustainable Development Find Out More Apply Now Staff Non-Teaching Staff "
+        "Contractual Staff Project Positions Students"
+    ) + "</p>"
+    ads = iit_gandhinagar.parse(html, url, FETCHED)
+    depts = {a["department"] for a in ads}
+    assert len(ads) == 18
+    assert "Physics" in depts and "Archaeological Sciences" in depts
+    assert "Sustainable Development" in depts
+    assert not any("Interdisciplinary Centers" in d for d in depts)
+    assert not any("Find Out More" in d or "Apply Now" in d or "Staff" in d for d in depts)
+
+
 def test_iit_gandhinagar_pop_page_uses_fallback_when_regex_finds_nothing():
     pytest.importorskip("bs4")
     from commoner_probe.academia.parsers import iit_gandhinagar
@@ -290,6 +321,25 @@ def test_iit_hyderabad_skips_result_notifications():
     html = (
         '<p><a href="/notice.pdf">'
         "Notification of Results — Assistant Professor Recruitment</a></p>"
+    )
+    ads = iit_hyderabad.parse(html, url, FETCHED)
+    assert ads == []
+
+
+def test_iit_hyderabad_skips_result_notification_with_inflected_wording():
+    """Regression test for a live-page bug: the site's actual results-notification
+    wording has extra words between "of" and "results", and "Provisionally"
+    (inflected) rather than "provisional" — a naive exact-phrase _SKIP_RE match
+    let this slip through as a fake job posting. Title captured live.
+    """
+    from commoner_probe.academia.parsers import iit_hyderabad
+
+    url = "https://www.iith.ac.in/careers/"
+    html = (
+        '<p><a href="/notice2.pdf">'
+        "IITH/HR/Faculty Rectt (R)/1/2025-26 dated 10-10-2025 -  Notification of "
+        "faculty recruitment results - List of Provisionally Selected Candidates."
+        "</a></p>"
     )
     ads = iit_hyderabad.parse(html, url, FETCHED)
     assert ads == []
