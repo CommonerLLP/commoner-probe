@@ -130,58 +130,6 @@ Central Acts live in a separate collection tree and are out of scope
 Known gap: no archive.org/Wayback snapshot-on-fetch — no other adapter in
 this repo does that either.
 
-## Gujarat Maritime Board (GMB)
-
-`commoner-probe gmb` probes gmbports.org (IIS/ASP.NET) for Gujarat Maritime
-Board public disclosures, per `_org/requests/0006-...` (from narcotrek).
-Content lives at `showpage.aspx?contentid=N`; documents under
-`/assets/downloads/`. Ten selectable source classes (`--sources`, `all` =
-every class), each a fixed set of `contentid`s:
-
-- **admin-reports** (`56`, `307`) — Administrative (annual) reports, English
-  + Gujarati, filtered from the Publications page by keyword
-  (`admin`/`annual`/`report`).
-- **publications-misc** (`56`) — Maritime Horizon magazine, brochures — same
-  Publications page, disjoint keyword filter (`horizon`/`brochure`/
-  `magazine`/`newsletter`/`publication`) so the two sources don't overlap.
-- **financials** (`50`) — income/expenditure account PDFs.
-- **traffic** (`46`, `504`) — **HTML tables**, not PDFs: per-port cargo
-  tonnage by jetty class (GMB Jetty / Captive Jetty / Private Jetty /
-  Private Port) and named port. Parsed into a tidy long-format CSV
-  (`table_section, operator_class, port_or_class, fiscal_year,
-  tonnage_lakh_tonnes`); the source HTML is saved alongside for provenance.
-  A CSV is written even for an empty page (header-only), so the manifest
-  always records that the page was checked.
-- **tariff** (`212`), **circulars** (`3208`), **tenders** (`63`), **rti**
-  (`69`), **vision-2047** (`30454`), **news-articles** (`876`) — generic
-  "save the rendered page HTML + download every linked PDF" handler.
-
-Fetching goes through `http_client.make_session()` (SSRF guard, robots.txt,
-1 req/s, backoff, identifying UA) — no raw urllib/requests.
-
-Outputs:
-
-- `manifest.jsonl` records with `kind = "gmb_document"`
-- one page-HTML snapshot per `contentid` visited
-- one PDF per discovered document (or one derived CSV per traffic page)
-
-Example:
-
-```bash
-commoner-probe gmb --out data/gmb --sources admin-reports,traffic
-```
-
-**Live-verification status:** gmbports.org was unreachable from the
-development environment when this adapter was finalised (DNS resolved;
-every TCP connection attempt to port 80/443 timed out) — this looks like a
-network-level block (Indian state-government sites are known to
-geo/IP-block some hosting and cloud-provider ranges), not a code issue, but
-it could not be conclusively ruled out this session. The adapter is built
-and offline-tested against the exact `contentid`s and filename examples
-documented as verified in the filing spec (`_org/requests/0006-*.md`), but
-has not been independently re-verified against the live page structure.
-Live-check before a real acquisition run.
-
 ## MCA CSR
 
 `commoner-probe mca-csr` downloads company-spend CSV exports from the MCA CDM

@@ -230,51 +230,6 @@ scope for this adapter (state statutory instruments only).
 
 ---
 
-### Shape G — Gujarat Maritime Board disclosure (`kind = "gmb_document"`)
-
-One record per page-HTML snapshot, discovered PDF, or derived traffic CSV
-produced by `commoner-probe gmb`. Source: gmbports.org.
-
-| Field | Type | Required | Enum / format | Provenance |
-|---|---|---|---|---|
-| `key` | string | yes | `"GMB\|{source_name}\|{filename}"` | gmb/probe.py |
-| `kind` | string | yes | `"gmb_document"` | gmb/probe.py |
-| `record_type` | string | yes | `"gmb_document"` | gmb/probe.py |
-| `source_family` | string | yes | `"gmb"` | gmb/probe.py |
-| `source_name` | string | yes | `admin-reports`, `publications-misc`, `financials`, `traffic`, `tariff`, `circulars`, `tenders`, `rti`, `vision-2047`, `news-articles` | gmb/probe.py |
-| `publisher` | string | yes | `"Gujarat Maritime Board"` | gmb/probe.py |
-| `document_class` | string | yes | `admin-report`, `publication`, `financial`, `traffic-page`, `traffic-table`, `tariff`, `circular`, `tender`, `rti`, `vision`, `news` | gmb/probe.py |
-| `filename` | string | yes | Sanitized source filename, or a derived `{source}_contentid{N}[.html\|_traffic.csv]` for pages/CSVs | gmb/probe.py |
-| `dest` | string | yes | Local path (absolute at write time; corpus-relative convention pending) | gmb/probe.py |
-| `url` | string | yes | Absolute source URL | gmb/probe.py |
-| `status` | string | yes | `dry_run`, `downloaded`, `skipped_exists`, `derived`, `robots_blocked`, `fetch_error` | gmb/probe.py |
-| `media_type` | string | yes | e.g. `application/pdf`, `text/html`, `text/csv` | gmb/probe.py |
-| `fiscal_year` | string\|null | cond | Parsed from filename, e.g. `"2023-24"` | gmb/probe.py |
-| `language` | string\|null | cond | `en` or `gu`, parsed from filename | gmb/probe.py |
-| `note` | string\|null | cond | e.g. provenance note for derived CSVs | gmb/probe.py |
-| `discovered_on` | string\|null | cond | URL of the index page a PDF was discovered on | gmb/probe.py |
-| `source_last_modified` | string\|null | cond | From the `Last-Modified` response header | gmb/probe.py |
-| `sha256` | string | cond | Present when downloaded/skipped_exists/derived | gmb/probe.py |
-| `http_status` | integer\|null | cond | Present on `fetch_error` when an HTTP status was returned | gmb/probe.py |
-| `error` | string\|null | cond | Present on `fetch_error` from a network exception | gmb/probe.py |
-| `fetched_at` | string | yes | ISO datetime | gmb/probe.py |
-| `probed_at` | string | yes | ISO datetime | gmb/probe.py |
-
-Traffic pages (`document_class = "traffic-table"`, `status = "derived"`)
-carry a derived CSV with columns `table_section`, `operator_class`,
-`port_or_class`, `fiscal_year`, `tonnage_lakh_tonnes` — one row per
-(port/jetty-class × fiscal-year) cell. A CSV is written even for an
-empty/unparseable traffic page (header row only), so the manifest always
-records that the page was checked.
-
-**Live-verification status:** built and offline-tested against the source
-contract documented in `_org/requests/0006-gmb-and-gujarat-legislative-cross-level.md`;
-gmbports.org was unreachable from the development environment (network-level
-timeout, not a code issue) so the actual page structure was not
-independently re-verified this session.
-
----
-
 ## `_runs.jsonl`
 
 One record per crawl invocation (one per `crawl_ls` / `crawl_rs` / `crawl_committees` call).
