@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.1 (2026-07-03)
+
+### Fixed
+
+- **`iit_gandhinagar` department extraction**: found by running against the live page for the first time (the ported code had never been exercised against it before) — the pipe-delimited department list has no closing terminator, so the last department could bleed into trailing nav-menu text (`"Sustainable Development Find Out More Apply Now Staff Non"`), and a section sub-heading ("Interdisciplinary Centers") glued onto a neighboring department name with no separating pipe (`"Physics Interdisciplinary Centers Archaeological Sciences"`). Both are now split out and discarded.
+- **`iit_hyderabad` `_SKIP_RE`**: the live site's actual results-notification wording has extra words between "of" and "results" and an inflected "Provisionally" rather than "provisional" — a naive exact-phrase match let one results-notification PDF slip through as a fake job posting.
+
 ## 0.6.0 (2026-07-03)
 
 ### Added
