@@ -16,7 +16,9 @@ from .debates import LS_DEBATE_API, DebateProbe
 from .dmft.mines import MinesDmftProbe
 from .evidence import build_dmft_evidence_bundle
 from .example_topics import list_example_topics, load_example_topic_text
+from .indiacode import STATE_HANDLES, IndiaCodeProbe
 from .neva import StateAssemblyCrawler
+from .neva_portals import NevaPortal, iter_portals
 from .sansad import SansadProbe
 from .stats import compute_stats, print_stats
 from .topics import load_topic
@@ -156,21 +158,95 @@ def committees_cmd(args: argparse.Namespace) -> None:
 
 
 def state_assembly_cmd(args: argparse.Namespace) -> None:
+    if args.list_portals:
+        for p in iter_portals():
+            print(f"{p.portal_code}\t{p.state_code}\t{p.chamber}\t{p.state_name}")
+        return
+
+    if not args.out:
+        raise SystemExit("--out is required unless --list-portals is given")
     out = Path(args.out)
-    out.mkdir(parents=True, exist_ok=True)
-    probe = StateAssemblyCrawler(
-        portal_code=args.portal,
-        state_code=args.state,
-        out_dir=out,
-        sleep=args.sleep,
-    )
-    summary = probe.run(
-        assembly_nos=parse_session_range(args.assemblies),
+    portals = iter_portals(chamber="assembly") if args.all else None
+    if portals is None:
+        if not args.portal or not args.state:
+            raise SystemExit("--portal and --state are required unless --all or --list-portals is given")
+        portals = (NevaPortal(args.portal, args.state, args.portal, "assembly"),)
+
+    for p in portals:
+        portal_out = out / p.portal_code if args.all else out
+        portal_out.mkdir(parents=True, exist_ok=True)
+        probe = StateAssemblyCrawler(
+            portal_code=p.portal_code,
+            state_code=p.state_code,
+            out_dir=portal_out,
+            sleep=args.sleep,
+        )
+        summary = probe.run(
+            assembly_nos=parse_session_range(args.assemblies),
+            download=not args.no_download,
+            fetch_member_details=not args.no_member_details,
+            sessions_limit=args.sessions_limit,
+        )
+        print(f"{p.portal_code}: {summary}")
+
+
+def state_assembly_probe_cmd(args: argparse.Namespace) -> None:
+    portals = iter_portals(chamber=None if args.include_councils else "assembly")
+    codes = _split_csv(args.portals)
+    if codes:
+        portals = tuple(p for p in portals if p.portal_code in codes)
+
+    out_path = Path(args.out) if args.out else None
+    log_root = (out_path.parent if out_path else Path(".")) / "_probe_logs"
+    if out_path:
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    for p in portals:
+        crawler = StateAssemblyCrawler(
+            portal_code=p.portal_code,
+            state_code=p.state_code,
+            out_dir=log_root / p.portal_code,
+            sleep=args.sleep,
+        )
+        try:
+            result = crawler.probe_depth(max_assembly=args.max_assembly)
+        except Exception as exc:  # noqa: BLE001
+            result = {
+                "portal_code": p.portal_code,
+                "state_code": p.state_code,
+                "reachable": False,
+                "error": str(exc),
+            }
+        result["state_name"] = p.state_name
+        result["chamber"] = p.chamber
+        line = json.dumps(result, ensure_ascii=False)
+        print(line)
+        if out_path:
+            with out_path.open("a", encoding="utf-8") as f:
+                f.write(line + "\n")
+
+
+def indiacode_cmd(args: argparse.Namespace) -> None:
+    if args.list_states:
+        for name in sorted(STATE_HANDLES):
+            print(f"{STATE_HANDLES[name]}\t{name}")
+        return
+
+    if not args.out:
+        raise SystemExit("--out is required unless --list-states is given")
+    out = Path(args.out)
+    states = _split_csv(args.states) or (sorted(STATE_HANDLES) if args.all_states else [])
+    if not states:
+        raise SystemExit("--states, --all-states, or --list-states is required")
+    probe = IndiaCodeProbe(out, sleep=args.sleep, rpp=args.rpp)
+    records = probe.probe_states(
+        states,
         download=not args.no_download,
-        fetch_member_details=not args.no_member_details,
-        sessions_limit=args.sessions_limit,
+        dry_run=args.dry_run,
+        max_acts=args.max_acts,
     )
-    print(summary)
+    for record in records:
+        print(json.dumps(record, ensure_ascii=False))
 
 
 def mca_csr_cmd(args: argparse.Namespace) -> None:
@@ -389,15 +465,34 @@ def build_parser() -> argparse.ArgumentParser:
         "state-assembly",
         help="Probe a NeVA state assembly portal (questions, members, papers to be laid).",
     )
-    state_assembly.add_argument("--portal", required=True, help="Portal subdomain, e.g. gujarat")
-    state_assembly.add_argument("--state", required=True, help="CMS state code, e.g. GJ")
-    state_assembly.add_argument("--out", required=True, help="Output corpus directory")
+    state_assembly.add_argument("--portal", help="Portal subdomain, e.g. gujarat")
+    state_assembly.add_argument("--state", help="CMS state code, e.g. GJ")
+    state_assembly.add_argument("--out", help="Output corpus directory (one subdirectory per portal when --all); required unless --list-portals")
     state_assembly.add_argument("--assemblies", default="15", help="Assembly numbers, e.g. 15 or 14-15")
     state_assembly.add_argument("--sleep", type=float, default=0.5)
     state_assembly.add_argument("--no-download", action="store_true")
     state_assembly.add_argument("--no-member-details", action="store_true", help="Skip per-member detail pages")
     state_assembly.add_argument("--sessions-limit", type=int, help="Stop after N sessions per assembly (smoke-test)")
+    state_assembly.add_argument(
+        "--all", action="store_true",
+        help="Crawl every registered assembly portal (see --list-portals) instead of a single --portal/--state.",
+    )
+    state_assembly.add_argument(
+        "--list-portals", action="store_true",
+        help="Print the registered portal_code/state_code/chamber/state_name table and exit.",
+    )
     state_assembly.set_defaults(func=state_assembly_cmd)
+
+    state_assembly_probe = sub.add_parser(
+        "state-assembly-probe",
+        help="Data-depth coverage probe across registered NeVA portals (sessions/questions/papers/members counts).",
+    )
+    state_assembly_probe.add_argument("--out", help="Append one JSONL coverage record per portal to this file (also printed to stdout).")
+    state_assembly_probe.add_argument("--portals", help="Comma-separated portal_codes to limit the probe to; default = all.")
+    state_assembly_probe.add_argument("--include-councils", action="store_true", help="Include the 6 Legislative Council portals.")
+    state_assembly_probe.add_argument("--max-assembly", type=int, default=20, help="Highest assembly number to scan per portal.")
+    state_assembly_probe.add_argument("--sleep", type=float, default=0.5)
+    state_assembly_probe.set_defaults(func=state_assembly_probe_cmd)
 
     mca_csr = sub.add_parser(
         "mca-csr",
@@ -494,6 +589,25 @@ def build_parser() -> argparse.ArgumentParser:
         help="Emit one planning record per house without fetching.",
     )
     bills.set_defaults(func=bills_cmd)
+
+    indiacode = sub.add_parser(
+        "indiacode",
+        help="Probe India Code (indiacode.nic.in) state Acts + amendments/rules/notifications.",
+    )
+    indiacode.add_argument("--out", help="Output corpus directory; required unless --list-states")
+    indiacode.add_argument("--states", help="Comma-separated state names, e.g. 'West Bengal,Sikkim'")
+    indiacode.add_argument("--all-states", action="store_true", help="Probe every registered state (see --list-states)")
+    indiacode.add_argument("--list-states", action="store_true", help="Print the registered state -> parent-handle table and exit")
+    indiacode.add_argument("--max-acts", type=int, help="Stop after N Acts per state (smoke-test brake)")
+    indiacode.add_argument("--no-download", action="store_true", help="Record instruments without downloading PDFs")
+    indiacode.add_argument("--rpp", type=int, default=100, help="Results per browse page (India Code enumeration)")
+    indiacode.add_argument("--sleep", type=float, default=1.0)
+    indiacode.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Emit one planning record per state without fetching.",
+    )
+    indiacode.set_defaults(func=indiacode_cmd)
 
     debates = sub.add_parser(
         "debates",

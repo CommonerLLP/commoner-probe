@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CommonerLLP/commoner-probe/schemas/v1/manifest_indiacode.json",
+  "title": "manifest.jsonl — India Code state Act / amendment / rule / notification",
+  "description": "One India Code (indiacode.nic.in) state statutory-instrument record: the Act itself, or one amendment/rule/regulation/notification/order/circular/ordinance/statute row found on that Act's handle page.",
+  "type": "object",
+  "required": [
+    "key",
+    "kind",
+    "record_type",
+    "source",
+    "state",
+    "status",
+    "probed_at"
+  ],
+  "properties": {
+    "key": {
+      "type": "string",
+      "pattern": "^INDIACODE\\|.+$"
+    },
+    "kind": {
+      "type": "string",
+      "const": "indiacode_instrument"
+    },
+    "record_type": {
+      "type": "string",
+      "const": "indiacode_instrument"
+    },
+    "source": {
+      "type": "string",
+      "const": "indiacode.nic.in"
+    },
+    "state": {
+      "type": "string"
+    },
+    "state_handle": {
+      "type": ["string", "null"]
+    },
+    "act_handle": {
+      "type": ["string", "null"]
+    },
+    "act_id": {
+      "type": ["string", "null"]
+    },
+    "act_no": {
+      "type": ["string", "null"]
+    },
+    "act_year": {
+      "type": ["string", "null"]
+    },
+    "short_title": {
+      "type": ["string", "null"]
+    },
+    "department": {
+      "type": ["string", "null"]
+    },
+    "act_type": {
+      "type": ["string", "null"]
+    },
+    "location": {
+      "type": ["string", "null"]
+    },
+    "instrument_type": {
+      "type": ["string", "null"],
+      "enum": [
+        "act", "rule", "regulation", "notification", "order",
+        "circular", "ordinance", "statute", null
+      ]
+    },
+    "is_amendment": {
+      "type": ["boolean", "null"]
+    },
+    "instrument_date": {
+      "type": ["string", "null"]
+    },
+    "description": {
+      "type": ["string", "null"]
+    },
+    "description_hi": {
+      "type": ["string", "null"]
+    },
+    "lang": {
+      "type": ["string", "null"],
+      "enum": ["en", "hi", null]
+    },
+    "actid": {
+      "type": ["string", "null"]
+    },
+    "filename": {
+      "type": ["string", "null"]
+    },
+    "source_url": {
+      "type": ["string", "null"],
+      "format": "uri"
+    },
+    "dest": {
+      "type": ["string", "null"]
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending", "dry_run", "downloaded", "skipped_exists",
+        "no_pdf_found", "fetch_error", "unknown_state"
+      ]
+    },
+    "sha256": {
+      "type": ["string", "null"],
+      "pattern": "^([a-f0-9]{64})?$"
+    },
+    "error": {
+      "type": "string"
+    },
+    "probed_at": {
+      "type": "string"
+    }
+  }
+}

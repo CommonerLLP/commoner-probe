@@ -188,6 +188,48 @@ The CSV header currently emitted by MCA CDM is:
 
 ---
 
+### Shape F — India Code state instrument (`kind = "indiacode_instrument"`)
+
+One record per Act, amendment, rule, regulation, notification, order,
+circular, ordinance, or statute produced by `commoner-probe indiacode`.
+Source verified live 2026-07 against indiacode.nic.in.
+
+| Field | Type | Required | Enum / format | Provenance |
+|---|---|---|---|---|
+| `key` | string | yes | `"INDIACODE\|{state_handle}\|{act_handle}\|{instrument_type}\|{lang}[\|{filename}]"` | indiacode.py |
+| `kind` | string | yes | `"indiacode_instrument"` | indiacode.py |
+| `record_type` | string | yes | `"indiacode_instrument"` | indiacode.py |
+| `source` | string | yes | `"indiacode.nic.in"` | indiacode.py |
+| `state` | string | yes | State/UT name | indiacode.py |
+| `state_handle` | string\|null | cond | India Code parent-collection handle | indiacode.py |
+| `act_handle` | string\|null | cond | India Code item handle for this Act | indiacode.py |
+| `act_id` | string\|null | cond | Site's internal "Act ID" metadata field | indiacode.py |
+| `act_no` | string\|null | cond | "Act Number" metadata field | indiacode.py |
+| `act_year` | string\|null | cond | "Act Year" metadata field | indiacode.py |
+| `short_title` | string\|null | cond | "Short Title" metadata field | indiacode.py |
+| `department` | string\|null | cond | "Department" metadata field | indiacode.py |
+| `act_type` | string\|null | cond | "Type" metadata field, e.g. `"STATE"` | indiacode.py |
+| `location` | string\|null | cond | "Location" metadata field | indiacode.py |
+| `instrument_type` | string\|null | cond | `act`, `rule`, `regulation`, `notification`, `order`, `circular`, `ordinance`, `statute` | indiacode.py |
+| `is_amendment` | boolean\|null | cond | `true` when the instrument's description matches `/\bamendment\b/i`; always `false` for `instrument_type = "act"` | indiacode.py |
+| `instrument_date` | string\|null | cond | Date as shown on the site (not normalized) | indiacode.py |
+| `description` | string\|null | cond | English description; the Act's own `short_title` for `instrument_type = "act"` | indiacode.py |
+| `description_hi` | string\|null | cond | Hindi description, when present | indiacode.py |
+| `lang` | string\|null | cond | `en` or `hi` | indiacode.py |
+| `actid` | string\|null | cond | Site's per-Act subordinate-document folder key; `null` for the Act's own record | indiacode.py |
+| `filename` | string\|null | cond | Source filename, e.g. `"32.pdf"` | indiacode.py |
+| `source_url` | string\|null | cond | Absolute PDF URL | indiacode.py |
+| `dest` | string\|null | cond | Local path relative to corpus `out_dir`; present after download | indiacode.py |
+| `status` | string | yes | `pending`, `dry_run`, `downloaded`, `skipped_exists`, `no_pdf_found`, `fetch_error`, `unknown_state` | indiacode.py |
+| `sha256` | string | cond | 64-char lowercase hex; present when downloaded/skipped_exists | indiacode.py |
+| `error` | string | cond | Present on `fetch_error` | indiacode.py |
+| `probed_at` | string | yes | ISO datetime | indiacode.py |
+
+Central Acts live in a separate India Code collection tree and are out of
+scope for this adapter (state statutory instruments only).
+
+---
+
 ## `_runs.jsonl`
 
 One record per crawl invocation (one per `crawl_ls` / `crawl_rs` / `crawl_committees` call).
