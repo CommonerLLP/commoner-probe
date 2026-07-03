@@ -269,6 +269,48 @@ class TestProbeStates:
         assert second == []  # everything already seen; no new manifest rows
         assert len(manifest_lines) == len((tmp_path / "manifest.jsonl").read_text().splitlines())
 
+    def test_no_download_pass_then_download_rerun_updates_stale_manifest_rows(self, tmp_path):
+        """Regression for a Codex review finding on PR #20: a metadata-only
+        (--no-download) pass followed by a downloads-enabled rerun on the same
+        corpus must not leave manifest.jsonl rows permanently stuck at
+        status="pending" while the files exist on disk."""
+        routes = {
+            "browse": FakeResponse(BROWSE_PAGE_HTML),
+            "handle/123456789/17953": FakeResponse(ACT_DETAIL_HTML),
+            "handle/123456789/17368": FakeResponse(ACT_DETAIL_HTML),
+            "1979-39.pdf": FakeResponse(content=b"%PDF-act"),
+            "rulesindividualfile": FakeResponse(content=b"%PDF-rule"),
+            "notificationindividualfile": FakeResponse(content=b"%PDF-notif"),
+        }
+
+        probe1 = _probe(tmp_path, routes)
+        first = probe1.probe_states(["West Bengal"], download=False)
+        assert all(r["status"] == "pending" for r in first if r.get("source_url"))
+        assert all("dest" not in r or r["dest"] is None for r in first)
+
+        probe2 = _probe(tmp_path, routes)
+        second = probe2.probe_states(["West Bengal"], download=True)
+        # The rerun must actually re-emit updated rows for every pending
+        # record — not silently skip them just because the key was seen.
+        assert len(second) == len(first)
+        assert all(r["status"] == "downloaded" for r in second)
+        assert all(r["dest"] for r in second)
+
+        # manifest.jsonl now has both the stale pending rows (run 1) and the
+        # fresh downloaded rows (run 2) — append-only. A downstream reader
+        # must take the LAST row per key as authoritative.
+        manifest = [json.loads(line) for line in (tmp_path / "manifest.jsonl").read_text().splitlines()]
+        by_key_last = {}
+        for rec in manifest:
+            by_key_last[rec["key"]] = rec
+        assert all(r["status"] == "downloaded" and r["dest"] for r in by_key_last.values())
+
+        # A third run (still download=True) must not re-download anything —
+        # the "downloaded" status is now terminal.
+        probe3 = _probe(tmp_path, routes)
+        third = probe3.probe_states(["West Bengal"], download=True)
+        assert third == []
+
     def test_max_acts_stops_early(self, tmp_path):
         routes = {
             "browse": FakeResponse(BROWSE_PAGE_HTML),

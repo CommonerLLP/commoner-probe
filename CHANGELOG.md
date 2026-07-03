@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.7.0 (2026-07-03)
+
+### Added
+
+- **`indiacode` source** — acquires India Code (indiacode.nic.in) state Acts
+  plus every amendment/rule/regulation/notification/order/circular/
+  ordinance/statute found on each Act's page. `is_amendment` is derived from
+  description text (the site doesn't have a distinct amendment category).
+  Verified live against the West Bengal Public Libraries Act, 1979.
+- **`state-assembly` registry + coverage probe** — `commoner_probe.neva_portals`
+  bakes in the `portal_code -> state_code/chamber/state_name` mapping for
+  all 31 NeVA assembly portals + 6 Legislative Council portals;
+  `state-assembly` gained `--all`/`--list-portals`, and a new
+  `state-assembly-probe` subcommand does a lightweight per-portal
+  data-depth check (session/question/paper/member counts) without a full
+  crawl — useful because NeVA portal reachability doesn't imply data depth.
+- **`gmb` source** — Gujarat Maritime Board (gmbports.org) disclosures:
+  admin reports (EN+GU), financials, per-port traffic tables (HTML parsed
+  into a tidy long-format CSV), publications, tariffs, circulars, tenders,
+  RTI, Vision 2047, and news articles.
+
+### Fixed
+
+- **`indiacode` resume-with-downloads**: a metadata-only (`--no-download`)
+  pass followed by a downloads-enabled rerun on the same corpus directory
+  downloaded files to disk but left `manifest.jsonl` rows stuck at
+  `status: "pending"` (no `dest`/`sha256`) — a downstream reader had no way
+  to discover the file was actually there. Found by Codex's automated
+  review on PR #20. `load_seen()` now tracks last-known status per key, and
+  only genuinely-terminal statuses (`downloaded`, `skipped_exists`,
+  `no_pdf_found`) are skipped on rerun.
+
 ## 0.6.1 (2026-07-03)
 
 ### Fixed
