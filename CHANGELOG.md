@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.6.0 (2026-07-03)
+
+### Added
+
+- **`iit_gandhinagar` parser** — IIT Gandhinagar's rolling "Professor of Practice" page (`/careers/pop`) lists all eligible departments as a single pipe-separated block with no per-department PDF or closing date; this parser explodes it into one ad per department (falling back to a hardcoded 18-department list if the live pipe-block can't be found), and routes every other IITGN careers page to `generic`.
+- **`iit_hyderabad` parser** — IITH mixes permanent faculty listings with rolling project/research postings (JRF/SRF/RA/postdoc) on one careers page; this parser adds department extraction and accurate `post_type` classification (via the new `parsers.parser_utils` helpers) and skips result/cancellation notices that `generic` would otherwise misclassify as postings.
+- **`parsers.parser_utils`** — shared link/date/classification helpers (`is_recruitment_link`, `classify_post_type`, `extract_department`, `iter_recruitment_links`, etc.) factored out so site-specific parsers stop re-implementing the same regex logic independently.
+
+### Fixed
+
+- **`iim_recruit` `apply_url`**: PDF-based ads and the no-PDF-found rolling stub both hardcoded `apply_url: None`; they now carry the ad's own PDF URL (loop case) and the careers-page URL (stub case) respectively.
+
 ## 0.5.1 (2026-06-25)
 
 ### Added
