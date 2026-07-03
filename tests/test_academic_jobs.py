@@ -125,6 +125,7 @@ def test_iim_recruit_parses_pdf_fields():
     assert ad["category_breakdown"] == {"UR": 2, "SC": 1, "ST": 1, "OBC": 3, "EWS": 1}
     assert ad["number_of_posts"] == 8
     assert "publications" in (ad["publications_required"] or "").lower()
+    assert ad["apply_url"] == "https://iimdemo.example.ac.in/files/faculty-positions-strategy.pdf"
 
 
 def test_iim_recruit_emits_rolling_stub_when_no_pdfs():
@@ -136,6 +137,7 @@ def test_iim_recruit_emits_rolling_stub_when_no_pdfs():
     assert len(ads) == 1
     assert ads[0]["rolling_stub"] is True
     assert ads[0]["pdf_parsed"] is False
+    assert ads[0]["apply_url"] == "https://iimdemo.example.ac.in/faculty"
 
 
 # --------------------------------------------------------------------------- #

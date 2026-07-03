@@ -206,6 +206,110 @@ def test_private_university_apu_degrades_without_fetcher():
 
 
 # --------------------------------------------------------------------------- #
+# iit_gandhinagar parser (rolling PoP page, department pipe-block)            #
+# --------------------------------------------------------------------------- #
+
+
+def test_get_parser_resolves_iit_gandhinagar():
+    from commoner_probe.academia.parsers import UNMIGRATED_PARSERS, get_parser, iit_gandhinagar
+
+    assert get_parser("iit_gandhinagar") is iit_gandhinagar.parse
+    assert "iit_gandhinagar" not in UNMIGRATED_PARSERS
+
+
+def test_iit_gandhinagar_pop_page_explodes_departments():
+    pytest.importorskip("bs4")
+    from commoner_probe.academia.parsers import iit_gandhinagar
+
+    url = "https://iitgn.ac.in/careers/pop"
+    html = "<p>Disciplines Physics | Chemistry | Mathematics</p>"
+    ads = iit_gandhinagar.parse(html, url, FETCHED)
+    assert len(ads) == 3
+    assert all(a["post_type"] == "Faculty" for a in ads)
+    assert all(a["contract_status"] == "Unknown" for a in ads)
+    assert all(a["apply_url"] == url and a["info_url"] == url for a in ads)
+    assert all(a["title"].startswith("Professor of Practice — ") for a in ads)
+    assert {a["department"] for a in ads} == {"Physics", "Chemistry", "Mathematics"}
+
+
+def test_iit_gandhinagar_pop_page_uses_fallback_when_regex_finds_nothing():
+    pytest.importorskip("bs4")
+    from commoner_probe.academia.parsers import iit_gandhinagar
+
+    url = "https://iitgn.ac.in/careers/pop"
+    html = "<p>Professor of Practice positions are open on a rolling basis.</p>"
+    ads = iit_gandhinagar.parse(html, url, FETCHED)
+    assert len(ads) == len(iit_gandhinagar._POP_DEPTS_FALLBACK)
+    assert {a["department"] for a in ads} == set(iit_gandhinagar._POP_DEPTS_FALLBACK)
+
+
+def test_iit_gandhinagar_non_pop_page_falls_back_to_generic():
+    pytest.importorskip("bs4")
+    from commoner_probe.academia.parsers import generic, iit_gandhinagar
+
+    url = "https://iitgn.ac.in/careers/faculty"
+    html = '<a href="/advt.pdf">Faculty Recruitment Advertisement</a>'
+    assert iit_gandhinagar.parse(html, url, FETCHED) == generic.parse(html, url, FETCHED, None)
+
+
+# --------------------------------------------------------------------------- #
+# iit_hyderabad parser (mixed faculty/rolling-project postings)               #
+# --------------------------------------------------------------------------- #
+
+
+def test_get_parser_resolves_iit_hyderabad():
+    from commoner_probe.academia.parsers import UNMIGRATED_PARSERS, get_parser, iit_hyderabad
+
+    assert get_parser("iit_hyderabad") is iit_hyderabad.parse
+    assert "iit_hyderabad" not in UNMIGRATED_PARSERS
+
+
+def test_iit_hyderabad_extracts_department_and_post_type():
+    pytest.importorskip("bs4")
+    from commoner_probe.academia.parsers import iit_hyderabad
+
+    url = "https://www.iith.ac.in/careers/"
+    html = (
+        '<p><a href="/rec/ap-cse.pdf">'
+        "Professor positions in Computer Science and Engineering</a></p>"
+    )
+    ads = iit_hyderabad.parse(html, url, FETCHED)
+    assert len(ads) == 1
+    ad = ads[0]
+    assert ad["post_type"] == "Faculty"
+    assert ad["department"] == "Computer Science and Engineering"
+    assert ad["apply_url"] == "https://www.iith.ac.in/rec/ap-cse.pdf"
+    assert ad["parse_confidence"] == 0.55
+    assert ad["info_url"] == url
+
+
+def test_iit_hyderabad_skips_result_notifications():
+    from commoner_probe.academia.parsers import iit_hyderabad
+
+    url = "https://www.iith.ac.in/careers/"
+    html = (
+        '<p><a href="/notice.pdf">'
+        "Notification of Results — Assistant Professor Recruitment</a></p>"
+    )
+    ads = iit_hyderabad.parse(html, url, FETCHED)
+    assert ads == []
+
+
+def test_iit_hyderabad_non_pdf_link_has_no_apply_url():
+    from commoner_probe.academia.parsers import iit_hyderabad
+
+    url = "https://www.iith.ac.in/careers/"
+    html = (
+        '<p><a href="/rec/ap-cse.php">'
+        "Professor positions in Computer Science and Engineering</a></p>"
+    )
+    ads = iit_hyderabad.parse(html, url, FETCHED)
+    assert len(ads) == 1
+    assert ads[0]["apply_url"] is None
+    assert ads[0]["info_url"] == url
+
+
+# --------------------------------------------------------------------------- #
 # jnu parser (column-band PDF table)                                          #
 # --------------------------------------------------------------------------- #
 
