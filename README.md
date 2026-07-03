@@ -1,5 +1,10 @@
 # commoner-probe
 
+[![PyPI](https://img.shields.io/pypi/v/commoner-probe)](https://pypi.org/project/commoner-probe/)
+[![Python versions](https://img.shields.io/pypi/pyversions/commoner-probe)](https://pypi.org/project/commoner-probe/)
+[![CI](https://github.com/CommonerLLP/commoner-probe/actions/workflows/ci.yml/badge.svg)](https://github.com/CommonerLLP/commoner-probe/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/pypi/l/commoner-probe)](LICENSE)
+
 Sousveillance infrastructure for the state's mandatory disclosure systems.
 
 A commoner probes the state's own paperwork — parliamentary questions, committee
@@ -8,7 +13,10 @@ automates the acquisition so you can focus on the analysis.
 
 ```bash
 pip install "commoner-probe[all]"
-import commoner_probe as probe   # alias used throughout CommonerLLP toolchain
+```
+
+```python
+import commoner_probe as probe   # alias used throughout these docs
 ```
 
 ---
@@ -37,10 +45,24 @@ provenance-rich, schema-validated JSONL and source files.
 
 ## Install
 
+Requires Python 3.10+. Released on [PyPI](https://pypi.org/project/commoner-probe/).
+
 ```bash
-pip install "commoner-probe[all]"          # requests + PDF extraction
-pip install "commoner-probe[all,dev]"      # + schema validation and tests
+pip install "commoner-probe[all]"          # everything needed for acquisition + extraction
+pip install "commoner-probe[all,dev]"      # + schema validation, tests, lint
 ```
+
+The core package has **zero required dependencies**; each capability is an extra:
+
+| Extra | Pulls in | Needed for |
+|---|---|---|
+| `http` | requests | any network acquisition |
+| `pdf` | pdfminer.six | `extract-answers`, PDF text extraction |
+| `budget` | lxml | `budget` (RBI page discovery) |
+| `academia` | beautifulsoup4, pdfminer.six | `academic-jobs` |
+| `pandas` | pandas | `Corpus.to_dataframe()` |
+| `all` | requests, pdfminer.six, lxml, beautifulsoup4 | everything above except pandas |
+| `dev` | jsonschema, pytest, ruff, lxml, beautifulsoup4 | `validate`, running the test suite |
 
 ---
 
@@ -697,6 +719,19 @@ df = c.to_dataframe("manifest_committee_reports")
 
 See [`examples/usage.py`](examples/usage.py) for a runnable walkthrough.
 See [`docs/ENDPOINTS.md`](docs/ENDPOINTS.md) for source-family endpoint notes.
+
+---
+
+## Contributing
+
+Bug reports, portal breakage reports, and pull requests are welcome at
+[github.com/CommonerLLP/commoner-probe](https://github.com/CommonerLLP/commoner-probe).
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for development setup and conventions,
+and [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) for community expectations.
+Release history lives in [`CHANGELOG.md`](CHANGELOG.md).
+
+Government portals change without notice — if a probe stops working, an issue
+with the failing command and its `probe.log` output is the most useful report.
 
 ---
 
