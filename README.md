@@ -445,35 +445,6 @@ Downloads raw Ministry of Mines static CSV snapshots and Odisha DMFT public
 JSON/report surfaces. Use `--dry-run` to print manifest records without opening
 network sessions.
 
-### `commoner-probe gmb` — Gujarat Maritime Board disclosures
-
-```bash
-commoner-probe gmb --out data/gmb --sources all
-```
-
-Downloads Gujarat Maritime Board (gmbports.org) public disclosures: admin
-(annual) reports in English + Gujarati, financial statements, per-port
-cargo-traffic tables (parsed from HTML into a tidy long-format CSV —
-`table_section, operator_class, port_or_class, fiscal_year,
-tonnage_lakh_tonnes`), publications, tariffs, circulars, tenders, RTI
-disclosures, the Vision 2047 page, and news articles. Each page snapshot,
-discovered PDF, and derived CSV becomes one `gmb_document` manifest record
-with a SHA-256.
-
-| Flag | Default | What it does |
-|---|---|---|
-| `--out` | required | Output directory |
-| `--sources` | `all` | Comma-separated: `admin-reports`, `publications-misc`, `financials`, `traffic`, `tariff`, `circulars`, `tenders`, `rti`, `vision-2047`, `news-articles` |
-| `--dry-run` | off | Print manifest records without opening network sessions |
-
-**Note:** gmbports.org was unreachable from the development environment when
-this adapter was finalised (DNS resolved but every TCP connection attempt
-timed out — a network-level issue, not a code issue). The adapter is built
-and tested against the documented source contract (see
-`_org/requests/0006-gmb-and-gujarat-legislative-cross-level.md`) but has not
-been independently live-verified against the real site in this session —
-live-check the actual page structure before a real acquisition run.
-
 ### `commoner-probe bills` — bills & legislation catalog
 
 ```bash

@@ -16,7 +16,6 @@ from .debates import LS_DEBATE_API, DebateProbe
 from .dmft.mines import MinesDmftProbe
 from .evidence import build_dmft_evidence_bundle
 from .example_topics import list_example_topics, load_example_topic_text
-from .gmb import GmbProbe
 from .indiacode import STATE_HANDLES, IndiaCodeProbe
 from .neva import StateAssemblyCrawler
 from .neva_portals import NevaPortal, iter_portals
@@ -272,15 +271,6 @@ def mines_dmft_cmd(args: argparse.Namespace) -> None:
         ministry_endpoints=_split_csv(args.ministry_endpoints),
         odisha_endpoints=_split_csv(args.odisha_endpoints),
     )
-    records = probe.probe_sources(sources, dry_run=args.dry_run)
-    for record in records:
-        print(json.dumps(record, ensure_ascii=False))
-
-
-def gmb_cmd(args: argparse.Namespace) -> None:
-    out = Path(args.out)
-    sources = _split_csv(args.sources) or ["all"]
-    probe = GmbProbe(out, sleep=args.sleep)
     records = probe.probe_sources(sources, dry_run=args.dry_run)
     for record in records:
         print(json.dumps(record, ensure_ascii=False))
@@ -547,28 +537,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Print manifest records without opening network sessions or writing manifest.jsonl.",
     )
     mines_dmft.set_defaults(func=mines_dmft_cmd)
-
-    gmb = sub.add_parser(
-        "gmb",
-        help="Download Gujarat Maritime Board disclosures (reports, financials, traffic tables, tenders, RTI).",
-    )
-    gmb.add_argument("--out", required=True, help="Output directory")
-    gmb.add_argument(
-        "--sources",
-        default="all",
-        help=(
-            "Comma-separated GMB source classes, or 'all'. Classes: admin-reports, "
-            "publications-misc, financials, traffic, tariff, circulars, tenders, rti, "
-            "vision-2047, news-articles."
-        ),
-    )
-    gmb.add_argument("--sleep", type=float, default=1.0)
-    gmb.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Print manifest records without opening network sessions or writing manifest.jsonl.",
-    )
-    gmb.set_defaults(func=gmb_cmd)
 
     budget = sub.add_parser(
         "budget",

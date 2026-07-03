@@ -51,7 +51,6 @@ from .records import (
     ManifestBudgetRecord,
     ManifestCommitteeReportRecord,
     ManifestFloorDebateRecord,
-    ManifestGmbRecord,
     ManifestIndiaCodeRecord,
     ManifestMcaCsrRecord,
     ManifestMinesDmftRecord,
@@ -142,12 +141,6 @@ class Corpus:
         for d in _iter_jsonl(self.out_dir / "manifest.jsonl"):
             if d.get("kind") == "mines_dmft_source_file":
                 yield ManifestMinesDmftRecord.from_dict(d)
-
-    def manifest_gmb(self) -> Iterator[ManifestGmbRecord]:
-        """Stream Gujarat Maritime Board disclosure records from manifest.jsonl."""
-        for d in _iter_jsonl(self.out_dir / "manifest.jsonl"):
-            if d.get("kind") == "gmb_document":
-                yield ManifestGmbRecord.from_dict(d)
 
     def manifest_budget(self) -> Iterator[ManifestBudgetRecord]:
         """Stream Union Budget / RBI State-Finances source-file records from manifest.jsonl."""
@@ -305,7 +298,6 @@ class Corpus:
         "manifest_committee_reports": "manifest_committee_reports",
         "manifest_mca_csr": "manifest_mca_csr",
         "manifest_mines_dmft": "manifest_mines_dmft",
-        "manifest_gmb": "manifest_gmb",
         "manifest_budget": "manifest_budget",
         "manifest_academic_jobs": "manifest_academic_jobs",
         "manifest_floor_debates": "manifest_floor_debates",
@@ -326,7 +318,6 @@ class Corpus:
         stream:
             One of ``"manifest_qa"``, ``"manifest_committee_reports"``,
             ``"manifest_mca_csr"``, ``"manifest_mines_dmft"``, ``"manifest_indiacode"``,
-            ``"manifest_gmb"``,
             ``"answers_qa"``, ``"answers_atr"``, ``"answers_dfg"``,
             ``"atr_linkages"``, ``"runs"``.
 
