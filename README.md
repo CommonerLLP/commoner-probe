@@ -206,6 +206,27 @@ commoner-probe state-assembly \
   --assemblies 15
 ```
 
+### State Acts, amendments, rules, and notifications (India Code)
+
+India Code (indiacode.nic.in) is the government's own statutory-instrument
+archive: every state's Acts plus their amendments, rules, regulations,
+notifications, orders, circulars, ordinances, and statutes, each with a
+downloadable PDF. `indiacode` enumerates a state's full Act catalog and
+parses every instrument found on each Act's page.
+
+```bash
+commoner-probe indiacode --out data/indiacode --states "West Bengal"
+```
+
+```python
+import commoner_probe as probe
+
+c = probe.Corpus("data/indiacode")
+for r in c.manifest_indiacode():
+    if r.is_amendment:
+        print(r.state, r.short_title, r.instrument_date, r.description)
+```
+
 ### MCA CSR company-spend exports
 
 The Ministry of Corporate Affairs CDM CSR data page exposes downloadable CSV
@@ -369,6 +390,37 @@ commoner-probe state-assembly \
   --assemblies 15
 ```
 
+`--portal`/`--state` probe a single NeVA portal. `--all` crawls every
+registered assembly portal instead (one subdirectory per portal under
+`--out`), and `--list-portals` prints the bundled `portal_code -> state_code
+/ chamber / state_name` registry (31 assemblies + 6 Legislative Councils)
+and exits.
+
+```bash
+commoner-probe state-assembly --list-portals
+commoner-probe state-assembly --all --out data/state-assemblies --assemblies 15
+```
+
+### `commoner-probe state-assembly-probe` — NeVA coverage probe
+
+NeVA's own status is ~28 of 36 Houses signed on with ~20 fully digital — so
+portal *reachability* does not imply data *depth*. This is a lightweight,
+per-portal presence check (not a crawl): it finds the latest assembly with
+sessions, samples one sitting date's question/paper counts, and counts
+members, without persisting any records.
+
+```bash
+commoner-probe state-assembly-probe --out data/neva-coverage.jsonl
+commoner-probe state-assembly-probe --portals gujarat,bla --include-councils
+```
+
+| Flag | Default | What it does |
+|---|---|---|
+| `--out` | stdout only | Also append one JSONL coverage record per portal to this file |
+| `--portals` | all 31 assemblies | Comma-separated portal_codes to limit the probe to |
+| `--include-councils` | off | Include the 6 Legislative Council portals |
+| `--max-assembly` | `20` | Highest assembly number to scan per portal |
+
 ### `commoner-probe mca-csr` — MCA CSR company-spend exports
 
 ```bash
@@ -427,6 +479,37 @@ commoner-probe debates \
 | `--max-records` | — | Stop after N new records per Lok Sabha |
 | `--download` | off | Download each day's transcript PDF (+ sha256) |
 | `--dry-run` | off | List candidate sitting dates without fetching PDFs |
+
+### `commoner-probe indiacode` — state Acts, amendments, rules, notifications
+
+```bash
+commoner-probe indiacode --out data/indiacode --states "West Bengal,Sikkim"
+```
+
+Acquires India Code (indiacode.nic.in) state statutory instruments: the Act
+itself plus every Rule, Regulation, Notification, Order, Circular, Ordinance,
+and Statute found on that Act's page. Amendments are not a distinct category
+on the site — they surface as Notification (occasionally Rule) rows whose
+description contains "Amendment"; each record's `is_amendment` flag is
+derived from that text. `--list-states` prints the bundled state -> parent-
+handle registry (36 states/UTs); Central Acts are a separate collection tree
+and out of scope.
+
+```bash
+commoner-probe indiacode --list-states
+commoner-probe indiacode --out data/indiacode --all-states --max-acts 5
+```
+
+| Flag | Default | What it does |
+|---|---|---|
+| `--out` | required unless `--list-states` | Output corpus directory |
+| `--states` | — | Comma-separated state names, e.g. `'West Bengal,Sikkim'` |
+| `--all-states` | off | Probe every registered state |
+| `--list-states` | off | Print the state -> parent-handle table and exit |
+| `--max-acts` | — | Stop after N Acts per state (smoke-test brake) |
+| `--no-download` | off | Record instruments without downloading PDFs |
+| `--rpp` | `100` | Results per browse page (India Code enumeration) |
+| `--dry-run` | off | Emit one planning record per state without fetching |
 
 ### `commoner-probe budget` — Union Budget & RBI State-Finances files
 

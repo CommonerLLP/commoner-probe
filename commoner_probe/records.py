@@ -361,6 +361,45 @@ class ManifestBillRecord:
         return _from_dict(cls, d)
 
 
+@dataclass
+class ManifestIndiaCodeRecord:
+    """One India Code state Act / amendment / rule / notification instrument
+    (kind='indiacode_instrument', indiacode.nic.in)."""
+
+    key: str
+    kind: str
+    record_type: str
+    source: str
+    state: str
+    status: str
+    probed_at: str
+    state_handle: str | None = None
+    act_handle: str | None = None
+    act_id: str | None = None
+    act_no: str | None = None
+    act_year: str | None = None
+    short_title: str | None = None
+    department: str | None = None
+    act_type: str | None = None
+    location: str | None = None
+    instrument_type: str | None = None
+    is_amendment: bool | None = None
+    instrument_date: str | None = None
+    description: str | None = None
+    description_hi: str | None = None
+    lang: str | None = None
+    actid: str | None = None
+    filename: str | None = None
+    source_url: str | None = None
+    dest: str | None = None
+    sha256: str | None = None
+    error: str | None = None
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "ManifestIndiaCodeRecord":
+        return _from_dict(cls, d)
+
+
 # ---------------------------------------------------------------------------
 # answers.jsonl records
 # ---------------------------------------------------------------------------

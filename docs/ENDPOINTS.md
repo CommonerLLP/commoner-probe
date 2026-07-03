@@ -65,6 +65,71 @@ commoner-probe state-assembly \
   --assemblies 15
 ```
 
+`commoner-probe state-assembly --list-portals` prints the bundled
+`portal_code -> state_code / chamber / state_name` registry (31 assembly +
+6 council portals). `--all` crawls every registered assembly portal instead
+of a single `--portal`/`--state`.
+
+`commoner-probe state-assembly-probe` is a lightweight, per-portal coverage
+check — it does not persist questions/papers/members. It scans assembly
+numbers for the first with sessions, samples one sitting date's counts, and
+counts members, emitting one JSONL coverage record per portal. NeVA's own
+status is ~28 of 36 Houses signed on with ~20 fully digital, so portal
+*reachability* (all 31 assembly portals return HTTP 200) does not imply data
+*depth* — use this probe to find out which onboarded houses actually expose
+records.
+
+```bash
+commoner-probe state-assembly-probe --out data/neva-coverage.jsonl
+```
+
+## India Code — state Acts, amendments, rules, notifications
+
+`commoner-probe indiacode` probes India Code (indiacode.nic.in), a legacy
+DSpace (XMLUI/JSPUI) install with no working REST API (`/server/api` is
+disabled). Verified live 2026-07 against the West Bengal Public Libraries
+Act, 1979 (handle `14547`):
+
+- per-state parent collection: `GET /handle/123456789/{state_handle}/`
+- per-state Act enumeration (paginated): `GET /handle/123456789/{state_handle}/browse?type=dateissued&rpp=100&offset=N`
+- per-Act detail page: `GET /handle/123456789/{item_handle}` — an
+  `itemDisplayTable` metadata block (Act ID, Act Number, Enactment Date, Act
+  Year, Short Title, Department, Type, Location), the main Act PDF at
+  `/bitstream/123456789/{item_handle}/1/{file}.pdf`, and every subordinate
+  instrument (Rules, Regulations, Notifications, Orders, Circulars,
+  Ordinances, Statutes) embedded directly on the page as Bootstrap modal
+  tables, each row linking to `/ViewFileUploaded?path={actid}/{category}individualfile/&file={NN}.pdf`.
+
+Amendments are not a distinct site category — they appear as Notification
+(occasionally Rule) rows whose description contains "Amendment"; the adapter
+derives `is_amendment` from that text. Filenames are sparse, not a dense
+1..N sequence — never assume a range.
+
+The site sits behind Akamai, which 403s the shared `http_client` User-Agent
+(it contains a `+https://...` URL fragment, a common bot fingerprint) on
+every path, including `robots.txt` itself. The adapter uses a bare
+`commoner-probe/<ver> (research)` UA instead (same style as `NEVA_UA`) and
+sets `respect_robots=False` — the real `robots.txt`, fetched with a passing
+UA, only disallows `/discover` and `/simple-search` (the Discovery search
+UI), neither of which this adapter touches.
+
+Outputs:
+
+- `manifest.jsonl` records with `kind = "indiacode_instrument"`
+- one PDF per instrument under `pdfs/<state>/<act_handle>/`
+
+Example:
+
+```bash
+commoner-probe indiacode --out data/indiacode --states "West Bengal"
+```
+
+Central Acts live in a separate collection tree and are out of scope
+(state library-law research only).
+
+Known gap: no archive.org/Wayback snapshot-on-fetch — no other adapter in
+this repo does that either.
+
 ## MCA CSR
 
 `commoner-probe mca-csr` downloads company-spend CSV exports from the MCA CDM

@@ -612,6 +612,77 @@ class StateAssemblyCrawler(BaseProbe):
         self.log(f"DONE {summary}")
         return summary
 
+    # ------------------------------------------------------------------
+    # Data-depth probe
+    # ------------------------------------------------------------------
+
+    def probe_depth(self, *, max_assembly: int = 20) -> dict:
+        """Lightweight presence/depth check: does this portal expose real data?
+
+        Scans assembly numbers from ``max_assembly`` down to 1, stopping at
+        the first one with sessions. Samples the latest session's latest
+        sitting date for question/paper counts, and fetches the member
+        roster count. Does not persist questions/papers/members — this is a
+        coverage probe, not a crawl (use ``run()`` for that).
+        """
+        self.bootstrap()
+        result: dict = {
+            "portal_code": self.portal_code,
+            "state_code": self.state_code,
+            "reachable": True,
+            "latest_assembly": None,
+            "assemblies_scanned": 0,
+            "sessions_found": 0,
+            "latest_session_code": None,
+            "latest_session_name": None,
+            "dates_found": 0,
+            "sample_date_id": None,
+            "questions_sample": 0,
+            "papers_sample": 0,
+            "members_count": 0,
+            "probed_at": now(),
+        }
+        for asm in range(max_assembly, 0, -1):
+            result["assemblies_scanned"] += 1
+            try:
+                sessions = self.get_sessions(asm)
+            except RuntimeError:
+                continue
+            if not sessions:
+                continue
+            result["latest_assembly"] = asm
+            result["sessions_found"] = len(sessions)
+            sess = sessions[0]
+            session_code = sess.get("SessionCode")
+            result["latest_session_code"] = session_code
+            result["latest_session_name"] = sess.get("SessionName", "")
+            try:
+                dates = self.get_dates(asm, session_code)
+            except RuntimeError:
+                dates = []
+            result["dates_found"] = len(dates)
+            if dates:
+                date_id = dates[0]["SessionDateId"]
+                result["sample_date_id"] = date_id
+                try:
+                    result["questions_sample"] = len(
+                        self.fetch_questions_for_date(asm, session_code, date_id, set())
+                    )
+                except RuntimeError:
+                    pass
+                try:
+                    result["papers_sample"] = len(
+                        self.fetch_papers_laid(asm, session_code, date_id, set())
+                    )
+                except RuntimeError:
+                    pass
+            try:
+                result["members_count"] = len(self.fetch_members(asm))
+            except RuntimeError:
+                pass
+            break
+        return result
+
     def _retry_missing_pdfs(self) -> tuple[int, int]:
         """Download PDFs for records that have pdf_urls but no pdf_path, then patch the JSONL."""
         q_fixed = self._retry_pdfs_for(

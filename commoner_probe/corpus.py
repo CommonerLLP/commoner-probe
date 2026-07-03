@@ -51,6 +51,7 @@ from .records import (
     ManifestBudgetRecord,
     ManifestCommitteeReportRecord,
     ManifestFloorDebateRecord,
+    ManifestIndiaCodeRecord,
     ManifestMcaCsrRecord,
     ManifestMinesDmftRecord,
     ManifestQaRecord,
@@ -164,6 +165,12 @@ class Corpus:
         for d in _iter_jsonl(self.out_dir / "manifest.jsonl"):
             if d.get("kind") == "bill_record":
                 yield ManifestBillRecord.from_dict(d)
+
+    def manifest_indiacode(self) -> Iterator[ManifestIndiaCodeRecord]:
+        """Stream India Code Act/amendment/rule/notification records from manifest.jsonl."""
+        for d in _iter_jsonl(self.out_dir / "manifest.jsonl"):
+            if d.get("kind") == "indiacode_instrument":
+                yield ManifestIndiaCodeRecord.from_dict(d)
 
     # --- Answers ---
 
@@ -295,6 +302,7 @@ class Corpus:
         "manifest_academic_jobs": "manifest_academic_jobs",
         "manifest_floor_debates": "manifest_floor_debates",
         "manifest_bills": "manifest_bills",
+        "manifest_indiacode": "manifest_indiacode",
         "answers_qa": "answers_qa",
         "answers_atr": "answers_atr",
         "answers_dfg": "answers_dfg",
@@ -309,7 +317,7 @@ class Corpus:
         ----------
         stream:
             One of ``"manifest_qa"``, ``"manifest_committee_reports"``,
-            ``"manifest_mca_csr"``, ``"manifest_mines_dmft"``,
+            ``"manifest_mca_csr"``, ``"manifest_mines_dmft"``, ``"manifest_indiacode"``,
             ``"answers_qa"``, ``"answers_atr"``, ``"answers_dfg"``,
             ``"atr_linkages"``, ``"runs"``.
 
