@@ -105,7 +105,7 @@ def parse(html: str, url: str, fetched_at: Any, pdf: Callable | None = None) -> 
             "snapshot_fetched_at": iso(fetched_at),
             "parse_confidence": 0.6,
             "raw_text_excerpt": excerpt,
-            "apply_url": None,
+            "apply_url": pdf_url,
             "info_url": url,
             "publications_required": publications,
             "unit_eligibility": None,
@@ -135,7 +135,7 @@ def parse(html: str, url: str, fetched_at: Any, pdf: Callable | None = None) -> 
                 "No discrete faculty postings found on the careers page. Most IIMs route "
                 "applications through internal channels; check the listing page directly."
             ),
-            "apply_url": None,
+            "apply_url": url,
             "info_url": url,
             "publications_required": None,
             "unit_eligibility": None,
