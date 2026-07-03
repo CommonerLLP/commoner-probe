@@ -16,10 +16,6 @@
   `state-assembly-probe` subcommand does a lightweight per-portal
   data-depth check (session/question/paper/member counts) without a full
   crawl — useful because NeVA portal reachability doesn't imply data depth.
-- **`gmb` source** — Gujarat Maritime Board (gmbports.org) disclosures:
-  admin reports (EN+GU), financials, per-port traffic tables (HTML parsed
-  into a tidy long-format CSV), publications, tariffs, circulars, tenders,
-  RTI, Vision 2047, and news articles.
 
 ### Fixed
 
