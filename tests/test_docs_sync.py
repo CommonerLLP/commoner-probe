@@ -39,7 +39,6 @@ class CliCommandSyncTests(unittest.TestCase):
                 "state-assembly-probe",
                 "mca-csr",
                 "mines-dmft",
-                "gmb",
                 "budget",
                 "academic-jobs",
                 "debates",
