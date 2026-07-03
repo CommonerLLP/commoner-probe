@@ -28,6 +28,10 @@ WORKING.md
 TODO.md
 docs/STATUS.md
 docs/TODO-*.md
+AGENTS.md
+CLAUDE.md
+CONTEXT.md
+GEMINI.md
 
 # Beads / Dolt files (added by bd init)
 .beads/proxieddb/
