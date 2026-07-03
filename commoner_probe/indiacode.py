@@ -246,8 +246,19 @@ class IndiaCodeProbe:
         self.manifest = out_dir / "manifest.jsonl"
         self.session = make_session()
 
-    def load_seen(self) -> set[str]:
-        seen: set[str] = set()
+    #: Statuses that mean "nothing left to do for this key" — a record with
+    #: one of these can be skipped outright on a rerun. Anything else
+    #: (``pending``, ``fetch_error``) is retried, so a metadata-only
+    #: ``--no-download`` pass followed by a downloads-enabled rerun on the
+    #: same corpus actually downloads the file and updates the manifest,
+    #: instead of silently downloading to disk while leaving a stale
+    #: ``pending`` row behind (no ``dest``/``sha256``) that a downstream
+    #: reader would never discover.
+    _TERMINAL_STATUSES = frozenset({"downloaded", "skipped_exists", "no_pdf_found"})
+
+    def load_seen(self) -> dict[str, str]:
+        """Return ``{key: last_known_status}`` from the existing manifest."""
+        seen: dict[str, str] = {}
         if not self.manifest.exists():
             return seen
         with self.manifest.open(encoding="utf-8") as f:
@@ -257,7 +268,7 @@ class IndiaCodeProbe:
                 except ValueError:
                     continue
                 if rec.get("key"):
-                    seen.add(rec["key"])
+                    seen[rec["key"]] = rec.get("status", "")
         return seen
 
     def append_manifest(self, record: dict) -> None:
@@ -439,11 +450,15 @@ class IndiaCodeProbe:
                 for item_handle in self.iter_act_handles(state_handle):
                     records = self.probe_act(state_name, state_handle, item_handle)
                     for rec in records:
-                        if download and rec.get("source_url"):
+                        old_status = seen.get(rec["key"])
+                        will_download = download and bool(rec.get("source_url"))
+                        if old_status in self._TERMINAL_STATUSES:
+                            continue  # already fully done, nothing this run can add
+                        if old_status is not None and not will_download:
+                            continue  # already recorded and this run adds nothing new
+                        if will_download:
                             self.download_instrument(rec)
-                        if rec["key"] in seen:
-                            continue
-                        seen.add(rec["key"])
+                        seen[rec["key"]] = rec["status"]
                         self.append_manifest(rec)
                         out.append(rec)
                     acts_done += 1

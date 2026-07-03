@@ -48,7 +48,11 @@ from urllib.parse import urlencode, urlparse
 
 from .url_safety import is_safe_url
 
-TOOL_VERSION = "0.3.0"
+try:
+    from importlib.metadata import version as _importlib_version
+    TOOL_VERSION = _importlib_version("commoner-probe")
+except Exception:
+    TOOL_VERSION = "0.0.0"
 USER_AGENT = (
     f"commoner-probe/{TOOL_VERSION} "
     "(+https://github.com/CommonerLLP/commoner-probe; "
