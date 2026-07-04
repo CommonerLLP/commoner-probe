@@ -179,6 +179,29 @@ class ManifestMcaCsrRecord:
 
 
 @dataclass
+class ManifestDpeCsrRecord:
+    """One DPE CPSE CSR document record from manifest.jsonl."""
+
+    key: str
+    kind: str
+    record_type: str
+    id: int
+    date: str
+    title: str
+    filename: str
+    dest: str
+    url: str
+    status: str
+    timestamp_utc: str
+    probed_at: str
+    sha256: str | None = None
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "ManifestDpeCsrRecord":
+        return _from_dict(cls, d)
+
+
+@dataclass
 class ManifestMinesDmftRecord:
     """One Ministry of Mines / DMFT raw source-file record from manifest.jsonl."""
 
@@ -529,6 +552,14 @@ class RunRecord:
 __all__ = [
     "ManifestQaRecord",
     "ManifestCommitteeReportRecord",
+    "ManifestDpeCsrRecord",
+    "ManifestMcaCsrRecord",
+    "ManifestMinesDmftRecord",
+    "ManifestBudgetRecord",
+    "ManifestAcademicJobRecord",
+    "ManifestFloorDebateRecord",
+    "ManifestBillRecord",
+    "ManifestIndiaCodeRecord",
     "AnswerQaResponse",
     "AnswerAtrResponse",
     "AnswerDfgRecommendation",

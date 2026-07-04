@@ -52,6 +52,7 @@ from .records import (
     ManifestCommitteeReportRecord,
     ManifestFloorDebateRecord,
     ManifestIndiaCodeRecord,
+    ManifestDpeCsrRecord,
     ManifestMcaCsrRecord,
     ManifestMinesDmftRecord,
     ManifestQaRecord,
@@ -135,6 +136,12 @@ class Corpus:
         for d in _iter_jsonl(self.out_dir / "manifest.jsonl"):
             if d.get("kind") == "mca_csr_company_spend":
                 yield ManifestMcaCsrRecord.from_dict(d)
+
+    def manifest_dpe_csr(self) -> Iterator[ManifestDpeCsrRecord]:
+        """Stream DPE CPSE CSR document records from manifest.jsonl."""
+        for d in _iter_jsonl(self.out_dir / "manifest.jsonl"):
+            if d.get("kind") == "dpe_csr_document":
+                yield ManifestDpeCsrRecord.from_dict(d)
 
     def manifest_mines_dmft(self) -> Iterator[ManifestMinesDmftRecord]:
         """Stream Ministry of Mines / DMFT source-file records from manifest.jsonl."""
@@ -297,6 +304,7 @@ class Corpus:
         "manifest_qa": "manifest_qa",
         "manifest_committee_reports": "manifest_committee_reports",
         "manifest_mca_csr": "manifest_mca_csr",
+        "manifest_dpe_csr": "manifest_dpe_csr",
         "manifest_mines_dmft": "manifest_mines_dmft",
         "manifest_budget": "manifest_budget",
         "manifest_academic_jobs": "manifest_academic_jobs",
