@@ -148,6 +148,12 @@ class MinesDmftProbe:
         ctx = ssl.create_default_context()
         ctx.check_hostname = False
         ctx.verify_mode = ssl.CERT_NONE
+        try:
+            # Lower security level for legacy gov servers
+            ctx.set_ciphers("DEFAULT@SECLEVEL=1")
+            ctx.options |= ssl.OP_LEGACY_SERVER_CONNECT
+        except Exception:
+            pass
         return urllib.request.build_opener(urllib.request.HTTPSHandler(context=ctx))
 
     def endpoints_for(self, sources: list[str]) -> list[DmftEndpoint]:
@@ -206,10 +212,21 @@ class MinesDmftProbe:
             return record
 
         req = urllib.request.Request(endpoint.url, headers={"User-Agent": USER_AGENT})
-        with opener.open(req, timeout=60) as resp:
-            body = resp.read()
-            source_last_modified_raw = resp.headers.get("Last-Modified")
-            content_type = resp.headers.get("Content-Type")
+        
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                with opener.open(req, timeout=120) as resp:
+                    body = resp.read()
+                    source_last_modified_raw = resp.headers.get("Last-Modified")
+                    content_type = resp.headers.get("Content-Type")
+                break
+            except Exception as e:
+                import logging
+                logging.warning(f"Attempt {attempt+1} failed for {endpoint.url}: {e}")
+                if attempt == max_retries - 1:
+                    raise
+                time.sleep(2 ** attempt)
 
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_bytes(body)
