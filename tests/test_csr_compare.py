@@ -12,9 +12,10 @@ from commoner_probe.csr.compare import (
     top_spenders,
 )
 
+
 def _setup_mock_corpus(tmp_path: Path):
     manifest = tmp_path / "manifest.jsonl"
-    
+
     # Year 1
     dest1 = tmp_path / "mca_csr_company_spend_2020-21.csv"
     with open(dest1, "w", encoding="utf-8-sig") as f:
@@ -27,7 +28,7 @@ def _setup_mock_corpus(tmp_path: Path):
         writer.writerow(["Company A", "FY 2020-21", "Non-PSU", "Gujarat", "Education", "Education", "1.5"])
         writer.writerow(["Company B", "FY 2020-21", "PSU", "Delhi", "Health", "Health", "10.0"])
         writer.writerow(["Company A", "FY 2020-21", "Non-PSU", "Maharashtra", "Education", "Education", "2.0"])
-    
+
     # Year 2
     dest2 = tmp_path / "mca_csr_company_spend_2021-22.csv"
     with open(dest2, "w", encoding="utf-8-sig") as f:
@@ -39,7 +40,7 @@ def _setup_mock_corpus(tmp_path: Path):
         ])
         writer.writerow(["Company A", "FY 2021-22", "Non-PSU", "Gujarat", "Education", "Education", "4.0"])
         writer.writerow(["Company C", "FY 2021-22", "Non-PSU", "Karnataka", "Environment", "Environment", "5.0"])
-        
+
     records = [
         {
             "key": "MCA_CSR|FY 2020-21",
@@ -73,21 +74,21 @@ def _setup_mock_corpus(tmp_path: Path):
     with open(manifest, "w", encoding="utf-8") as f:
         for rec in records:
             f.write(json.dumps(rec) + "\n")
-            
+
     return Corpus(tmp_path)
 
 
 def test_aggregate_by_company(tmp_path):
     corpus = _setup_mock_corpus(tmp_path)
     agg = aggregate_by_company(corpus)
-    
+
     assert "Company A" in agg
     assert agg["Company A"]["FY 2020-21"] == 3.5  # 1.5 + 2.0
     assert agg["Company A"]["FY 2021-22"] == 4.0
-    
+
     assert "Company B" in agg
     assert agg["Company B"]["FY 2020-21"] == 10.0
-    
+
     assert "Company C" in agg
     assert agg["Company C"]["FY 2021-22"] == 5.0
 
@@ -97,7 +98,7 @@ def test_get_consistent_reporters(tmp_path):
     # Company A reported in both years
     reporters = get_consistent_reporters(corpus, min_years=2)
     assert reporters == {"Company A"}
-    
+
     # All reported at least once
     all_reporters = get_consistent_reporters(corpus, min_years=1)
     assert all_reporters == {"Company A", "Company B", "Company C"}
@@ -107,7 +108,7 @@ def test_compare_year_over_year(tmp_path):
     corpus = _setup_mock_corpus(tmp_path)
     yoy_a = compare_year_over_year(corpus, "Company A")
     assert yoy_a == {"FY 2020-21": 3.5, "FY 2021-22": 4.0}
-    
+
     yoy_unknown = compare_year_over_year(corpus, "Unknown Company")
     assert yoy_unknown == {}
 
@@ -115,11 +116,11 @@ def test_compare_year_over_year(tmp_path):
 def test_top_spenders(tmp_path):
     corpus = _setup_mock_corpus(tmp_path)
     top = top_spenders(corpus, top_n=2)
-    
+
     # B: 10.0
     # A: 7.5
     # C: 5.0
-    
+
     assert len(top) == 2
     assert top[0] == ("Company B", 10.0)
     assert top[1] == ("Company A", 7.5)
