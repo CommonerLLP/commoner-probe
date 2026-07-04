@@ -11,6 +11,7 @@ from .atr_linkage import extract_atr_linkages
 from .bills import BILLS_API, BillsProbe
 from .budget import RBI_STATE_FINANCES_URL, BudgetProbe
 from .committees import CommitteeProbe, resolve_committees
+from .csr.dpe import DpeCsrProbe
 from .csr.mca import McaCsrProbe
 from .debates import LS_DEBATE_API, DebateProbe
 from .dmft.mines import MinesDmftProbe
@@ -314,6 +315,14 @@ def indiacode_query_cmd(args: argparse.Namespace) -> None:
         print(json.dumps(record, ensure_ascii=False))
 
 
+def dpe_csr_cmd(args: argparse.Namespace) -> None:
+    out = Path(args.out)
+    probe = DpeCsrProbe(out, sleep=args.sleep)
+    records = probe.probe(search=args.search, dry_run=args.dry_run, max_pages=args.max_pages)
+    for record in records:
+        print(json.dumps(record, ensure_ascii=False))
+
+
 def mca_csr_cmd(args: argparse.Namespace) -> None:
     out = Path(args.out)
     years = _split_csv(args.years) or []
@@ -404,7 +413,6 @@ def academic_jobs_cmd(args: argparse.Namespace) -> None:
     records = probe.probe(download=not args.no_download, dry_run=args.dry_run)
     for record in records:
         print(json.dumps(record, ensure_ascii=False))
-
 
 
 def extract_debates_cmd(args: argparse.Namespace) -> None:
@@ -578,6 +586,21 @@ def build_parser() -> argparse.ArgumentParser:
     state_assembly_probe.add_argument("--max-assembly", type=int, default=20, help="Highest assembly number to scan per portal.")
     state_assembly_probe.add_argument("--sleep", type=float, default=0.5)
     state_assembly_probe.set_defaults(func=state_assembly_probe_cmd)
+
+    dpe_csr = sub.add_parser(
+        "dpe-csr",
+        help="Download DPE CPSE CSR documents via WordPress REST API.",
+    )
+    dpe_csr.add_argument("--out", required=True, help="Output directory")
+    dpe_csr.add_argument("--search", default="csr", help="Search query for the media endpoint (default: 'csr').")
+    dpe_csr.add_argument("--max-pages", type=int, default=10, help="Max pages to fetch (default: 10).")
+    dpe_csr.add_argument("--sleep", type=float, default=1.0)
+    dpe_csr.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print manifest records without writing manifest.jsonl.",
+    )
+    dpe_csr.set_defaults(func=dpe_csr_cmd)
 
     mca_csr = sub.add_parser(
         "mca-csr",

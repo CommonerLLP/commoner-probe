@@ -68,6 +68,9 @@ def _parse_docs_fields(schema_name: str) -> set[str]:
     _HEADING_KEYWORDS: dict[str, list[str]] = {
         "manifest_qa": ["Shape A", "Shape B"],
         "manifest_committee_report": ["Shape C", "Shape D"],
+        "manifest_mca_csr": ["Shape E"],
+        "manifest_indiacode": ["Shape F"],
+        "manifest_dpe_csr": ["Shape G"],
         "runs": ["_runs.jsonl"],
         "answers_qa_response": ['kind = "qa_response"'],
         "answers_atr_response": ['kind = "atr_response"'],
@@ -388,6 +391,50 @@ _ENTITY_BUREAU = {
     "fetched_at": "2024-01-15T10:00:00",
 }
 
+_MCA_CSR = {
+    "key": "MCA_CSR|FY 2022-23",
+    "kind": "mca_csr_company_spend",
+    "record_type": "mca_csr_company_spend",
+    "year": "2022-23",
+    "financial_year": "FY 2022-23",
+    "filename": "mca_csr_company_spend_2022-23.csv",
+    "dest": "mca_csr_company_spend_2022-23.csv",
+    "source_page": "https://www.mcacdm.nic.in/csr-data",
+    "url": "https://www.mcacdm.nic.in/cdm/export.php",
+    "status": "downloaded",
+    "sha256": "abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+    "timestamp_utc": "2026-07-01T12:00:00Z",
+    "probed_at": "2026-07-01T12:00:00Z",
+}
+
+_INDIACODE = {
+    "key": "INDIACODE|1234|5678|rule|en|foo.pdf",
+    "kind": "indiacode_instrument",
+    "record_type": "indiacode_instrument",
+    "source": "indiacode.nic.in",
+    "state": "Maharashtra",
+    "state_handle": "1234",
+    "act_handle": "5678",
+    "instrument_type": "rule",
+    "status": "pending",
+    "probed_at": "2026-07-01T12:00:00Z",
+}
+
+_DPE_CSR = {
+    "key": "DPE_CSR|456",
+    "kind": "dpe_csr_document",
+    "record_type": "dpe_csr_document",
+    "id": 456,
+    "date": "2026-01-01T00:00:00Z",
+    "title": "CSR Document 2025",
+    "filename": "dpe_csr_456.pdf",
+    "dest": "dpe_csr/dpe_csr_456.pdf",
+    "url": "https://dpe.gov.in/wp-content/uploads/2026/01/doc.pdf",
+    "status": "pending",
+    "timestamp_utc": "2026-07-04T12:00:00Z",
+    "probed_at": "2026-07-04T12:00:00Z",
+}
+
 _SCHEMA_FIXTURES: dict[str, list[dict]] = {
     "manifest_qa": [_LS_QA, _RS_QA],
     "manifest_committee_report": [_LS_COMMITTEE, _RS_COMMITTEE],
@@ -401,6 +448,9 @@ _SCHEMA_FIXTURES: dict[str, list[dict]] = {
     "entities_committee_membership": [_ENTITY_COMMITTEE_MEM],
     "entities_ministerial_appointment": [_ENTITY_MINISTERIAL],
     "entities_bureaucratic_posting": [_ENTITY_BUREAU],
+    "manifest_mca_csr": [_MCA_CSR],
+    "manifest_indiacode": [_INDIACODE],
+    "manifest_dpe_csr": [_DPE_CSR],
 }
 
 
@@ -495,6 +545,9 @@ _ANSWERS_COMMON_FIELDS = {
     "entities_committee_membership",
     "entities_ministerial_appointment",
     "entities_bureaucratic_posting",
+    "manifest_mca_csr",
+    "manifest_indiacode",
+    "manifest_dpe_csr",
 ])
 def test_docs_fields_match_schema_properties(schema_name):
     """Every field documented in SCHEMAS.md exists in the schema, and vice-versa."""
