@@ -17,7 +17,7 @@ BASE_URL = "https://dpe.gov.in/cms/wp-json"
 
 class DpeCsrProbe:
     """Download DPE CPSE CSR documents via WordPress REST API.
-    
+
     Target: https://dpe.gov.in/cms/wp-json
     """
 
