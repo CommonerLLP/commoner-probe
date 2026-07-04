@@ -51,7 +51,7 @@ def _make_rs_probe(out_dir: Path, rows: list[dict], record_filter_fn):
         record_filter_fn=record_filter_fn,
     )
     probe = SansadProbe(topic, out_dir, sleep=0)
-    probe.rs_search_session = lambda ses_no, ministry_like: rows  # stub HTTP
+    probe.rs_search_session = lambda ses_no, ministry_like, member_name=None: rows  # stub HTTP
     probe._enrich_askers = lambda rec: None  # stub roster (network) for kept rows
     buckets: list[dict] = []
     probe.runlog.record_bucket = lambda **kw: buckets.append(kw)

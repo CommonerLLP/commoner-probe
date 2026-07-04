@@ -35,6 +35,7 @@ class CliCommandSyncTests(unittest.TestCase):
                 "sansad",
                 "committees",
                 "extract-answers",
+                "extract-debates",
                 "state-assembly",
                 "state-assembly-probe",
                 "mca-csr",
