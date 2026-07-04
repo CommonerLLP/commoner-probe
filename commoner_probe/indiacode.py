@@ -120,6 +120,28 @@ SUBORDINATE_TABLES: tuple[tuple[str, str], ...] = (
     ("myTableStatutes", "statute"),
 )
 
+PUBLIC_LIBRARIES_HANDLES = {
+    "Andhra Pradesh": "",
+    "Arunachal Pradesh": "",
+    "Bihar": "",
+    "Chhattisgarh": "",
+    "Goa": "",
+    "Gujarat": "",
+    "Haryana": "",
+    "Karnataka": "",
+    "Kerala": "",
+    "Maharashtra": "",
+    "Manipur": "",
+    "Mizoram": "",
+    "Odisha": "",
+    "Rajasthan": "",
+    "Tamil Nadu": "",
+    "Telangana": "",
+    "Uttar Pradesh": "",
+    "Uttarakhand": "",
+    "West Bengal": "14547",
+}
+
 _AMENDMENT_RE = re.compile(r"\bamendment\b", re.IGNORECASE)
 _TAG_RE = re.compile(r"<[^>]+>")
 
@@ -136,20 +158,27 @@ def _now_iso() -> str:
 # HTML parsing
 # ---------------------------------------------------------------------------
 
-def parse_browse_page(html_text: str) -> tuple[list[str], int, int]:
-    """Item handles on one browse page, plus (shown_to, total) for pagination.
+def parse_browse_page(html_text: str) -> tuple[dict[str, str], int, int]:
+    """Item handles on one browse page mapped to their titles, plus (shown_to, total) for pagination.
 
     Falls back to (len(handles), len(handles)) when the "Showing items"
     banner is absent (e.g. a state with 0 Acts), which naturally halts the
     caller's pagination loop.
     """
-    handles: list[str] = []
-    seen: set[str] = set()
-    for m in re.finditer(r'href="/handle/123456789/(\d+)\?view_type=browse"', html_text):
-        h = m.group(1)
-        if h not in seen:
-            seen.add(h)
-            handles.append(h)
+    handles: dict[str, str] = {}
+    for tr_match in re.finditer(r'<tr.*?>(.*?)</tr>', html_text, flags=re.DOTALL | re.IGNORECASE):
+        tr_text = tr_match.group(1)
+        hm = re.search(r'href="/handle/123456789/(\d+)\?view_type=browse"', tr_text)
+        if not hm:
+            continue
+        h = hm.group(1)
+
+        tm = re.search(r'<td headers="t3"[^>]*>(.*?)</td>', tr_text, re.DOTALL | re.IGNORECASE)
+        title = _strip_tags(tm.group(1)) if tm else ""
+
+        if h not in handles:
+            handles[h] = title
+
     m = re.search(r"Showing items (\d+) to (\d+) of (\d+)", html_text)
     if m:
         return handles, int(m.group(2)), int(m.group(3))
@@ -283,7 +312,12 @@ class IndiaCodeProbe:
             time.sleep(self.sleep)
         return r.text
 
-    def iter_act_handles(self, state_handle: str) -> Iterator[str]:
+    def iter_act_handles(
+        self,
+        state_handle: str,
+        query_re: re.Pattern | None = None,
+        exclude_re: re.Pattern | None = None
+    ) -> Iterator[str]:
         offset = 0
         while True:
             text = self._get(
@@ -293,7 +327,12 @@ class IndiaCodeProbe:
             handles, shown_to, total = parse_browse_page(text)
             if not handles:
                 return
-            yield from handles
+            for h, title in handles.items():
+                if query_re and not query_re.search(title):
+                    continue
+                if exclude_re and exclude_re.search(title):
+                    continue
+                yield h
             if shown_to >= total:
                 return
             offset += self.rpp
@@ -430,7 +469,12 @@ class IndiaCodeProbe:
         download: bool = True,
         dry_run: bool = False,
         max_acts: int | None = None,
+        query_re: re.Pattern | None = None,
+        exclude_re: re.Pattern | None = None,
+        known_handles: dict[str, str] | None = None,
+        classify_availability: bool = False,
     ) -> list[dict]:
+        known_handles = known_handles or {}
         out: list[dict] = []
         for state_name in states:
             state_handle = STATE_HANDLES.get(state_name)
@@ -447,8 +491,29 @@ class IndiaCodeProbe:
             seen = self.load_seen()
             acts_done = 0
             try:
-                for item_handle in self.iter_act_handles(state_handle):
+                handle_for_state = known_handles.get(state_name)
+                if handle_for_state:
+                    item_handles = [handle_for_state]
+                else:
+                    item_handles = list(self.iter_act_handles(state_handle, query_re, exclude_re))
+
+                if classify_availability and not item_handles:
+                    rec = self._status_record(state_name, state_handle, fetch_status="absent")
+                    self.append_manifest(rec)
+                    out.append(rec)
+
+                state_has_principal = False
+
+                for item_handle in item_handles:
                     records = self.probe_act(state_name, state_handle, item_handle)
+
+                    if classify_availability:
+                        act_record = next((r for r in records if r["instrument_type"] == "act"), None)
+                        if act_record:
+                            desc = act_record.get("description") or ""
+                            if not _AMENDMENT_RE.search(desc):
+                                state_has_principal = True
+
                     for rec in records:
                         old_status = seen.get(rec["key"])
                         will_download = download and bool(rec.get("source_url"))
@@ -461,9 +526,17 @@ class IndiaCodeProbe:
                         seen[rec["key"]] = rec["status"]
                         self.append_manifest(rec)
                         out.append(rec)
+
                     acts_done += 1
                     if max_acts is not None and acts_done >= max_acts:
                         break
+
+                if classify_availability and item_handles:
+                    status = "principal_present" if state_has_principal else "amendment_only"
+                    rec = self._status_record(state_name, state_handle, fetch_status=status)
+                    self.append_manifest(rec)
+                    out.append(rec)
+
             except Exception as exc:  # noqa: BLE001
                 rec = self._status_record(state_name, state_handle, fetch_status="fetch_error", error=str(exc))
                 self.append_manifest(rec)

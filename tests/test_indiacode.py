@@ -56,8 +56,14 @@ ACT_DETAIL_HTML = """
 
 BROWSE_PAGE_HTML = """
 <html><body>
-<a href="/handle/123456789/17953?view_type=browse">Act A</a>
-<a href="/handle/123456789/17368?view_type=browse">Act B</a>
+<tr>
+  <td><a href="/handle/123456789/17953?view_type=browse">Act A</a></td>
+  <td headers="t3">The West Bengal Public Libraries Act, 1979</td>
+</tr>
+<tr>
+  <td><a href="/handle/123456789/17368?view_type=browse">Act B</a></td>
+  <td headers="t3">Some Other Act, 1980</td>
+</tr>
 Showing items 1 to 2 of 2
 </body></html>
 """
@@ -129,18 +135,18 @@ class TestParseSubordinateRows:
 class TestParseBrowsePage:
     def test_extracts_handles_and_pagination(self):
         handles, shown_to, total = parse_browse_page(BROWSE_PAGE_HTML)
-        assert handles == ["17953", "17368"]
+        assert list(handles.keys()) == ["17953", "17368"]
         assert shown_to == 2
         assert total == 2
 
     def test_dedupes_handles(self):
-        html = BROWSE_PAGE_HTML + '<a href="/handle/123456789/17953?view_type=browse">dup</a>'
+        html = BROWSE_PAGE_HTML + '<tr><td><a href="/handle/123456789/17953?view_type=browse">dup</a></td><td headers="t3">dup</td></tr>'
         handles, _, _ = parse_browse_page(html)
-        assert handles == ["17953", "17368"]
+        assert list(handles.keys()) == ["17953", "17368"]
 
     def test_no_items_halts_pagination(self):
         handles, shown_to, total = parse_browse_page(BROWSE_PAGE_EMPTY_HTML)
-        assert handles == []
+        assert handles == {}
         assert shown_to == total == 0
 
 
@@ -259,7 +265,7 @@ class TestProbeStates:
         }
         probe = _probe(tmp_path, routes)
         first = probe.probe_states(["West Bengal"], download=False)
-        assert len(first) == 2 * 4  # 2 acts x 4 records each
+        assert len(first) == 8  # 2 acts x 4 records each
 
         manifest_lines = (tmp_path / "manifest.jsonl").read_text().splitlines()
         assert len(manifest_lines) == 8
