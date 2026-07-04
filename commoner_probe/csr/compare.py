@@ -4,6 +4,7 @@
 Provides functions to aggregate and compare spending of reporting companies
 across multiple financial years.
 """
+from __future__ import annotations
 
 import csv
 from collections import defaultdict
@@ -11,7 +12,6 @@ from dataclasses import dataclass
 from typing import Dict, Iterable, Set, Tuple
 
 from commoner_probe.corpus import Corpus
-from commoner_probe.records import ManifestMcaCsrRecord
 
 
 @dataclass
@@ -36,19 +36,19 @@ def iter_company_spend(corpus: Corpus) -> Iterable[CompanySpendRecord]:
             with open(record.dest, "r", encoding="utf-8-sig") as f:
                 reader = csv.DictReader(f)
                 for row in reader:
-                    amt_str = row.get("Project Amount Spent (In INR Cr.)", "0").strip()
+                    amt_str = (row.get("Project Amount Spent (In INR Cr.)") or "0").strip()
                     try:
                         amt = float(amt_str) if amt_str else 0.0
                     except ValueError:
                         amt = 0.0
 
                     yield CompanySpendRecord(
-                        company_name=row.get("Company Name", "").strip(),
-                        financial_year=row.get("Financial Year", "").strip(),
-                        psu_status=row.get("PSU/Non-PSU", "").strip(),
-                        state=row.get("CSR State", "").strip(),
-                        sector=row.get("CSR Development Sector", "").strip(),
-                        sub_sector=row.get("CSR Sub Development Sector", "").strip(),
+                        company_name=(row.get("Company Name") or "").strip(),
+                        financial_year=(row.get("Financial Year") or "").strip(),
+                        psu_status=(row.get("PSU/Non-PSU") or "").strip(),
+                        state=(row.get("CSR State") or "").strip(),
+                        sector=(row.get("CSR Development Sector") or "").strip(),
+                        sub_sector=(row.get("CSR Sub Development Sector") or "").strip(),
                         amount_spent=amt,
                     )
         except FileNotFoundError:
