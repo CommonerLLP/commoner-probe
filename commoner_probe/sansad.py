@@ -134,13 +134,13 @@ class SansadProbe(BaseProbe):
                 details.append(ctx)
             else:
                 details.append({"name": name, "party": None})
-                
+
             if self.resolver:
                 result = self.resolver.resolve(name, context=ctx, kind_hint="mp")
                 entity_ids.append(result.entity_id if result.status == "resolved" else None)
             else:
                 entity_ids.append(None)
-                
+
         rec["asker_details"] = details
         rec["asker_entity_ids"] = entity_ids
         rec.setdefault("responder_entity_id", None)

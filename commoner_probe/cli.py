@@ -13,10 +13,10 @@ from .budget import RBI_STATE_FINANCES_URL, BudgetProbe
 from .committees import CommitteeProbe, resolve_committees
 from .csr.mca import McaCsrProbe
 from .debates import LS_DEBATE_API, DebateProbe
-from .extract_debates import extract_debates
 from .dmft.mines import MinesDmftProbe
 from .evidence import build_dmft_evidence_bundle
 from .example_topics import list_example_topics, load_example_topic_text
+from .extract_debates import extract_debates
 from .indiacode import STATE_HANDLES, IndiaCodeProbe
 from .neva import StateAssemblyCrawler
 from .neva_portals import NevaPortal, iter_portals
@@ -77,18 +77,18 @@ def sansad_cmd(args: argparse.Namespace) -> None:
         topic = load_topic(args.topic)
     elif not args.member and not args.entity_id:
         raise SystemExit("--topic is required unless --member or --entity-id is provided.")
-        
+
     out = Path(args.out)
     if args.reset and (out / "manifest.jsonl").exists():
         (out / "manifest.jsonl").unlink()
     if args.reset and (out / "probe.log").exists():
         (out / "probe.log").unlink()
     out.mkdir(parents=True, exist_ok=True)
-    
+
     # We must enable entity resolution internally if --entity-id is used so we can look up the name.
     needs_entities = getattr(args, "with_entities", False) or bool(args.entity_id)
     resolver = _build_resolver_if_requested(out, needs_entities, print)
-    
+
     member_name = args.member
     if args.entity_id:
         if not resolver:
@@ -97,7 +97,7 @@ def sansad_cmd(args: argparse.Namespace) -> None:
         if not person:
             raise SystemExit(f"Entity ID {args.entity_id} not found in local store.")
         member_name = person.canonical_name
-        
+
     probe = SansadProbe(
         topic,
         out,
@@ -483,7 +483,7 @@ def build_parser() -> argparse.ArgumentParser:
     cc.add_argument("--reset", action="store_true")
     cc.set_defaults(func=committees_cmd)
 
-    
+
     extract_deb = sub.add_parser(
         "extract-debates",
         help="Extract structured speeches from Lok Sabha debate PDFs into speeches.jsonl",
