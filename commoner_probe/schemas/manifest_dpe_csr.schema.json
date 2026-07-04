@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CommonerLLP/commoner-probe/schemas/v1/manifest_dpe_csr.json",
+  "title": "manifest.jsonl — DPE CPSE CSR document",
+  "description": "One DPE CPSE CSR document record from manifest.jsonl.",
+  "type": "object",
+  "required": [
+    "key",
+    "kind",
+    "record_type",
+    "id",
+    "date",
+    "title",
+    "filename",
+    "dest",
+    "url",
+    "status",
+    "timestamp_utc",
+    "probed_at"
+  ],
+  "properties": {
+    "key": {
+      "type": "string",
+      "pattern": "^DPE_CSR\\|[0-9]+$"
+    },
+    "kind": {
+      "type": "string",
+      "const": "dpe_csr_document"
+    },
+    "record_type": {
+      "type": "string",
+      "const": "dpe_csr_document"
+    },
+    "id": {
+      "type": "integer"
+    },
+    "date": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "filename": {
+      "type": "string"
+    },
+    "dest": {
+      "type": "string"
+    },
+    "url": {
+      "type": "string",
+      "format": "uri"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["pending", "dry_run", "downloaded", "skipped_exists"]
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "timestamp_utc": {
+      "type": "string"
+    },
+    "probed_at": {
+      "type": "string"
+    }
+  }
+}

@@ -37,10 +37,10 @@ class DpeCsrProbe:
         params = {"page": page, "per_page": per_page}
         if search:
             params["search"] = search
-            
+
         url = f"{self.base_url}/wp/v2/media?{urllib.parse.urlencode(params)}"
         req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-        
+
         try:
             with urllib.request.urlopen(req, timeout=30) as resp:
                 if resp.status != 200:
@@ -57,7 +57,7 @@ class DpeCsrProbe:
         title = item.get("title", {}).get("rendered", "")
         item_id = item.get("id")
         date_str = item.get("date", "")
-        
+
         return {
             "key": f"DPE_CSR|{item_id}",
             "kind": "dpe_csr_document",
@@ -82,10 +82,10 @@ class DpeCsrProbe:
         filename = Path(parsed.path).name
         if not filename:
             filename = f"dpe_document_{item.get('id')}.pdf"
-            
+
         filename = f"{item.get('id')}_{filename}"
         dest = self.out_dir / filename
-        
+
         record = self._record(item, dest)
 
         if dest.exists():
@@ -105,10 +105,10 @@ class DpeCsrProbe:
         dest.write_bytes(body)
         record["status"] = "downloaded"
         record["sha256"] = hashlib.sha256(body).hexdigest()
-        
+
         if self.sleep:
             time.sleep(self.sleep)
-            
+
         return record
 
     def append_manifest(self, record: dict[str, Any]) -> None:
@@ -124,15 +124,15 @@ class DpeCsrProbe:
             items = self.fetch_page(page, search=search)
             if not items:
                 break
-            
+
             for item in items:
                 record = self.download_item(item, dry_run=dry_run)
                 if record:
                     if not dry_run:
                         self.append_manifest(record)
                     records.append(record)
-                    
+
             if self.sleep:
                 time.sleep(self.sleep)
-                
+
         return records

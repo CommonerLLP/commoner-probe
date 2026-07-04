@@ -230,6 +230,29 @@ scope for this adapter (state statutory instruments only).
 
 ---
 
+### Shape G — DPE CPSE CSR document (`kind = "dpe_csr_document"`)
+
+One record per CSR disclosure document produced by `commoner-probe dpe-csr`.
+Sourced from `dpe.gov.in/cms/wp-json`.
+
+| Field | Type | Required | Enum / format | Provenance |
+|---|---|---|---|---|
+| `key` | string | yes | `"DPE_CSR\|{id}"` | csr/dpe.py |
+| `kind` | string | yes | `"dpe_csr_document"` | csr/dpe.py |
+| `record_type` | string | yes | `"dpe_csr_document"` | csr/dpe.py |
+| `id` | integer | yes | WordPress post ID | csr/dpe.py |
+| `date` | string | yes | ISO datetime of publication | csr/dpe.py |
+| `title` | string | yes | Title of the document | csr/dpe.py |
+| `filename` | string | yes | File name of the downloaded document | csr/dpe.py |
+| `dest` | string | yes | Local path relative to corpus | csr/dpe.py |
+| `url` | string | yes | Original source URL | csr/dpe.py |
+| `status` | string | yes | `pending`, `dry_run`, `downloaded`, `skipped_exists` | csr/dpe.py |
+| `sha256` | string | cond | 64-char lowercase hex | csr/dpe.py |
+| `timestamp_utc` | string | yes | ISO datetime | csr/dpe.py |
+| `probed_at` | string | yes | ISO datetime | csr/dpe.py |
+
+---
+
 ## `_runs.jsonl`
 
 One record per crawl invocation (one per `crawl_ls` / `crawl_rs` / `crawl_committees` call).
