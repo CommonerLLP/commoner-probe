@@ -28,6 +28,9 @@ WORKING.md
 TODO.md
 docs/STATUS.md
 docs/TODO-*.md
+docs/_archive/
+handoffs/
+state-of-brains/
 AGENTS.md
 CLAUDE.md
 CONTEXT.md
