@@ -212,7 +212,7 @@ class MinesDmftProbe:
             return record
 
         req = urllib.request.Request(endpoint.url, headers={"User-Agent": USER_AGENT})
-        
+
         max_retries = 3
         for attempt in range(max_retries):
             try:
