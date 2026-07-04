@@ -222,7 +222,6 @@ class MinesDmftProbe:
                     content_type = resp.headers.get("Content-Type")
                 break
             except Exception as e:
-                import logging
                 logging.warning(f"Attempt {attempt+1} failed for {endpoint.url}: {e}")
                 if attempt == max_retries - 1:
                     raise
