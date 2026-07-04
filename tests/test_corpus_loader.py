@@ -46,6 +46,13 @@ def test_answers_qa_on_smoke_is_empty():
     assert list(c.answers_qa()) == []
 
 
+def test_manifest_dpe_csr_on_smoke_is_empty():
+    """The smoke fixture has no DPE CSR records."""
+    from commoner_probe import Corpus
+    c = Corpus(SMOKE)
+    assert list(c.manifest_dpe_csr()) == []
+
+
 def test_runs_on_smoke_is_empty():
     """The smoke fixture has no _runs.jsonl."""
     from commoner_probe import Corpus
