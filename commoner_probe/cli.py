@@ -246,7 +246,7 @@ def state_assembly_probe_cmd(args: argparse.Namespace) -> None:
                 f.write(line + "\n")
 
 
-def indiacode_cmd(args: argparse.Namespace) -> None:
+def indiacode_crawl_cmd(args: argparse.Namespace) -> None:
     if args.list_states:
         for name in sorted(STATE_HANDLES):
             print(f"{STATE_HANDLES[name]}\t{name}")
@@ -264,6 +264,51 @@ def indiacode_cmd(args: argparse.Namespace) -> None:
         download=not args.no_download,
         dry_run=args.dry_run,
         max_acts=args.max_acts,
+    )
+    for record in records:
+        print(json.dumps(record, ensure_ascii=False))
+
+
+def indiacode_query_cmd(args: argparse.Namespace) -> None:
+    import re
+
+    from .indiacode import PUBLIC_LIBRARIES_HANDLES
+
+    if not args.out:
+        raise SystemExit("--out is required")
+
+    out = Path(args.out)
+    states = _split_csv(args.states) or (sorted(STATE_HANDLES) if args.all_states else [])
+    if not states:
+        raise SystemExit("--states or --all-states is required")
+
+    query_re = None
+    exclude_re = None
+    known_handles = None
+    classify = False
+
+    if args.public_libraries:
+        query_re = re.compile(r"publ\w{0,2}c\s+librar|सार्वजनिक पुस्तकालय", re.IGNORECASE)
+        exclude_re = re.compile(r"sachidanand|khuda\s+bakhsh|raza\s+library|rampuri|harekrushna|gautam\s+buddha", re.IGNORECASE)
+        known_handles = PUBLIC_LIBRARIES_HANDLES
+        classify = True
+    else:
+        if not args.query:
+            raise SystemExit("--query is required unless --public-libraries is used")
+        query_re = re.compile(args.query, re.IGNORECASE)
+        if args.exclude:
+            exclude_re = re.compile(args.exclude, re.IGNORECASE)
+
+    probe = IndiaCodeProbe(out, sleep=args.sleep, rpp=args.rpp)
+    records = probe.probe_states(
+        states,
+        download=not args.no_download,
+        dry_run=args.dry_run,
+        max_acts=args.max_acts,
+        query_re=query_re,
+        exclude_re=exclude_re,
+        known_handles=known_handles,
+        classify_availability=classify,
     )
     for record in records:
         print(json.dumps(record, ensure_ascii=False))
@@ -634,20 +679,41 @@ def build_parser() -> argparse.ArgumentParser:
         "indiacode",
         help="Probe India Code (indiacode.nic.in) state Acts + amendments/rules/notifications.",
     )
-    indiacode.add_argument("--out", help="Output corpus directory; required unless --list-states")
-    indiacode.add_argument("--states", help="Comma-separated state names, e.g. 'West Bengal,Sikkim'")
-    indiacode.add_argument("--all-states", action="store_true", help="Probe every registered state (see --list-states)")
-    indiacode.add_argument("--list-states", action="store_true", help="Print the registered state -> parent-handle table and exit")
-    indiacode.add_argument("--max-acts", type=int, help="Stop after N Acts per state (smoke-test brake)")
-    indiacode.add_argument("--no-download", action="store_true", help="Record instruments without downloading PDFs")
-    indiacode.add_argument("--rpp", type=int, default=100, help="Results per browse page (India Code enumeration)")
-    indiacode.add_argument("--sleep", type=float, default=1.0)
-    indiacode.add_argument(
+    ic_sub = indiacode.add_subparsers(dest="indiacode_command", required=True)
+
+    ic_crawl = ic_sub.add_parser("crawl", help="Full state crawl (existing behavior)")
+    ic_crawl.add_argument("--out", help="Output corpus directory; required unless --list-states")
+    ic_crawl.add_argument("--states", help="Comma-separated state names, e.g. 'West Bengal,Sikkim'")
+    ic_crawl.add_argument("--all-states", action="store_true", help="Probe every registered state (see --list-states)")
+    ic_crawl.add_argument("--list-states", action="store_true", help="Print the registered state -> parent-handle table and exit")
+    ic_crawl.add_argument("--max-acts", type=int, help="Stop after N Acts per state (smoke-test brake)")
+    ic_crawl.add_argument("--no-download", action="store_true", help="Record instruments without downloading PDFs")
+    ic_crawl.add_argument("--rpp", type=int, default=100, help="Results per browse page (India Code enumeration)")
+    ic_crawl.add_argument("--sleep", type=float, default=1.0)
+    ic_crawl.add_argument(
         "--dry-run",
         action="store_true",
         help="Emit one planning record per state without fetching.",
     )
-    indiacode.set_defaults(func=indiacode_cmd)
+    ic_crawl.set_defaults(func=indiacode_crawl_cmd)
+
+    ic_query = ic_sub.add_parser("query", help="Query India Code browse index for specific Acts.")
+    ic_query.add_argument("--out", help="Output corpus directory")
+    ic_query.add_argument("--states", help="Comma-separated state names")
+    ic_query.add_argument("--all-states", action="store_true", help="Probe every registered state")
+    ic_query.add_argument("--query", help="Regex to match Act short titles")
+    ic_query.add_argument("--exclude", help="Regex to exclude from matched titles")
+    ic_query.add_argument("--public-libraries", action="store_true", help="Use built-in Public Libraries Act registry and query fallback")
+    ic_query.add_argument("--max-acts", type=int, help="Stop after N Acts per state (smoke-test brake)")
+    ic_query.add_argument("--no-download", action="store_true", help="Record instruments without downloading PDFs")
+    ic_query.add_argument("--rpp", type=int, default=100, help="Results per browse page (India Code enumeration)")
+    ic_query.add_argument("--sleep", type=float, default=1.0)
+    ic_query.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Emit one planning record per state without fetching.",
+    )
+    ic_query.set_defaults(func=indiacode_query_cmd)
 
     debates = sub.add_parser(
         "debates",
