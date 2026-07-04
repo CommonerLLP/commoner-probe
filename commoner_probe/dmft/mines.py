@@ -144,7 +144,11 @@ class MinesDmftProbe:
         self._odisha_filter = set(odisha_endpoints or [])
 
     def _build_opener(self) -> urllib.request.OpenerDirector:
-        return urllib.request.build_opener()
+        import ssl
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        return urllib.request.build_opener(urllib.request.HTTPSHandler(context=ctx))
 
     def endpoints_for(self, sources: list[str]) -> list[DmftEndpoint]:
         endpoints: list[DmftEndpoint] = []

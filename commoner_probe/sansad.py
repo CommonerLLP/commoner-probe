@@ -68,13 +68,19 @@ def rs_date_iso(value: str | None) -> str:
 class SansadProbe(BaseProbe):
     def __init__(
         self,
-        topic: TopicProfile,
+        topic: TopicProfile | None,
         out_dir: Path,
         *,
         sleep: float = 0.25,
         topic_path: Path | str | None = None,
         resolver=None,
+        member_name: str | None = None,
     ):
+        # Allow missing topic if member_name is given
+        if topic is None:
+            # We mock a minimal topic profile for the BaseProbe init
+            from .topics import TopicProfile
+            topic = TopicProfile(name="member-driven", description="", search_groups=[], lok_sabha_ministries=[], rajya_sabha_ministry_likes=[])
         super().__init__(
             topic,
             out_dir,
@@ -82,6 +88,7 @@ class SansadProbe(BaseProbe):
             topic_path=topic_path,
             resolver=resolver,
         )
+        self.member_name = member_name
         self._roster: MPRoster | None = None
 
     @property
@@ -112,23 +119,30 @@ class SansadProbe(BaseProbe):
         """
         askers = rec.get("askers") or []
         details = []
+        entity_ids = []
         for name in askers:
             info = self.roster.lookup(name)
+            ctx = None
             if info:
-                details.append(
-                    {
-                        "name": info.name,
-                        "party": info.party,
-                        "party_name": info.party_name,
-                        "house": info.house,
-                    }
-                )
+                ctx = {
+                    "name": info.name,
+                    "party": info.party,
+                    "party_name": info.party_name,
+                    "house": info.house,
+                    "state": info.state,
+                }
+                details.append(ctx)
             else:
                 details.append({"name": name, "party": None})
+                
+            if self.resolver:
+                result = self.resolver.resolve(name, context=ctx, kind_hint="mp")
+                entity_ids.append(result.entity_id if result.status == "resolved" else None)
+            else:
+                entity_ids.append(None)
+                
         rec["asker_details"] = details
-        # v0.5.0 schema: parallel entity_id list, plus null responder fields
-        # reserved for the Phase 1 (answer-text extraction) populator.
-        rec["asker_entity_ids"] = self.resolve_askers(askers)
+        rec["asker_entity_ids"] = entity_ids
         rec.setdefault("responder_entity_id", None)
         rec.setdefault("responder_role_at_event", None)
 
@@ -138,9 +152,10 @@ class SansadProbe(BaseProbe):
             ("dsoType", "item"),
             ("page", str(page)),
             ("size", str(size)),
-            ("f.ministry", f"{ministry},equals"),
             ("f.category", f"{LS_CATEGORY_QA},equals"),
         ]
+        if ministry:
+            params.append(("f.ministry", f"{ministry},equals"))
         url = f"{LS_API_BASE}/discover/search/objects?" + urlencode(params)
         r = self.session.get(url, headers=HEADERS, timeout=45)
         r.raise_for_status()
@@ -227,8 +242,10 @@ class SansadProbe(BaseProbe):
             classifier_config=self.topic.classifier_config,
         )
         added = 0
-        for group, query in self.topic.searches(max_buckets):
-            for ministry in self.topic.lok_sabha_ministries:
+        searches = [("member", self.member_name)] if self.member_name else self.topic.searches(max_buckets)
+        ministries = [""] if self.member_name else self.topic.lok_sabha_ministries
+        for group, query in searches:
+            for ministry in ministries:
                 self.log(f"LS query={query!r} ministry={ministry}")
                 # Per-bucket counters for the audit trail. Surfaced 2026-05-08:
                 # empty-result crawls were undebuggable from _runs.jsonl alone.
@@ -255,7 +272,7 @@ class SansadProbe(BaseProbe):
                             bkt_skipped_seen += 1
                             continue
                         title = md_value(md, "dc.title")
-                        if self.topic.filter_fn is not None and not self.topic.filter_fn(title, query):
+                        if not self.member_name and self.topic.filter_fn is not None and not self.topic.filter_fn(title, query):
                             bkt_no_match += 1
                             continue
                         rec = {
@@ -328,8 +345,13 @@ class SansadProbe(BaseProbe):
         self.runlog.finish(added=added)
         return added
 
-    def rs_search_session(self, ses_no: int, ministry_like: str) -> list[dict]:
-        where = f"ses_no={ses_no} and min_name like '{ministry_like}%'"
+    def rs_search_session(self, ses_no: int, ministry_like: str, member_name: str | None = None) -> list[dict]:
+        if member_name:
+            where = f"ses_no={ses_no} and name like '{member_name}%'"
+            if ministry_like:
+                where += f" and min_name like '{ministry_like}%'"
+        else:
+            where = f"ses_no={ses_no} and min_name like '{ministry_like}%'"
         r = self.session.get(RS_API_SEARCH, params={"whereclause": where}, headers=RS_HEADERS, timeout=60)
         r.raise_for_status()
         data = r.json()
@@ -369,7 +391,7 @@ class SansadProbe(BaseProbe):
         )
         self.log("RS: keeping all ministry-matched rows (no in-crawler classification).")
         added = 0
-        ministries = self.topic.rajya_sabha_ministry_likes
+        ministries = [""] if self.member_name else self.topic.rajya_sabha_ministry_likes
         if max_buckets is not None:
             ministries = ministries[:max_buckets]
         for ses_no in sessions_list:
@@ -380,7 +402,7 @@ class SansadProbe(BaseProbe):
                 bkt_raw = bkt_after_date = bkt_kept = bkt_skipped_seen = bkt_no_match = 0
                 bkt_error: str | None = None
                 try:
-                    records = self.rs_search_session(ses_no, ministry)
+                    records = self.rs_search_session(ses_no, ministry, member_name=self.member_name)
                 except Exception as exc:  # noqa: BLE001
                     bkt_error = f"{type(exc).__name__}: {exc}"
                     self.log(f"RS failed session={ses_no} ministry={ministry}: {exc}")

@@ -13,6 +13,7 @@ from .budget import RBI_STATE_FINANCES_URL, BudgetProbe
 from .committees import CommitteeProbe, resolve_committees
 from .csr.mca import McaCsrProbe
 from .debates import LS_DEBATE_API, DebateProbe
+from .extract_debates import extract_debates
 from .dmft.mines import MinesDmftProbe
 from .evidence import build_dmft_evidence_bundle
 from .example_topics import list_example_topics, load_example_topic_text
@@ -71,23 +72,42 @@ def _build_resolver_if_requested(out_dir: Path, with_entities: bool, log):
 
 
 def sansad_cmd(args: argparse.Namespace) -> None:
-    topic = load_topic(args.topic)
+    topic = None
+    if args.topic:
+        topic = load_topic(args.topic)
+    elif not args.member and not args.entity_id:
+        raise SystemExit("--topic is required unless --member or --entity-id is provided.")
+        
     out = Path(args.out)
     if args.reset and (out / "manifest.jsonl").exists():
         (out / "manifest.jsonl").unlink()
     if args.reset and (out / "probe.log").exists():
         (out / "probe.log").unlink()
     out.mkdir(parents=True, exist_ok=True)
-    resolver = _build_resolver_if_requested(out, getattr(args, "with_entities", False), print)
+    
+    # We must enable entity resolution internally if --entity-id is used so we can look up the name.
+    needs_entities = getattr(args, "with_entities", False) or bool(args.entity_id)
+    resolver = _build_resolver_if_requested(out, needs_entities, print)
+    
+    member_name = args.member
+    if args.entity_id:
+        if not resolver:
+            raise SystemExit("Resolver could not be initialized, cannot map entity-id to name.")
+        person = resolver.store.people.get(args.entity_id)
+        if not person:
+            raise SystemExit(f"Entity ID {args.entity_id} not found in local store.")
+        member_name = person.canonical_name
+        
     probe = SansadProbe(
         topic,
         out,
         sleep=args.sleep,
         topic_path=args.topic,
         resolver=resolver,
+        member_name=member_name,
     )
     seen = probe.load_seen()
-    probe.log(f"resume seen={len(seen)} topic={topic.name} download={not args.no_download}")
+    probe.log(f"resume seen={len(seen)} topic={probe.topic.name} download={not args.no_download}")
     added = 0
     if args.house in ("both", "ls"):
         added += probe.probe_ls(
@@ -341,6 +361,14 @@ def academic_jobs_cmd(args: argparse.Namespace) -> None:
         print(json.dumps(record, ensure_ascii=False))
 
 
+
+def extract_debates_cmd(args: argparse.Namespace) -> None:
+    out = Path(args.out)
+    if not (out / "manifest.jsonl").exists():
+        raise SystemExit(f"no manifest at {out}/manifest.jsonl — run 'debates' first")
+    extract_debates(out, refresh=args.refresh, log_fn=print)
+
+
 def extract_answers_cmd(args: argparse.Namespace) -> None:
     out = Path(args.out)
     if not (out / "manifest.jsonl").exists():
@@ -410,7 +438,9 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
 
     sansad = sub.add_parser("sansad", help="Probe Lok Sabha / Rajya Sabha parliamentary questions")
-    sansad.add_argument("--topic", required=True, help="Path to topic profile JSON")
+    sansad.add_argument("--topic", help="Path to topic profile JSON (required unless --member or --entity-id given)")
+    sansad.add_argument("--member", help="Member name for per-member retrieval mode")
+    sansad.add_argument("--entity-id", help="Stable entity ID for per-member retrieval mode")
     sansad.add_argument("--out", required=True, help="Output corpus directory")
     sansad.add_argument("--house", choices=["both", "ls", "rs"], default="both")
     sansad.add_argument("--from-date")
@@ -452,6 +482,16 @@ def build_parser() -> argparse.ArgumentParser:
     cc.add_argument("--no-download", action="store_true")
     cc.add_argument("--reset", action="store_true")
     cc.set_defaults(func=committees_cmd)
+
+    
+    extract_deb = sub.add_parser(
+        "extract-debates",
+        help="Extract structured speeches from Lok Sabha debate PDFs into speeches.jsonl",
+    )
+    extract_deb.add_argument("--out", required=True, help="Corpus directory containing manifest.jsonl + downloaded PDFs")
+    extract_deb.add_argument("--refresh", action="store_true", help="Force re-extraction even if speeches.jsonl exists")
+    extract_deb.set_defaults(func=extract_debates_cmd)
+
 
     extract = sub.add_parser(
         "extract-answers",
