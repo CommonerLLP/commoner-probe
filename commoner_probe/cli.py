@@ -380,6 +380,22 @@ def bills_cmd(args: argparse.Namespace) -> None:
         print(json.dumps(record, ensure_ascii=False))
 
 
+def _add_indiacode_crawl_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--out", help="Output corpus directory; required unless --list-states")
+    parser.add_argument("--states", help="Comma-separated state names, e.g. 'West Bengal,Sikkim'")
+    parser.add_argument("--all-states", action="store_true", help="Probe every registered state (see --list-states)")
+    parser.add_argument("--list-states", action="store_true", help="Print the registered state -> parent-handle table and exit")
+    parser.add_argument("--max-acts", type=int, help="Stop after N Acts per state (smoke-test brake)")
+    parser.add_argument("--no-download", action="store_true", help="Record instruments without downloading PDFs")
+    parser.add_argument("--rpp", type=int, default=100, help="Results per browse page (India Code enumeration)")
+    parser.add_argument("--sleep", type=float, default=1.0)
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Emit one planning record per state without fetching.",
+    )
+
+
 def debates_cmd(args: argparse.Namespace) -> None:
     out = Path(args.out)
     loksabhas = [int(x) for x in (_split_csv(args.loksabhas) or ["18"])]
@@ -702,22 +718,12 @@ def build_parser() -> argparse.ArgumentParser:
         "indiacode",
         help="Probe India Code (indiacode.nic.in) state Acts + amendments/rules/notifications.",
     )
-    ic_sub = indiacode.add_subparsers(dest="indiacode_command", required=True)
+    _add_indiacode_crawl_args(indiacode)
+    indiacode.set_defaults(func=indiacode_crawl_cmd)
+    ic_sub = indiacode.add_subparsers(dest="indiacode_command")
 
     ic_crawl = ic_sub.add_parser("crawl", help="Full state crawl (existing behavior)")
-    ic_crawl.add_argument("--out", help="Output corpus directory; required unless --list-states")
-    ic_crawl.add_argument("--states", help="Comma-separated state names, e.g. 'West Bengal,Sikkim'")
-    ic_crawl.add_argument("--all-states", action="store_true", help="Probe every registered state (see --list-states)")
-    ic_crawl.add_argument("--list-states", action="store_true", help="Print the registered state -> parent-handle table and exit")
-    ic_crawl.add_argument("--max-acts", type=int, help="Stop after N Acts per state (smoke-test brake)")
-    ic_crawl.add_argument("--no-download", action="store_true", help="Record instruments without downloading PDFs")
-    ic_crawl.add_argument("--rpp", type=int, default=100, help="Results per browse page (India Code enumeration)")
-    ic_crawl.add_argument("--sleep", type=float, default=1.0)
-    ic_crawl.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Emit one planning record per state without fetching.",
-    )
+    _add_indiacode_crawl_args(ic_crawl)
     ic_crawl.set_defaults(func=indiacode_crawl_cmd)
 
     ic_query = ic_sub.add_parser("query", help="Query India Code browse index for specific Acts.")

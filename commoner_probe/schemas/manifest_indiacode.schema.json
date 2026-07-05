@@ -100,7 +100,8 @@
       "type": "string",
       "enum": [
         "pending", "dry_run", "downloaded", "skipped_exists",
-        "no_pdf_found", "fetch_error", "unknown_state"
+        "no_pdf_found", "fetch_error", "unknown_state",
+        "absent", "principal_present", "amendment_only"
       ]
     },
     "sha256": {

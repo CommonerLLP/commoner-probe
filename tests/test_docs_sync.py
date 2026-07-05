@@ -9,10 +9,13 @@ from __future__ import annotations
 
 import re
 import unittest
+from contextlib import redirect_stdout
+from io import StringIO
 from pathlib import Path
+from unittest.mock import patch
 
 from commoner_probe import __version__
-from commoner_probe.cli import build_parser
+from commoner_probe.cli import build_parser, main
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PYPROJECT = (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
@@ -73,6 +76,13 @@ class CliCommandSyncTests(unittest.TestCase):
             for opt in action.option_strings
         }
         self.assertNotIn("--crawl-composition", option_strings)
+
+    def test_indiacode_legacy_list_states_invocation_still_works(self):
+        out = StringIO()
+        with patch("sys.argv", ["commoner-probe", "indiacode", "--list-states"]):
+            with redirect_stdout(out):
+                main()
+        self.assertIn("\tWest Bengal", out.getvalue())
 
 
 if __name__ == "__main__":
