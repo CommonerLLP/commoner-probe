@@ -220,7 +220,7 @@ Source verified live 2026-07 against indiacode.nic.in.
 | `filename` | string\|null | cond | Source filename, e.g. `"32.pdf"` | indiacode.py |
 | `source_url` | string\|null | cond | Absolute PDF URL | indiacode.py |
 | `dest` | string\|null | cond | Local path relative to corpus `out_dir`; present after download | indiacode.py |
-| `status` | string | yes | `pending`, `dry_run`, `downloaded`, `skipped_exists`, `no_pdf_found`, `fetch_error`, `unknown_state` | indiacode.py |
+| `status` | string | yes | `pending`, `dry_run`, `downloaded`, `skipped_exists`, `no_pdf_found`, `fetch_error`, `unknown_state`, `absent`, `principal_present`, `amendment_only` | indiacode.py |
 | `sha256` | string | cond | 64-char lowercase hex; present when downloaded/skipped_exists | indiacode.py |
 | `error` | string | cond | Present on `fetch_error` | indiacode.py |
 | `probed_at` | string | yes | ISO datetime | indiacode.py |

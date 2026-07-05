@@ -468,6 +468,17 @@ def test_synthetic_fixture_validates(schema_name, fixture):
     _validate(fixture, schema)
 
 
+@pytest.mark.parametrize("status", ["absent", "principal_present", "amendment_only"])
+def test_indiacode_query_availability_status_validates(status):
+    schema = _load_schema("manifest_indiacode")
+    rec = dict(_INDIACODE)
+    rec["key"] = f"INDIACODE|1234|availability|{status}"
+    rec["act_handle"] = None
+    rec["instrument_type"] = None
+    rec["status"] = status
+    _validate(rec, schema)
+
+
 def test_probed_committee_records_validate():
     """Drive the committee crawler in-memory and validate each record."""
     import json as _json
