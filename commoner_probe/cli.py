@@ -73,17 +73,27 @@ def _build_resolver_if_requested(out_dir: Path, with_entities: bool, log):
 
 
 def sansad_cmd(args: argparse.Namespace) -> None:
+    if args.all:
+        if args.topic or args.member or args.entity_id:
+            raise SystemExit("--all cannot be combined with --topic, --member, or --entity-id.")
+        if args.house in ("both", "ls") and not (args.from_date and args.to_date):
+            raise SystemExit("--all requires --from-date and --to-date for the Lok Sabha crawl.")
+        if args.house in ("both", "rs") and not args.sessions:
+            raise SystemExit("--all requires an explicit --sessions range for the Rajya Sabha crawl.")
+
     topic = None
     if args.topic:
         topic = load_topic(args.topic)
-    elif not args.member and not args.entity_id:
-        raise SystemExit("--topic is required unless --member or --entity-id is provided.")
+    elif not args.member and not args.entity_id and not args.all:
+        raise SystemExit("--topic is required unless --member, --entity-id, or --all is provided.")
 
     out = Path(args.out)
     if args.reset and (out / "manifest.jsonl").exists():
         (out / "manifest.jsonl").unlink()
     if args.reset and (out / "probe.log").exists():
         (out / "probe.log").unlink()
+    if args.reset and (out / "_windows.jsonl").exists():
+        (out / "_windows.jsonl").unlink()
     out.mkdir(parents=True, exist_ok=True)
 
     # We must enable entity resolution internally if --entity-id is used so we can look up the name.
@@ -106,33 +116,60 @@ def sansad_cmd(args: argparse.Namespace) -> None:
         topic_path=args.topic,
         resolver=resolver,
         member_name=member_name,
+        enumerate_all=args.all,
     )
     seen = probe.load_seen()
     probe.log(f"resume seen={len(seen)} topic={probe.topic.name} download={not args.no_download}")
+    qtype_filter = None if args.qtype == "both" else args.qtype
+    reset_windows = frozenset(args.reset_window or [])
     added = 0
     if args.house in ("both", "ls"):
-        added += probe.probe_ls(
-            seen,
-            from_date=args.from_date,
-            to_date=args.to_date,
-            qtype_filter=None if args.qtype == "both" else args.qtype,
-            limit=args.limit,
-            max_buckets=args.max_buckets,
-            max_records=args.max_records,
-            download=not args.no_download,
-        )
+        if args.all:
+            added += probe.probe_ls_all(
+                seen,
+                from_date=args.from_date,
+                to_date=args.to_date,
+                qtype_filter=qtype_filter,
+                max_records=args.max_records,
+                download=not args.no_download,
+                reset_windows=reset_windows,
+            )
+        else:
+            added += probe.probe_ls(
+                seen,
+                from_date=args.from_date,
+                to_date=args.to_date,
+                qtype_filter=qtype_filter,
+                limit=args.limit,
+                max_buckets=args.max_buckets,
+                max_records=args.max_records,
+                download=not args.no_download,
+            )
     if args.house in ("both", "rs"):
-        added += probe.probe_rs(
-            seen,
-            sessions=parse_session_range(args.sessions),
-            from_date=args.from_date,
-            to_date=args.to_date,
-            qtype_filter=None if args.qtype == "both" else args.qtype,
-            limit=args.limit,
-            max_buckets=args.max_buckets,
-            max_records=args.max_records,
-            download=not args.no_download,
-        )
+        sessions = parse_session_range(args.sessions or "1-267")
+        if args.all:
+            added += probe.probe_rs_all(
+                seen,
+                sessions=sessions,
+                from_date=args.from_date,
+                to_date=args.to_date,
+                qtype_filter=qtype_filter,
+                max_records=args.max_records,
+                download=not args.no_download,
+                reset_windows=reset_windows,
+            )
+        else:
+            added += probe.probe_rs(
+                seen,
+                sessions=sessions,
+                from_date=args.from_date,
+                to_date=args.to_date,
+                qtype_filter=qtype_filter,
+                limit=args.limit,
+                max_buckets=args.max_buckets,
+                max_records=args.max_records,
+                download=not args.no_download,
+            )
     probe.log(f"DONE added={added} total={len(seen)}")
 
 
@@ -509,9 +546,20 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
 
     sansad = sub.add_parser("sansad", help="Probe Lok Sabha / Rajya Sabha parliamentary questions")
-    sansad.add_argument("--topic", help="Path to topic profile JSON (required unless --member or --entity-id given)")
+    sansad.add_argument("--topic", help="Path to topic profile JSON (required unless --member, --entity-id, or --all given)")
     sansad.add_argument("--member", help="Member name for per-member retrieval mode")
     sansad.add_argument("--entity-id", help="Stable entity ID for per-member retrieval mode")
+    sansad.add_argument(
+        "--all",
+        action="store_true",
+        help=(
+            "Full-corpus enumeration: every question, no topic/member filter. "
+            "Requires --from-date/--to-date for LS (crawled in per-month windows) "
+            "and an explicit --sessions range for RS (one window per session). "
+            "Windows are tracked in _windows.jsonl; a window whose run recorded "
+            "errors is marked suspect and re-crawled on the next run."
+        ),
+    )
     sansad.add_argument("--out", required=True, help="Output corpus directory")
     sansad.add_argument("--house", choices=["both", "ls", "rs"], default="both")
     sansad.add_argument("--from-date")
@@ -522,13 +570,22 @@ def build_parser() -> argparse.ArgumentParser:
         default="both",
         help="Filter to starred or unstarred questions at crawl time.",
     )
-    sansad.add_argument("--sessions", default="1-267", help="Rajya Sabha sessions, e.g. 230-267")
+    sansad.add_argument("--sessions", default=None, help="Rajya Sabha sessions, e.g. 230-267 (default 1-267; must be explicit with --all)")
     sansad.add_argument("--limit", type=int, help="Max raw API records per bucket")
     sansad.add_argument("--max-buckets", type=int, help="First N search/ministry buckets (smoke-test brake)")
     sansad.add_argument("--max-records", type=int, help="Stop after N new records per house crawl (smoke-test brake)")
     sansad.add_argument("--sleep", type=float, default=0.25)
     sansad.add_argument("--no-download", action="store_true")
     sansad.add_argument("--reset", action="store_true")
+    sansad.add_argument(
+        "--reset-window",
+        action="append",
+        metavar="WINDOW_ID",
+        help=(
+            "Force re-crawl of one enumeration window regardless of recorded "
+            "state, e.g. ls:2024-07-01..2024-07-31 or rs:267. Repeatable."
+        ),
+    )
     sansad.add_argument(
         "--with-entities",
         action="store_true",

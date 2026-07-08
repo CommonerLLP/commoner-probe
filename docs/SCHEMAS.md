@@ -65,7 +65,7 @@ records, `house`.
 | `run_id` | string | cond | UUID4 hex; present in all freshly probed corpora | sansad.py:400 |
 | `kind` | string | yes | `"qa"` | sansad.py:402 |
 | `house` | string | yes | `"Rajya Sabha"` | sansad.py:403 |
-| `qslno` | string\|null | yes | RS serial question number | sansad.py:404 |
+| `qslno` | string\|integer\|null | yes | RS serial question number, as typed by the source (live API returns integers) | sansad.py:404 |
 | `ses_no` | integer\|null | yes | Rajya Sabha session number | sansad.py:405 |
 | `title` | string | yes | Question title (`qtitle`) | sansad.py:406 |
 | `date` | string | yes | ISO date `YYYY-MM-DD` converted from `DD.MM.YYYY` | sansad.py:407 |
@@ -265,7 +265,7 @@ Produced by `commoner_probe/runlog.py`.
 | `scope` | object | yes | Crawl parameters: `house`, `from_date`, `to_date`, `max_records`, `download`, etc. Free-form per crawler kind | runlog.py:95 |
 | `topic_name` | string | yes | `TopicProfile.name` | runlog.py:96 |
 | `topic_path` | string | yes | Path to the topic JSON on disk at probe time | runlog.py:97 |
-| `topic_hash` | string | yes | `"sha256:{hex}"` of raw topic file bytes | runlog.py:98 |
+| `topic_hash` | string | yes | `"sha256:{hex}"` of raw topic file bytes; `"sha256:unknown"` for topic-less runs (`--member`, `--all`) | runlog.py:98 |
 | `classifier_mode` | string | yes | Always `""` in this version (reserved for schema compat) | runlog.py:99 |
 | `classifier_config_redacted` | object | yes | Always `{}` in this version; secrets would be redacted | runlog.py:100 |
 | `tool_version` | string | yes | `commoner-probe` package version at probe time | runlog.py:101 |
@@ -303,6 +303,30 @@ Produced by `commoner_probe/runlog.py`.
 | `kept` | integer | Records written |
 | `elapsed_ms` | number | Bucket wall-clock ms |
 | `error` | string\|null | Exception string if failed |
+
+---
+
+## `_windows.jsonl`
+
+One record per enumeration window attempt (`commoner-probe sansad --all`).
+Append-only; the latest record per `window_id` wins. On resume a window is
+skipped only when its latest status is `"complete"` and its scope (`qtype`,
+and for RS the date bounds) matches the current run; `--reset-window` forces
+a re-crawl. Produced by `commoner_probe/sansad.py`.
+
+| Field | Type | Required | Enum / format | Provenance |
+|---|---|---|---|---|
+| `window_id` | string | yes | `ls:{from}..{to}` (calendar-month-clipped) or `rs:{ses_no}` | sansad.py |
+| `house` | string | yes | `"ls"` or `"rs"` | sansad.py |
+| `from_date` | string\|null | no | ISO date window lower bound (LS: always set; RS: run-level filter if any) | sansad.py |
+| `to_date` | string\|null | no | ISO date window upper bound | sansad.py |
+| `ses_no` | integer\|null | no | RS session number (RS only) | sansad.py |
+| `qtype` | string\|null | no | qtype filter active for this window's run; null = both | sansad.py |
+| `status` | string | yes | `"complete"` or `"suspect"` (run recorded errors in this window) | sansad.py |
+| `kept` | integer | yes | Records written to manifest by this window attempt | sansad.py |
+| `errors` | integer | yes | Errors recorded during this window attempt | sansad.py |
+| `run_id` | string | yes | UUID4 hex matching `_runs.jsonl` run_id | sansad.py |
+| `recorded_at` | string | yes | ISO datetime | sansad.py |
 
 ---
 
@@ -637,8 +661,10 @@ Source: `commoner_probe/entities.py`.
 
 | Value | Meaning |
 |---|---|
-| `"STARRED"` | Starred question (oral answer expected) |
-| `"UNSTARRED"` | Unstarred question (written answer) |
+| `"STARRED"` | Starred question (oral answer expected) — RS API spelling |
+| `"UNSTARRED"` | Unstarred question (written answer) — RS API spelling |
+| `"Starred"` | Starred question — LS eLibrary spelling (recorded as the source spells it) |
+| `"Unstarred"` | Unstarred question — LS eLibrary spelling |
 | `""` | Not classified (rare; treat as unstarred) |
 
 ### `report_type` (manifest — committee report shapes)

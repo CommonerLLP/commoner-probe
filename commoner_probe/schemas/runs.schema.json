@@ -11,7 +11,7 @@
     "scope": { "type": "object", "description": "Crawl parameters; free-form per crawler kind" },
     "topic_name": { "type": "string" },
     "topic_path": { "type": "string" },
-    "topic_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "topic_hash": { "type": "string", "pattern": "^sha256:([0-9a-f]{64}|unknown)$" },
     "classifier_mode": { "type": "string", "description": "Always empty string in current version" },
     "classifier_config_redacted": { "type": "object", "description": "Always empty object in current version" },
     "tool_version": { "type": "string" },
