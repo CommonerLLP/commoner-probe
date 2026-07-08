@@ -13,7 +13,7 @@ from .budget import RBI_STATE_FINANCES_URL, BudgetProbe
 from .committees import CommitteeProbe, resolve_committees
 from .csr.dpe import DpeCsrProbe
 from .csr.mca import McaCsrProbe
-from .debates import LS_DEBATE_API, DebateProbe
+from .debates import LS_DEBATE_API, RS_DEBATE_API, DebateProbe
 from .dmft.mines import MinesDmftProbe
 from .evidence import build_dmft_evidence_bundle
 from .example_topics import list_example_topics, load_example_topic_text
@@ -407,7 +407,9 @@ def debates_cmd(args: argparse.Namespace) -> None:
         sessions=sessions,
         from_date=args.from_date,
         to_date=args.to_date,
+        house=args.house,
         api_url=args.api_url,
+        rs_api_url=args.rs_api_url,
     )
     records = probe.probe(
         max_records=args.max_records,
@@ -746,16 +748,18 @@ def build_parser() -> argparse.ArgumentParser:
 
     debates = sub.add_parser(
         "debates",
-        help="Probe Lok Sabha per-day floor-debate transcript PDFs (api_ls/debate/text-of-debate).",
+        help="Probe Lok Sabha/Rajya Sabha per-day floor-debate transcript PDFs.",
     )
     debates.add_argument("--out", required=True, help="Output corpus directory")
+    debates.add_argument("--house", choices=["ls", "rs", "both"], default="ls", help="House to probe; default = ls")
     debates.add_argument("--loksabhas", default="18", help="Comma-separated Lok Sabha numbers, e.g. 17,18")
     debates.add_argument("--sessions", help="Comma-separated session numbers to limit to; default = all")
     debates.add_argument("--from-date", help="ISO date lower bound (YYYY-MM-DD)")
     debates.add_argument("--to-date", help="ISO date upper bound (YYYY-MM-DD)")
-    debates.add_argument("--max-records", type=int, help="Stop after N new records per Lok Sabha (smoke-test brake)")
+    debates.add_argument("--max-records", type=int, help="Stop after N new records (smoke-test brake)")
     debates.add_argument("--download", action="store_true", help="Download each day's transcript PDF (+ sha256)")
-    debates.add_argument("--api-url", default=LS_DEBATE_API, help="Override the debate API base URL.")
+    debates.add_argument("--api-url", default=LS_DEBATE_API, help="Override the Lok Sabha debate API base URL.")
+    debates.add_argument("--rs-api-url", default=RS_DEBATE_API, help="Override the Rajya Sabha debate API base URL.")
     debates.add_argument("--sleep", type=float, default=0.5)
     debates.add_argument(
         "--dry-run",
