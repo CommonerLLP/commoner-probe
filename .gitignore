@@ -35,6 +35,8 @@ AGENTS.md
 CLAUDE.md
 CONTEXT.md
 GEMINI.md
+HERMES.md
+PI.md
 
 # Beads / Dolt files (added by bd init)
 .beads/proxieddb/

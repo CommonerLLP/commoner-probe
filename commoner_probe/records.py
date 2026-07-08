@@ -312,13 +312,14 @@ class ManifestAcademicJobRecord:
 
 @dataclass
 class ManifestFloorDebateRecord:
-    """One Lok Sabha sitting-day debate transcript (kind='floor_debate').
+    """One sitting-day debate transcript (kind='floor_debate').
 
-    The live API serves one PDF per sitting day (api_ls/debate/text-of-debate);
-    per-speaker structured text is a downstream extraction concern.
+    The live sources serve PDF transcripts; per-speaker structured text is a
+    downstream extraction concern.
     """
 
     key: str
+    run_id: str
     kind: str
     record_type: str
     source: str
@@ -328,6 +329,7 @@ class ManifestFloorDebateRecord:
     loksabha: int | None = None
     session_no: Any = None
     date: str | None = None
+    segment: str | None = None
     pdf_url: str | None = None
     pdf_path: str | None = None
     sha256: str | None = None

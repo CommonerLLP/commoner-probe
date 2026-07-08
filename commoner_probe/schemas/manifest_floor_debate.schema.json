@@ -1,11 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/CommonerLLP/commoner-probe/schemas/v1/manifest_floor_debate.json",
-  "title": "manifest.jsonl — Lok Sabha floor-debate transcript (per sitting day)",
-  "description": "One Lok Sabha sitting-day debate transcript (PDF) acquisition record (api_ls/debate/text-of-debate). Per-speaker structured text is a downstream extraction concern, not part of this acquisition record.",
+  "title": "manifest.jsonl — floor-debate transcript (per sitting day)",
+  "description": "One Lok Sabha or Rajya Sabha sitting-day debate transcript (PDF) acquisition record. Per-speaker structured text is a downstream extraction concern, not part of this acquisition record.",
   "type": "object",
   "required": [
     "key",
+    "run_id",
     "kind",
     "record_type",
     "source",
@@ -15,6 +16,7 @@
   ],
   "properties": {
     "key": { "type": "string", "pattern": "^DEBATE\\|" },
+    "run_id": { "type": "string" },
     "kind": { "type": "string", "const": "floor_debate" },
     "record_type": { "type": "string", "const": "floor_debate" },
     "source": { "type": "string" },
@@ -22,6 +24,7 @@
     "loksabha": { "type": ["integer", "null"] },
     "session_no": { "type": ["integer", "string", "null"] },
     "date": { "type": ["string", "null"] },
+    "segment": { "type": ["string", "null"] },
     "pdf_url": { "type": ["string", "null"] },
     "pdf_path": { "type": ["string", "null"] },
     "sha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
