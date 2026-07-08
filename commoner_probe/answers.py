@@ -35,6 +35,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .textparse import extract_pdf_text, read_jsonl
+from .vacancy import LAYOUT_EVASIVE, LAYOUT_UNKNOWN, extract_vacancy_rows
 
 EXTRACTOR_VERSION = "answers_regex_v1"
 
@@ -65,19 +66,22 @@ def _clean(text: str) -> str:
 
 # Markers indicating the boundary between question text and answer text in
 # parliamentary Q/A PDFs. Order matters — earlier patterns are more
-# specific and tried first.
+# specific and tried first: RS PDFs carry "(TO BE ANSWERED ON <date>)" in
+# the page header *above* the question body (live-verified against RS US
+# Q2529, 10.08.2023), so that fallback must only fire when no bare
+# ANSWER/REPLY marker exists further down, or the question body would be
+# mis-filed into the answer half.
 _QA_REPLY_PATTERNS = [
     r"^\s*ANSWER\s*$",                          # Bare "ANSWER" header line
     r"^\s*REPLY\s*$",                           # Bare "REPLY"
-    r"\bTO\s+BE\s+ANSWERED\s+ON\b",            # Often followed by date, then answer
     r"^\s*Reply\s+by\b.{0,200}?:",             # "Reply by [Minister name]:"
     r"^\s*Answer\s+by\b.{0,200}?:",
     r"\bSHRI\b.{0,60}\b(?:MINISTER|MOS)\b",    # "SHRI X, MINISTER OF Y"
+    r"\bTO\s+BE\s+ANSWERED\s+ON\b",            # Often followed by date, then answer
 ]
-_QA_REPLY_RE = re.compile(
-    "|".join(f"({p})" for p in _QA_REPLY_PATTERNS),
-    re.IGNORECASE | re.MULTILINE,
-)
+_QA_REPLY_RES = [
+    re.compile(p, re.IGNORECASE | re.MULTILINE) for p in _QA_REPLY_PATTERNS
+]
 
 
 @dataclass
@@ -246,7 +250,11 @@ def split_qa(text: str) -> QaExtraction | None:
     cleaned = _clean(text)
     if not cleaned:
         return None
-    m = _QA_REPLY_RE.search(cleaned)
+    m = None
+    for pattern in _QA_REPLY_RES:
+        m = pattern.search(cleaned)
+        if m:
+            break
     if not m:
         return None
     question = cleaned[: m.start()].strip()
@@ -457,6 +465,9 @@ class ExtractionStats:
     qa_records: int = 0
     atr_records: int = 0
     dfg_records: int = 0
+    vacancy_rows: int = 0
+    vacancy_evasive: int = 0
+    vacancy_unknown: int = 0
     skipped_no_pdf: int = 0
     skipped_no_text: int = 0
     skipped_no_split: int = 0
@@ -507,7 +518,10 @@ def extract_answers(
     out_dir: Path, *, refresh: bool = False, log_fn=print
 ) -> ExtractionStats:
     """Walk ``manifest.jsonl``, run the right extractor per record, write
-    ``answers.jsonl``. Returns stats for telemetry / CLI output.
+    ``answers.jsonl``. Q/A records whose question asks for vacancy
+    disclosures additionally emit typed rows (or an evasive/unknown
+    layout marker) to ``vacancy_rows.jsonl`` — see ``vacancy.py``.
+    Returns stats for telemetry / CLI output.
 
     Idempotent: ``answers.jsonl`` is overwritten, but the input
     (``manifest.jsonl`` + downloaded PDFs) is unchanged. ``refresh=True``
@@ -517,10 +531,12 @@ def extract_answers(
     stats = ExtractionStats()
     manifest_path = out_dir / "manifest.jsonl"
     out_path = out_dir / "answers.jsonl"
+    vacancy_path = out_dir / "vacancy_rows.jsonl"
     records = read_jsonl(manifest_path)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     out_records: list[dict] = []
+    vacancy_records: list[dict] = []
     for rec in records:
         kind = _classify_source(rec)
         if kind == "skip":
@@ -561,6 +577,23 @@ def extract_answers(
                     continue
                 out_records.append({**common, **qa.to_record()})
                 stats.qa_records += 1
+                vac_rows = extract_vacancy_rows(qa.question_text, qa.answer_text)
+                if vac_rows is not None:
+                    for row in vac_rows:
+                        vacancy_records.append({
+                            "key": rec.get("key"),
+                            "run_id": rec.get("run_id"),
+                            "source_pdf": str(pdf.relative_to(out_dir)),
+                            "extracted_at": _now(),
+                            "ministry": rec.get("ministry"),
+                            **row.to_record(),
+                        })
+                        if row.layout == LAYOUT_EVASIVE:
+                            stats.vacancy_evasive += 1
+                        elif row.layout == LAYOUT_UNKNOWN:
+                            stats.vacancy_unknown += 1
+                        else:
+                            stats.vacancy_rows += 1
             elif kind == "atr":
                 items = split_atr(text)
                 if not items:
@@ -589,10 +622,26 @@ def extract_answers(
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
     tmp.replace(out_path)
 
+    # vacancy_rows.jsonl exists only for corpora that contain vacancy
+    # questions; a re-run that no longer produces any removes the stale file.
+    if vacancy_records:
+        vtmp = vacancy_path.with_name(vacancy_path.name + ".tmp")
+        with vtmp.open("w", encoding="utf-8") as f:
+            for row in vacancy_records:
+                f.write(json.dumps(row, ensure_ascii=False) + "\n")
+        vtmp.replace(vacancy_path)
+    elif vacancy_path.exists():
+        vacancy_path.unlink()
+
     log_fn(
         f"answers.jsonl: qa={stats.qa_records} atr={stats.atr_records} "
         f"dfg={stats.dfg_records} skipped_no_pdf={stats.skipped_no_pdf} "
         f"skipped_no_text={stats.skipped_no_text} skipped_no_split={stats.skipped_no_split} "
         f"errors={len(stats.errors)}"
     )
+    if vacancy_records:
+        log_fn(
+            f"vacancy_rows.jsonl: rows={stats.vacancy_rows} "
+            f"evasive={stats.vacancy_evasive} unknown={stats.vacancy_unknown}"
+        )
     return stats

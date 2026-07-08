@@ -15,6 +15,7 @@ from .csr.dpe import DpeCsrProbe
 from .csr.mca import McaCsrProbe
 from .debates import LS_DEBATE_API, RS_DEBATE_API, DebateProbe
 from .dmft.mines import MinesDmftProbe
+from .doe import DoePayAllowancesProbe
 from .evidence import build_dmft_evidence_bundle
 from .example_topics import list_example_topics, load_example_topic_text
 from .extract_debates import extract_debates
@@ -387,6 +388,14 @@ def mines_dmft_cmd(args: argparse.Namespace) -> None:
         print(json.dumps(record, ensure_ascii=False))
 
 
+def doe_pay_allowances_cmd(args: argparse.Namespace) -> None:
+    out = Path(args.out)
+    probe = DoePayAllowancesProbe(out, sleep=args.sleep)
+    records = probe.probe(years=_split_csv(args.years), dry_run=args.dry_run)
+    for record in records:
+        print(json.dumps(record, ensure_ascii=False))
+
+
 def budget_cmd(args: argparse.Namespace) -> None:
     out = Path(args.out)
     sources = _split_csv(args.sources) or ["union-budget"]
@@ -721,6 +730,31 @@ def build_parser() -> argparse.ArgumentParser:
     )
     mines_dmft.set_defaults(func=mines_dmft_cmd)
 
+    doe = sub.add_parser(
+        "doe-pay-allowances",
+        help=(
+            "Download the DoE 'Annual Report on Pay and Allowances of Central "
+            "Government Civilian Employees' series (doe.gov.in)."
+        ),
+    )
+    doe.add_argument("--out", required=True, help="Output directory")
+    doe.add_argument(
+        "--years",
+        help="Comma-separated report years to fetch, e.g. 2022-23,2023-24; default = all listed",
+    )
+    doe.add_argument(
+        "--sleep",
+        type=float,
+        default=3.0,
+        help="Pause between requests; doe.gov.in's WAF resets back-to-back requests (default: 3.0).",
+    )
+    doe.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Fetch the listing page and print manifest records without downloading PDFs.",
+    )
+    doe.set_defaults(func=doe_pay_allowances_cmd)
+
     budget = sub.add_parser(
         "budget",
         help="Download Union Budget SBE spreadsheets and RBI State-Finances source files.",
@@ -923,7 +957,8 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
         help=(
             "Built-in topic name (e.g., libraries, home_affairs_starred, "
-            "affirmative_action, mines_dmft_pmkkky, narcotics_substance)."
+            "affirmative_action, mines_dmft_pmkkky, narcotics_substance, "
+            "vacancy_disclosure)."
         ),
     )
     init_topic.add_argument("--out", required=True, help="Destination path for the topic JSON file")

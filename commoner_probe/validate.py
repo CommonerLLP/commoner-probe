@@ -47,6 +47,8 @@ def _pick_schema_name(rec: dict) -> str | None:
         return "manifest_mca_csr"
     if kind == "mines_dmft_source_file":
         return "manifest_mines_dmft"
+    if kind == "doe_pay_allowances_report":
+        return "manifest_doe_pay_allowances"
     if kind == "budget_source_file":
         return "manifest_budget"
     if kind == "academic_job_posting":
@@ -173,6 +175,15 @@ def validate_corpus(
         log(f"Validating {answers_path.relative_to(out_dir)} ...")
         ok = _validate_file(answers_path, lambda r: _schema_for_answers_kind(r.get("kind", "")))
         n = sum(1 for line in answers_path.read_text(encoding="utf-8").splitlines() if line.strip())
+        log(f"  {n} records — {'ok' if ok else 'FAILED'}")
+        any_error = any_error or (not ok)
+
+    # --- vacancy_rows.jsonl ---
+    vacancy_path = out_dir / "vacancy_rows.jsonl"
+    if vacancy_path.exists():
+        log(f"Validating {vacancy_path.relative_to(out_dir)} ...")
+        ok = _validate_file(vacancy_path, lambda _: "vacancy_row")
+        n = sum(1 for line in vacancy_path.read_text(encoding="utf-8").splitlines() if line.strip())
         log(f"  {n} records — {'ok' if ok else 'FAILED'}")
         any_error = any_error or (not ok)
 

@@ -50,6 +50,7 @@ from .records import (
     ManifestBillRecord,
     ManifestBudgetRecord,
     ManifestCommitteeReportRecord,
+    ManifestDoePayAllowancesRecord,
     ManifestDpeCsrRecord,
     ManifestFloorDebateRecord,
     ManifestIndiaCodeRecord,
@@ -57,6 +58,7 @@ from .records import (
     ManifestMinesDmftRecord,
     ManifestQaRecord,
     RunRecord,
+    VacancyRowRecord,
 )
 
 if TYPE_CHECKING:
@@ -149,6 +151,12 @@ class Corpus:
             if d.get("kind") == "mines_dmft_source_file":
                 yield ManifestMinesDmftRecord.from_dict(d)
 
+    def manifest_doe_pay_allowances(self) -> Iterator[ManifestDoePayAllowancesRecord]:
+        """Stream DoE Pay & Allowances annual-report records from manifest.jsonl."""
+        for d in _iter_jsonl(self.out_dir / "manifest.jsonl"):
+            if d.get("kind") == "doe_pay_allowances_report":
+                yield ManifestDoePayAllowancesRecord.from_dict(d)
+
     def manifest_budget(self) -> Iterator[ManifestBudgetRecord]:
         """Stream Union Budget / RBI State-Finances source-file records from manifest.jsonl."""
         for d in _iter_jsonl(self.out_dir / "manifest.jsonl"):
@@ -200,6 +208,12 @@ class Corpus:
                 yield AnswerDfgRecommendation.from_dict(d)
 
     # --- Other streams ---
+
+    def vacancy_rows(self) -> Iterator[VacancyRowRecord]:
+        """Stream typed vacancy-disclosure rows from vacancy_rows.jsonl."""
+        for d in _iter_jsonl(self.out_dir / "vacancy_rows.jsonl"):
+            if d.get("kind") == "vacancy_row":
+                yield VacancyRowRecord.from_dict(d)
 
     def atr_linkages(self) -> Iterator[AtrLinkageRecord]:
         """Stream records from atr_linkage.jsonl."""
@@ -306,6 +320,7 @@ class Corpus:
         "manifest_mca_csr": "manifest_mca_csr",
         "manifest_dpe_csr": "manifest_dpe_csr",
         "manifest_mines_dmft": "manifest_mines_dmft",
+        "manifest_doe_pay_allowances": "manifest_doe_pay_allowances",
         "manifest_budget": "manifest_budget",
         "manifest_academic_jobs": "manifest_academic_jobs",
         "manifest_floor_debates": "manifest_floor_debates",
@@ -314,6 +329,7 @@ class Corpus:
         "answers_qa": "answers_qa",
         "answers_atr": "answers_atr",
         "answers_dfg": "answers_dfg",
+        "vacancy_rows": "vacancy_rows",
         "atr_linkages": "atr_linkages",
         "runs": "runs",
     }

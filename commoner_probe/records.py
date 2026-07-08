@@ -231,6 +231,35 @@ class ManifestMinesDmftRecord:
 
 
 @dataclass
+class ManifestDoePayAllowancesRecord:
+    """One DoE Pay & Allowances annual-report record from manifest.jsonl."""
+
+    key: str
+    kind: str
+    record_type: str
+    source_family: str
+    source_name: str
+    publisher: str
+    title: str
+    year: str
+    filename: str
+    dest: str
+    url: str
+    listing_url: str
+    status: str
+    media_type: str
+    fetched_at: str
+    probed_at: str
+    text_layer: bool | None = None
+    error: str | None = None
+    sha256: str | None = None
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "ManifestDoePayAllowancesRecord":
+        return _from_dict(cls, d)
+
+
+@dataclass
 class ManifestBudgetRecord:
     """One Union Budget / RBI State-Finances raw source-file record."""
 
@@ -500,6 +529,38 @@ class AnswerDfgRecommendation:
 
 
 # ---------------------------------------------------------------------------
+# vacancy_rows.jsonl record
+# ---------------------------------------------------------------------------
+
+@dataclass
+class VacancyRowRecord:
+    """One typed vacancy-disclosure row (kind='vacancy_row') from vacancy_rows.jsonl."""
+
+    key: str
+    kind: str
+    source_pdf: str
+    extracted_at: str
+    layout: str
+    vacant_stated: bool
+    confidence: float
+    extractor: str
+    run_id: str | None = None
+    ministry: str | None = None
+    org_unit: str | None = None
+    service: str | None = None
+    group: str | None = None
+    category: str | None = None
+    sanctioned: int | None = None
+    in_position: int | None = None
+    vacant: int | None = None
+    date_of_data: str | None = None
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "VacancyRowRecord":
+        return _from_dict(cls, d)
+
+
+# ---------------------------------------------------------------------------
 # atr_linkage.jsonl record
 # ---------------------------------------------------------------------------
 
@@ -557,6 +618,7 @@ __all__ = [
     "ManifestDpeCsrRecord",
     "ManifestMcaCsrRecord",
     "ManifestMinesDmftRecord",
+    "ManifestDoePayAllowancesRecord",
     "ManifestBudgetRecord",
     "ManifestAcademicJobRecord",
     "ManifestFloorDebateRecord",
@@ -565,6 +627,7 @@ __all__ = [
     "AnswerQaResponse",
     "AnswerAtrResponse",
     "AnswerDfgRecommendation",
+    "VacancyRowRecord",
     "AtrLinkageRecord",
     "RunRecord",
     # Re-exported from entities

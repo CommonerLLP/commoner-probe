@@ -408,6 +408,14 @@ Reads `manifest.jsonl` and downloaded PDFs; writes `answers.jsonl` with:
 - `atr_response` — (recommendation_no, recommendation_text, response_text) triples from ATR PDFs
 - `dfg_recommendation` — numbered observation paragraphs from DFG/Bill/Subject PDFs
 
+Q/A records whose question asks for vacancy disclosures additionally emit
+typed rows to `vacancy_rows.jsonl` (`ministry / org_unit / service / group /
+category / sanctioned / in_position / vacant / date_of_data`), tagged with the
+table `layout` that produced them (`in_answer_summary`, `annexure_cadre_matrix`).
+A vacancy question answered without a sanctioned/vacant table emits a single
+marker record — `layout: "evasive"` for boilerplate/aggregate-only refusals
+(the refusal is itself data), `layout: "unknown"` for a genuine parse miss.
+
 Requires `pip install "commoner-probe[pdf]"`.
 
 ### `commoner-probe atr-linkage` — ATR → original report
@@ -483,6 +491,22 @@ commoner-probe mines-dmft \
 Downloads raw Ministry of Mines static CSV snapshots and Odisha DMFT public
 JSON/report surfaces. Use `--dry-run` to print manifest records without opening
 network sessions.
+
+### `commoner-probe doe-pay-allowances` — DoE Pay & Allowances annual reports
+
+```bash
+commoner-probe doe-pay-allowances \
+  --out data/doe-pay-allowances \
+  --years 2022-23,2023-24
+```
+
+Downloads the "Annual Report on Pay and Allowances of Central Government
+Civilian Employees" series from doe.gov.in (all years on the listing page
+unless `--years` narrows it) with one `manifest.jsonl` record per report.
+Each record carries `text_layer: false` when the edition is a flattened scan
+that needs OCR (the 2022-23 edition is one). doe.gov.in's WAF resets
+back-to-back requests, so the default `--sleep` is 3 seconds. Use `--dry-run`
+to enumerate the listing without downloading.
 
 ### `commoner-probe bills` — bills & legislation catalog
 
@@ -647,6 +671,7 @@ See `examples/topics/` for working examples.
 | `manifest.jsonl` | One record per question or committee report |
 | `_runs.jsonl` | Audit log: scope, topic hash, errors, per-bucket counts |
 | `answers.jsonl` | Extracted Q/A and recommendation/response pairs |
+| `vacancy_rows.jsonl` | Typed sanctioned/in-position/vacant rows from vacancy-disclosure answers |
 | `atr_linkage.jsonl` | ATR → original report linkages |
 | source CSV/JSON/HTML files | Raw source files for source-specific probes such as MCA CSR and DMFT |
 | `pdfs/ls/` | Downloaded LS PDFs |
@@ -691,6 +716,10 @@ for r in c.atr_linkages():                # AtrLinkageRecord
 for r in c.manifest_mca_csr():            # ManifestMcaCsrRecord
     ...
 for r in c.manifest_mines_dmft():         # ManifestMinesDmftRecord
+    ...
+for r in c.manifest_doe_pay_allowances(): # ManifestDoePayAllowancesRecord
+    ...
+for r in c.vacancy_rows():                # VacancyRowRecord
     ...
 for r in c.runs():                        # RunRecord
     ...

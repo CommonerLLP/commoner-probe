@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CommonerLLP/commoner-probe/schemas/v1/vacancy_row.json",
+  "title": "vacancy_rows.jsonl — typed vacancy-disclosure row",
+  "description": "One typed sanctioned/in-position/vacant observation extracted from a Q/A answer, or a layout-only marker record (layout = evasive/unknown, numeric fields null) when a vacancy question yielded no parseable table. vacant_stated distinguishes a vacancy figure printed by the source from one derived as sanctioned - in_position.",
+  "type": "object",
+  "required": [
+    "key",
+    "run_id",
+    "source_pdf",
+    "extracted_at",
+    "ministry",
+    "kind",
+    "layout",
+    "org_unit",
+    "service",
+    "group",
+    "category",
+    "sanctioned",
+    "in_position",
+    "vacant",
+    "vacant_stated",
+    "date_of_data",
+    "confidence",
+    "extractor"
+  ],
+  "properties": {
+    "key": { "type": "string" },
+    "run_id": { "type": ["string", "null"] },
+    "source_pdf": { "type": "string" },
+    "extracted_at": { "type": "string" },
+    "ministry": { "type": ["string", "null"] },
+    "kind": { "type": "string", "const": "vacancy_row" },
+    "layout": {
+      "type": "string",
+      "enum": ["in_answer_summary", "annexure_cadre_matrix", "evasive", "unknown"]
+    },
+    "org_unit": { "type": ["string", "null"] },
+    "service": { "type": ["string", "null"] },
+    "group": { "enum": ["A", "B", "C", "D", null] },
+    "category": { "enum": ["ALL", "UR", "SC", "ST", "OBC", "EWS", null] },
+    "sanctioned": { "type": ["integer", "null"] },
+    "in_position": { "type": ["integer", "null"] },
+    "vacant": { "type": ["integer", "null"] },
+    "vacant_stated": { "type": "boolean" },
+    "date_of_data": { "type": ["string", "null"] },
+    "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "extractor": { "type": "string" }
+  }
+}
