@@ -158,6 +158,15 @@ def validate_corpus(
         log(f"  {n} records — {'ok' if ok else 'FAILED'}")
         any_error = any_error or (not ok)
 
+    # --- _windows.jsonl ---
+    windows_path = out_dir / "_windows.jsonl"
+    if windows_path.exists():
+        log(f"Validating {windows_path.relative_to(out_dir)} ...")
+        ok = _validate_file(windows_path, lambda _: "windows")
+        n = sum(1 for line in windows_path.read_text(encoding="utf-8").splitlines() if line.strip())
+        log(f"  {n} records — {'ok' if ok else 'FAILED'}")
+        any_error = any_error or (not ok)
+
     # --- answers.jsonl ---
     answers_path = out_dir / "answers.jsonl"
     if answers_path.exists():

@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CommonerLLP/commoner-probe/schemas/v1/windows.json",
+  "title": "_windows.jsonl — enumeration window state",
+  "description": "One record per enumeration window attempt (commoner-probe sansad --all). Append-only; the latest record per window_id wins. A window is skipped on resume only when its latest status is \"complete\" and its scope (qtype, and for RS the date bounds) matches the current run.",
+  "type": "object",
+  "required": ["window_id", "house", "status", "kept", "errors", "run_id", "recorded_at"],
+  "properties": {
+    "window_id": { "type": "string", "description": "ls:{from}..{to} (calendar-month-clipped) or rs:{ses_no}" },
+    "house": { "type": "string", "enum": ["ls", "rs"] },
+    "from_date": { "type": ["string", "null"], "description": "ISO date window lower bound (LS: always set; RS: run-level filter if any)" },
+    "to_date": { "type": ["string", "null"], "description": "ISO date window upper bound" },
+    "ses_no": { "type": ["integer", "null"], "description": "RS session number (RS only)" },
+    "qtype": { "type": ["string", "null"], "description": "qtype filter active for this window's run; null = both" },
+    "status": { "type": "string", "enum": ["complete", "suspect"] },
+    "kept": { "type": "integer", "description": "Records written to manifest by this window attempt" },
+    "errors": { "type": "integer", "description": "Errors recorded during this window attempt" },
+    "run_id": { "type": "string", "description": "UUID4 hex matching _runs.jsonl run_id" },
+    "recorded_at": { "type": "string", "description": "ISO datetime" }
+  }
+}

@@ -339,18 +339,35 @@ commoner-probe sansad \
 
 | Flag | Default | What it does |
 |---|---|---|
-| `--topic` | required | Path to topic profile JSON |
+| `--topic` | required* | Path to topic profile JSON (*unless `--member`, `--entity-id`, or `--all`) |
+| `--all` | off | Full-corpus enumeration: every question, no topic/member filter |
 | `--out` | required | Output corpus directory |
 | `--house` | `both` | `ls`, `rs`, or `both` |
 | `--from-date` | — | Earliest question date (YYYY-MM-DD) |
 | `--to-date` | — | Latest question date |
 | `--qtype` | `both` | `starred`, `unstarred`, or `both` |
-| `--sessions` | `1-267` | Rajya Sabha session range |
+| `--sessions` | `1-267` | Rajya Sabha session range (must be explicit with `--all`) |
 | `--no-download` | off | Skip PDF downloads; metadata only |
 | `--with-entities` | off | Resolve asker names to stable entity IDs |
 | `--max-records N` | — | Stop after N new records per house (smoke-test) |
 | `--max-buckets N` | — | Only run the first N search/ministry combos |
 | `--reset` | off | Wipe existing manifest and start fresh |
+| `--reset-window ID` | — | Force re-crawl of one enumeration window (repeatable) |
+
+**Full-corpus enumeration** (`--all`) pages through every question — LS in
+calendar-month windows over `--from-date`/`--to-date`, RS one window per
+session in `--sessions`. Window state goes to `_windows.jsonl`: a window whose
+run recorded errors is marked `"status": "suspect"` and re-crawled on the next
+run; only complete, non-suspect windows are skipped on resume.
+
+```bash
+commoner-probe sansad --all \
+  --out data/sansad-full \
+  --house both \
+  --from-date 2024-07-01 --to-date 2024-07-31 \
+  --sessions 264-265 \
+  --no-download
+```
 
 ### `commoner-probe committees` — standing committee reports
 
