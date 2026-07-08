@@ -23,6 +23,7 @@ def test_lists_expected_bundled_topics():
         "libraries",
         "mines_dmft_pmkkky",
         "narcotics_substance",
+        "vacancy_disclosure",
     }
 
 

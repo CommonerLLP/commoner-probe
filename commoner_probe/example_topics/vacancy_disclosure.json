@@ -1,0 +1,45 @@
+{
+  "name": "vacancy_disclosure",
+  "description": "Union-government establishment vacancy disclosures: sanctioned strength vs men-in-position vs vacant posts, post abolition, and reservation backlog.",
+  "search_groups": {
+    "sanctioned_strength": [
+      "sanctioned strength",
+      "sanctioned posts",
+      "men in position",
+      "sanctioned and vacant posts"
+    ],
+    "vacant_posts": [
+      "vacant posts",
+      "vacancies",
+      "posts lying vacant",
+      "filling up of vacant posts"
+    ],
+    "abolished_posts": [
+      "posts abolished",
+      "abolition of posts"
+    ],
+    "reservation_backlog": [
+      "backlog vacancies",
+      "backlog reserved vacancies",
+      "special recruitment drive"
+    ],
+    "hindi": [
+      "रिक्त पद",
+      "मंज़ूर पद"
+    ]
+  },
+  "lok_sabha_ministries": [
+    "PERSONNEL, PUBLIC GRIEVANCES AND PENSIONS",
+    "HOME AFFAIRS",
+    "RAILWAYS",
+    "DEFENCE",
+    "FINANCE"
+  ],
+  "rajya_sabha_ministry_likes": [
+    "PERSONNEL",
+    "HOME AFFAIRS",
+    "RAILWAYS",
+    "DEFENCE",
+    "FINANCE"
+  ]
+}

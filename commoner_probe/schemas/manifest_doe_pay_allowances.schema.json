@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CommonerLLP/commoner-probe/schemas/v1/manifest_doe_pay_allowances.json",
+  "title": "manifest.jsonl — DoE Pay & Allowances annual report",
+  "description": "One DoE 'Annual Report on Pay and Allowances of Central Government Civilian Employees' acquisition record. text_layer: false marks flattened-scan editions that need OCR before parsing.",
+  "type": "object",
+  "required": [
+    "key",
+    "kind",
+    "record_type",
+    "source_family",
+    "source_name",
+    "publisher",
+    "title",
+    "year",
+    "filename",
+    "dest",
+    "url",
+    "listing_url",
+    "status",
+    "media_type",
+    "fetched_at",
+    "probed_at"
+  ],
+  "properties": {
+    "key": {
+      "type": "string",
+      "pattern": "^DOE_PAY_ALLOWANCES\\|20\\d{2}-\\d{2}$"
+    },
+    "kind": {
+      "type": "string",
+      "const": "doe_pay_allowances_report"
+    },
+    "record_type": {
+      "type": "string",
+      "const": "doe_pay_allowances_report"
+    },
+    "source_family": {
+      "type": "string",
+      "const": "doe-pay-allowances"
+    },
+    "source_name": {
+      "type": "string",
+      "const": "doe-gov-in"
+    },
+    "publisher": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "year": {
+      "type": "string",
+      "pattern": "^20\\d{2}-\\d{2}$"
+    },
+    "filename": {
+      "type": "string"
+    },
+    "dest": {
+      "type": "string"
+    },
+    "url": {
+      "type": "string",
+      "format": "uri"
+    },
+    "listing_url": {
+      "type": "string",
+      "format": "uri"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["pending", "dry_run", "downloaded", "skipped_exists", "error"]
+    },
+    "media_type": {
+      "type": "string"
+    },
+    "text_layer": {
+      "type": "boolean"
+    },
+    "error": {
+      "type": "string"
+    },
+    "fetched_at": {
+      "type": "string"
+    },
+    "probed_at": {
+      "type": "string"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    }
+  }
+}
