@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CommonerLLP/commoner-probe/schemas/v1/manifest_ministry_ddg.json",
+  "title": "manifest.jsonl — ministry Detailed Demands for Grants (DDG)",
+  "description": "One ministry-hosted 'Detailed Demands for Grants' acquisition record. text_layer: false marks flattened-scan editions that need OCR before object-head parsing.",
+  "type": "object",
+  "required": [
+    "key",
+    "kind",
+    "record_type",
+    "source_family",
+    "ministry_code",
+    "ministry_name",
+    "publisher",
+    "title",
+    "year",
+    "filename",
+    "dest",
+    "url",
+    "listing_url",
+    "status",
+    "media_type",
+    "fetched_at",
+    "probed_at"
+  ],
+  "properties": {
+    "key": {
+      "type": "string",
+      "pattern": "^MINISTRY_DDG\\|[a-z0-9-]+\\|20\\d{2}-\\d{2}\\|[a-z0-9-]+$"
+    },
+    "kind": {
+      "type": "string",
+      "const": "ministry_ddg_document"
+    },
+    "record_type": {
+      "type": "string",
+      "const": "ministry_ddg_document"
+    },
+    "source_family": {
+      "type": "string",
+      "const": "ministry-ddg"
+    },
+    "ministry_code": {
+      "type": "string"
+    },
+    "ministry_name": {
+      "type": "string"
+    },
+    "publisher": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "year": {
+      "type": "string",
+      "pattern": "^20\\d{2}-\\d{2}$"
+    },
+    "filename": {
+      "type": "string"
+    },
+    "dest": {
+      "type": "string"
+    },
+    "url": {
+      "type": "string",
+      "format": "uri"
+    },
+    "listing_url": {
+      "type": "string",
+      "format": "uri"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["pending", "dry_run", "downloaded", "skipped_exists", "error"]
+    },
+    "media_type": {
+      "type": "string"
+    },
+    "text_layer": {
+      "type": "boolean"
+    },
+    "error": {
+      "type": "string"
+    },
+    "fetched_at": {
+      "type": "string"
+    },
+    "probed_at": {
+      "type": "string"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    }
+  }
+}

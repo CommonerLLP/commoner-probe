@@ -65,6 +65,8 @@ def _pick_schema_name(rec: dict) -> str | None:
         return "manifest_myneta"
     if kind == "legacy_dspace_item":
         return "manifest_legacy_dspace"
+    if kind == "ministry_ddg_document":
+        return "manifest_ministry_ddg"
     return None
 
 
