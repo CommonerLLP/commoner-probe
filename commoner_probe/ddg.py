@@ -9,35 +9,36 @@ Ministry of Finance DDG 2026-07-08). There is no central index — each
 ministry hosts its own listing page, on its own domain, in its own site
 template.
 
-Two listing-page templates are confirmed live and supported here, both
-classic server-rendered Drupal (so a plain HTTP GET is enough — no browser
+Three listing-page templates are confirmed live and supported here, all
+classic server-rendered markup (so a plain HTTP GET is enough — no browser
 needed):
 
 * ``"card"`` — a Bootstrap-grid "documentRecordTitle" card per document.
   Verified against the Department of Economic Affairs (dea.gov.in) — the
   department hosting the Ministry of Finance's own DDG series (10 editions,
   2017-18 through 2026-27, one flattened-scan edition at 2022-23).
-* ``"table"`` — a classic Drupal Views table (``views-field-*`` columns),
-  one ``<tr>`` per document, title in one ``<td>`` and a ``.pdf`` href in
-  another. Verified against the Ministry of Home Affairs (mha.gov.in,
-  32 documents back to 2012-13 — two volumes per year) and the Department
-  of Expenditure (doe.gov.in, 7 documents back to 2006-07).
+* ``"table"`` — one ``<tr>`` per document, title in one ``<td>`` and a
+  ``.pdf`` href in another (Drupal Views or WordPress "document category"
+  tables both fit). Verified against MHA (32 docs back to 2012-13, two
+  volumes/year), Department of Expenditure (7 docs back to 2006-07),
+  Department of Land Resources (12 docs), MoEFCC (16 docs back to 2008-09,
+  Hindi-only titles — see ``_DEMAND_GRANT_RE``), and MoPNG (18 docs back to
+  2008-09).
+* ``"list"`` — a flat run of ``<a href="...pdf">title</a>`` anchors with no
+  wrapping card/table structure; the anchor's own text is the title. Verified
+  against DST (``<li class="views-row">`` rows, 10 docs back to 2017-18) —
+  DST's older editions drop the "Demand"/"Grant" wording entirely (anchor
+  text is just "2017-18 (3.37 MB)"), so this template also accepts a PDF
+  filename containing "ddg" as a fallback signal (see ``_DDG_FILENAME_RE``).
 
-Ministries turned up by search but NOT added — verified live 2026-07-08/09,
-not guessed:
-
-* MSDE (msde.gov.in), MPA (mpa.gov.in) — both a Next.js app using
-  ``getServerSideProps`` (``"__N_SSP":true``): the initial HTML carries only
-  the route slug, no document data, so a plain HTTP GET returns nothing to
-  parse. Needs either a headless-browser fetch or their underlying data API
-  (not reverse-engineered this session) — out of scope for a regex-based
-  adapter.
-* Department of Public Enterprises, Ministry of Education, Ministry of
-  Rural Development, Ministry of Agriculture (agricoop.nic.in/.gov.in),
-  MeitY's own "detailed-demand-for-grants" page — a listing-page URL was
-  found by search but the exact live URL 404'd, failed DNS resolution, or
-  wasn't re-verified against real markup this session. Not added rather
-  than guessed; verify before adding.
+For the full survey of every ministry checked this session — including the
+~13 blocked by JS-rendered SPA platforms (a shared "digifootprint.gov.in"-
+family Next.js/Angular build turned up across many ministries), WAF/bot
+blocks, and network-unreachable sites — see
+``docs/gov-site-platforms.md``. Three more are verified-working but
+deliberately excluded from the registry pending a human decision (broken
+TLS on the ministry's own server, or a full-site robots.txt disallow) — see
+the comment block immediately after ``MINISTRY_DDG_PORTALS`` below.
 
 Grow this registry the way ``neva_portals.py`` grew: one live-verified
 entry at a time, never a guessed batch.
@@ -125,7 +126,48 @@ MINISTRY_DDG_PORTALS: tuple[MinistryDDGPortal, ...] = (
         listing_url="https://doe.gov.in/detailed-demands-for-grants",
         template="table",
     ),
+    MinistryDDGPortal(
+        ministry_code="dolr",
+        ministry_name="Department of Land Resources (Ministry of Rural Development)",
+        listing_url="https://dolr.gov.in/document-category/detailed-demand-for-grants/",
+        template="table",
+    ),
+    MinistryDDGPortal(
+        ministry_code="moefcc",
+        ministry_name="Ministry of Environment, Forest and Climate Change",
+        listing_url="https://moef.gov.in/detailed-demand-for-grants",
+        template="table",
+    ),
+    MinistryDDGPortal(
+        ministry_code="mopng",
+        ministry_name="Ministry of Petroleum and Natural Gas",
+        listing_url="https://mopng.gov.in/en/accounts/demands-grants",
+        template="table",
+    ),
+    MinistryDDGPortal(
+        ministry_code="dst",
+        ministry_name="Department of Science and Technology",
+        listing_url="https://dst.gov.in/documents/budget",
+        template="list",
+    ),
 )
+
+# Verified live 2026-07-09 but deliberately NOT in the registry above —
+# each needs an explicit human decision, not an agent's unilateral call:
+#
+# * Ministry of Steel (steel.gov.in/detailed-demands-for-grants, 4 docs,
+#   "table" template) and Ministry of Tribal Affairs (tribal.nic.in/Finance.aspx,
+#   8 docs, "list" template) both serve broken TLS — steel.gov.in a
+#   self-signed cert, tribal.nic.in an incomplete chain. `curl` tolerates
+#   both (different trust store); Python's `requests`/certifi correctly
+#   rejects them. Disabling certificate verification is a security-relevant
+#   change, not a default an adapter should make silently.
+# * Ministry of Women and Child Development (wcd.gov.in/documents/budget +
+#   /documents/budget-archives, 13 docs, "card"-shaped but not the same
+#   markup as dea.gov.in's card template) is technically scrapeable but its
+#   robots.txt is "Disallow: /" — a full-site block. `http_client.py` has an
+#   explicit `respect_robots=False` opt-out for exactly this situation, but
+#   it must be a deliberate registry decision, not silently wired in here.
 
 _PORTALS_BY_CODE = {p.ministry_code: p for p in MINISTRY_DDG_PORTALS}
 
@@ -143,10 +185,22 @@ def get_portal(ministry_code: str) -> MinistryDDGPortal:
 _CARD_TITLE_RE = re.compile(r'<div class="documentRecordTitle">\s*(.*?)\s*</div>', re.IGNORECASE | re.DOTALL)
 _TR_RE = re.compile(r"<tr[^>]*>(.*?)</tr>", re.IGNORECASE | re.DOTALL)
 _TD_RE = re.compile(r"<td[^>]*>(.*?)</td>", re.IGNORECASE | re.DOTALL)
-_DEMAND_GRANT_RE = re.compile(r"demand|grant", re.IGNORECASE)
+# DDGs are published bilingually; a table's title cells may be Hindi-only
+# (e.g. moef.gov.in's "विस्तृत मांगें" — "detailed demands", verified
+# 2026-07-09). मांग / मांगें / माँगें (demand) and अनुदान (grant) cover the
+# terms actually observed; English stays first since it's the common case.
+_DEMAND_GRANT_RE = re.compile(r"demand|grant|मां?ग|अनुदान", re.IGNORECASE)
 _HREF_RE = re.compile(r'href="([^"]+\.pdf)"', re.IGNORECASE)
+_ANCHOR_RE = re.compile(r'<a\b[^>]*href="([^"]+\.pdf)"[^>]*>(.*?)</a>', re.IGNORECASE | re.DOTALL)
 _YEAR_RE = re.compile(r"(20\d{2})\s*[-_– ]?\s*(?:20)?(\d{2})")
 _TAG_RE = re.compile(r"<[^>]+>")
+# Some sites drop the "Demand"/"Grant" wording for older editions and give
+# the anchor text just "<year> (<size>)" (dst.gov.in, verified 2026-07-09).
+# The filename itself still says DDG in every case observed, so it's a safe
+# second signal for the anchor-list template specifically (checked against
+# tribal.nic.in's other 42 non-DDG PDFs on the same page — zero false
+# positives).
+_DDG_FILENAME_RE = re.compile(r"ddg", re.IGNORECASE)
 
 
 def _now_iso() -> str:
@@ -222,8 +276,39 @@ def parse_ddg_listing_table(html: str, listing_url: str) -> list[dict[str, Any]]
     return documents
 
 
+def parse_ddg_listing_list(html: str, listing_url: str) -> list[dict[str, Any]]:
+    """Parse a flat anchor-list template — no wrapping card/table structure.
+
+    Pure function, unit-testable with canned HTML. Every ``<a href="...pdf">``
+    is a candidate; its own inner text is the title (there is no separate
+    title cell). Accepted when the anchor text mentions "demand"/"grant" OR
+    the PDF filename itself contains "ddg" (see ``_DDG_FILENAME_RE``).
+    Verified against tribal.nic.in (``<span class="far fa-file-pdf"></span>
+    <a>...</a><br>`` rows) and dst.gov.in (``<li class="views-row">``) 2026-07-09
+    — different wrapper markup, same anchor-is-the-title shape.
+    """
+    documents: list[dict[str, Any]] = []
+    seen_urls: set[str] = set()
+    for m in _ANCHOR_RE.finditer(html):
+        href, inner = m.group(1), _clean(m.group(2))
+        url = urljoin(listing_url, unescape(href))
+        if url in seen_urls:
+            continue
+        basename = url.rsplit("/", 1)[-1]
+        if not (_DEMAND_GRANT_RE.search(inner) or _DDG_FILENAME_RE.search(unquote(basename))):
+            continue
+        year_m = _YEAR_RE.search(inner) or _YEAR_RE.search(unquote(url))
+        if not year_m:
+            continue
+        year = f"{year_m.group(1)}-{year_m.group(2)}"
+        seen_urls.add(url)
+        documents.append({"title": inner, "year": year, "url": url})
+    return documents
+
+
 _PARSERS = {
     "card": parse_ddg_listing_card,
+    "list": parse_ddg_listing_list,
     "table": parse_ddg_listing_table,
 }
 

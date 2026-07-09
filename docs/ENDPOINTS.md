@@ -195,3 +195,32 @@ commoner-probe evidence dmft \
   --sansad-dir data/sansad/mines-dmft-pmkkky \
   --out data/evidence/dmft.json
 ```
+
+## Ministry Detailed Demands for Grants (DDG)
+
+`commoner-probe ministry-ddg` downloads a ministry/department's own
+"Detailed Demands for Grants" series — the object-head-level budget document
+(unlike indiabudget.gov.in's "Demand for Grants", a major-head summary only).
+Each ministry hosts this on its own site, in its own template; there is no
+central index, so the adapter works off a small, individually-verified
+registry (`commoner_probe.ddg.MINISTRY_DDG_PORTALS`) rather than a single
+endpoint contract.
+
+Outputs:
+
+- `manifest.jsonl` records with `kind = "ministry_ddg_document"`
+- downloaded PDFs under `<ministry_code>/`
+
+Example:
+
+```bash
+commoner-probe ministry-ddg --out data/ministry-ddg --ministry-code mha
+```
+
+**Before adding a new ministry**, or if a registered one starts returning
+zero documents, read
+[`GOV_SITE_PLATFORMS.md`](GOV_SITE_PLATFORMS.md) — a survey of every ministry
+site checked so far, including which ones are JS-rendered SPAs (a large and
+growing share, sharing a common platform), WAF-blocked, or unreachable from
+a given network egress, and why. It exists specifically so this research
+doesn't get silently redone every session.

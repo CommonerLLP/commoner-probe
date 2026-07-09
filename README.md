@@ -790,6 +790,9 @@ df = c.to_dataframe("manifest_committee_reports")
 
 See [`examples/usage.py`](examples/usage.py) for a runnable walkthrough.
 See [`docs/ENDPOINTS.md`](docs/ENDPOINTS.md) for source-family endpoint notes.
+See [`docs/GOV_SITE_PLATFORMS.md`](docs/GOV_SITE_PLATFORMS.md) for which
+Union ministry websites are scrapeable (and which are JS-rendered SPAs, WAF-
+blocked, or unreachable) — read before adding a new `ministry-ddg` portal.
 
 ---
 

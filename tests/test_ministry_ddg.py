@@ -5,7 +5,11 @@ Bootstrap-card template (verified 2026-07-08): one ``documentRecordTitle``
 div per fiscal year followed by a ``viewBtn`` anchor into
 ``/files/detail_demands_grants_documents/``. The "table" listing HTML
 mirrors the live mha.gov.in / doe.gov.in classic Drupal Views table
-(verified 2026-07-09). No network.
+(verified 2026-07-09); a second table fixture mirrors moef.gov.in's
+Hindi-only title cells (verified 2026-07-09). The "list" listing HTML
+mirrors the live tribal.nic.in flat anchor list and dst.gov.in's Drupal
+Views ``<li>`` rows, including dst.gov.in's older editions that drop the
+"Demand"/"Grant" wording entirely (verified 2026-07-09). No network.
 """
 
 from __future__ import annotations
@@ -18,6 +22,7 @@ from commoner_probe.ddg import (
     MinistryDDGPortal,
     MinistryDDGProbe,
     get_portal,
+    parse_ddg_listing_list,
     parse_ddg_listing_table,
 )
 
@@ -106,8 +111,10 @@ def test_get_portal_known_code():
     assert get_portal("dea").ministry_name == "Department of Economic Affairs (Ministry of Finance)"
 
 
-def test_registry_has_three_verified_ministries():
-    assert {p.ministry_code for p in MINISTRY_DDG_PORTALS} == {"dea", "mha", "doe"}
+def test_registry_has_seven_verified_ministries():
+    assert {p.ministry_code for p in MINISTRY_DDG_PORTALS} == {
+        "dea", "mha", "doe", "dolr", "moefcc", "mopng", "dst",
+    }
 
 
 def test_get_portal_unknown_code_raises():
@@ -266,6 +273,91 @@ def test_multi_volume_per_year_does_not_collide(tmp_path, monkeypatch):
     assert len(keys) == len(set(keys)), f"colliding keys: {keys}"
     filenames = [r["filename"] for r in records]
     assert len(filenames) == len(set(filenames)), f"colliding filenames: {filenames}"
+
+
+# moef.gov.in publishes Hindi-only title cells ("विस्तृत मांगें" = "detailed
+# demands") in an otherwise identical tr/td Drupal table — the English-only
+# _DEMAND_GRANT_RE regex used to miss these entirely (2026-07-09 bug caught
+# while expanding the registry; see the bilingual pattern in ddg.py).
+HINDI_TABLE_HTML = """
+<html><body><table><tbody>
+<tr>
+  <td>1.</td>
+  <td><a href="/uploads/2023/11/DDG-2023-24.pdf">विस्तृत मांगें 2023-2024।</a></td>
+</tr>
+<tr>
+  <td>2.</td>
+  <td><a href="/uploads/2022/02/annual-report.pdf">वार्षिक रिपोर्ट 2022-2023</a></td>
+</tr>
+</tbody></table></body></html>
+"""
+
+
+def test_parse_listing_table_matches_hindi_title_cells():
+    docs = parse_ddg_listing_table(HINDI_TABLE_HTML, "https://moef.gov.in/detailed-demand-for-grants")
+    assert [d["year"] for d in docs] == ["2023-24"]
+    # The unrelated "annual report" row (no demand/grant keyword, Hindi or
+    # English) must not be picked up.
+    assert not any("annual-report" in d["url"] for d in docs)
+
+
+TRIBAL_LIST_HTML = """
+<html><body>
+<span class="far fa-file-pdf"></span><a href="downloads/FINANCE/DDG 2024-25.pdf" target="_blank"> Detailed Demand for Grants 2024-25 (3.15 MB)</a><br>
+<span class="far fa-file-pdf"></span><a href="downloads/FINANCE/circular.pdf" target="_blank"> Recruitment Circular 2024 (1.2 MB)</a><br>
+</body></html>
+"""
+
+# dst.gov.in drops the "Demand"/"Grant" wording for older editions — the
+# anchor text is bare "<year> (<size>)". The filename still says "DDG",
+# which is the fallback signal parse_ddg_listing_list uses.
+DST_LIST_HTML = """
+<html><body><ul>
+<li class="views-row"><div class="views-field-php"><span class="field-content">
+  <a href="https://dst.gov.in/sites/default/files/DDG%202024-25.pdf" target="_BLANK" title="pdf">Detailed Demands For Grants 2024-2025 (179.95 KB)</a>
+</span></div></li>
+<li class="views-row"><div class="views-field-php"><span class="field-content">
+  <a href="https://dst.gov.in/sites/default/files/DDG%202017-18.pdf" target="_BLANK" title="pdf">2017-18 (3.37 MB)</a>
+</span></div></li>
+</ul></body></html>
+"""
+
+
+def test_parse_listing_list_flat_anchor_shape():
+    docs = parse_ddg_listing_list(TRIBAL_LIST_HTML, "https://tribal.nic.in/Finance.aspx")
+    assert [d["year"] for d in docs] == ["2024-25"]
+    assert not any("circular" in d["url"] for d in docs)
+
+
+def test_parse_listing_list_falls_back_to_ddg_filename_token():
+    docs = parse_ddg_listing_list(DST_LIST_HTML, "https://dst.gov.in/documents/budget")
+    assert sorted(d["year"] for d in docs) == ["2017-18", "2024-25"]
+    by_year = {d["year"]: d for d in docs}
+    # The un-keyworded 2017-18 anchor was caught via the "ddg" filename token.
+    assert by_year["2017-18"]["title"] == "2017-18 (3.37 MB)"
+
+
+def test_probe_dispatches_list_template(tmp_path):
+    """MinistryDDGProbe.discover() must route template='list' portals
+    through parse_ddg_listing_list, not the card/table parsers."""
+    portal = MinistryDDGPortal(
+        ministry_code="dst",
+        ministry_name="Department of Science and Technology",
+        listing_url="https://dst.gov.in/documents/budget",
+        template="list",
+    )
+    probe = MinistryDDGProbe(tmp_path, portal=portal, sleep=0)
+
+    class DstSession(FakeSession):
+        def get(self, url, **kwargs):
+            self.calls.append(url)
+            if url == portal.listing_url:
+                return FakeResponse(text=DST_LIST_HTML)
+            raise AssertionError(f"unrouted url: {url}")
+
+    probe.session = DstSession()
+    docs = probe.discover()
+    assert sorted(d["year"] for d in docs) == ["2017-18", "2024-25"]
 
 
 def test_records_validate_against_schema(tmp_path, monkeypatch):
