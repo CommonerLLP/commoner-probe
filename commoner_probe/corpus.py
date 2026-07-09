@@ -47,6 +47,7 @@ from .records import (
     AnswerQaResponse,
     AtrLinkageRecord,
     ManifestAcademicJobRecord,
+    ManifestAttendanceRecord,
     ManifestBillRecord,
     ManifestBudgetRecord,
     ManifestCommitteeReportRecord,
@@ -56,6 +57,7 @@ from .records import (
     ManifestIndiaCodeRecord,
     ManifestMcaCsrRecord,
     ManifestMinesDmftRecord,
+    ManifestMynetaRecord,
     ManifestQaRecord,
     RunRecord,
     VacancyRowRecord,
@@ -186,6 +188,18 @@ class Corpus:
         for d in _iter_jsonl(self.out_dir / "manifest.jsonl"):
             if d.get("kind") == "indiacode_instrument":
                 yield ManifestIndiaCodeRecord.from_dict(d)
+
+    def manifest_attendance(self) -> Iterator[ManifestAttendanceRecord]:
+        """Stream Lok Sabha member-wise attendance records from manifest.jsonl."""
+        for d in _iter_jsonl(self.out_dir / "manifest.jsonl"):
+            if d.get("kind") == "attendance":
+                yield ManifestAttendanceRecord.from_dict(d)
+
+    def manifest_myneta(self) -> Iterator[ManifestMynetaRecord]:
+        """Stream ADR/MyNeta candidate affidavit records from manifest.jsonl."""
+        for d in _iter_jsonl(self.out_dir / "manifest.jsonl"):
+            if d.get("kind") == "myneta_candidate":
+                yield ManifestMynetaRecord.from_dict(d)
 
     # --- Answers ---
 
@@ -326,6 +340,8 @@ class Corpus:
         "manifest_floor_debates": "manifest_floor_debates",
         "manifest_bills": "manifest_bills",
         "manifest_indiacode": "manifest_indiacode",
+        "manifest_attendance": "manifest_attendance",
+        "manifest_myneta": "manifest_myneta",
         "answers_qa": "answers_qa",
         "answers_atr": "answers_atr",
         "answers_dfg": "answers_dfg",

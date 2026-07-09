@@ -529,6 +529,69 @@ class AnswerDfgRecommendation:
 
 
 # ---------------------------------------------------------------------------
+# manifest.jsonl record (attendance)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class ManifestAttendanceRecord:
+    """One Lok Sabha member-wise attendance record from manifest.jsonl."""
+
+    key: str
+    kind: str
+    record_type: str
+    source: str
+    house: str
+    loksabha: int
+    session_no: int
+    probed_at: str
+    mpsno: int | None = None
+    member_name: str | None = None
+    constituency: str | None = None
+    state: str | None = None
+    state_code: str | None = None
+    signed_days_count: int | None = None
+    division: str | None = None
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "ManifestAttendanceRecord":
+        return _from_dict(cls, d)
+
+
+# ---------------------------------------------------------------------------
+# manifest.jsonl record (MyNeta candidate affidavit)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class ManifestMynetaRecord:
+    """One ADR/MyNeta Lok Sabha 2024 candidate affidavit record from manifest.jsonl."""
+
+    key: str
+    kind: str
+    record_type: str
+    source: str
+    election: str
+    candidate_id: int
+    source_url: str
+    probed_at: str
+    constituency_id: int | None = None
+    constituency_name: str | None = None
+    name: str | None = None
+    winner_status: str | None = None
+    party: str | None = None
+    age: int | None = None
+    self_profession: str | None = None
+    spouse_profession: str | None = None
+    education_category: str | None = None
+    assets_rupees: int | None = None
+    liabilities_rupees: int | None = None
+    criminal_cases_declared: int | None = None
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "ManifestMynetaRecord":
+        return _from_dict(cls, d)
+
+
+# ---------------------------------------------------------------------------
 # vacancy_rows.jsonl record
 # ---------------------------------------------------------------------------
 
@@ -619,6 +682,8 @@ __all__ = [
     "ManifestMcaCsrRecord",
     "ManifestMinesDmftRecord",
     "ManifestDoePayAllowancesRecord",
+    "ManifestAttendanceRecord",
+    "ManifestMynetaRecord",
     "ManifestBudgetRecord",
     "ManifestAcademicJobRecord",
     "ManifestFloorDebateRecord",

@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CommonerLLP/commoner-probe/schemas/v1/manifest_attendance.json",
+  "title": "manifest.jsonl — Lok Sabha member-wise attendance",
+  "description": "One Lok Sabha member-wise sitting-attendance record for a given loksabha/session, sourced from the sansad.in native attendance API.",
+  "type": "object",
+  "required": [
+    "key",
+    "kind",
+    "record_type",
+    "source",
+    "house",
+    "loksabha",
+    "session_no",
+    "probed_at"
+  ],
+  "properties": {
+    "key": {
+      "type": "string",
+      "pattern": "^ATTENDANCE\\|\\d+\\|\\d+\\|\\d+$"
+    },
+    "kind": {
+      "type": "string",
+      "const": "attendance"
+    },
+    "record_type": {
+      "type": "string",
+      "const": "attendance"
+    },
+    "source": {
+      "type": "string",
+      "const": "sansad.in/api_ls/member/getMemberAttendanceMemberWise"
+    },
+    "house": {
+      "type": "string",
+      "const": "Lok Sabha"
+    },
+    "loksabha": {
+      "type": "integer"
+    },
+    "session_no": {
+      "type": "integer"
+    },
+    "mpsno": {
+      "type": ["integer", "null"]
+    },
+    "member_name": {
+      "type": ["string", "null"]
+    },
+    "constituency": {
+      "type": ["string", "null"]
+    },
+    "state": {
+      "type": ["string", "null"]
+    },
+    "state_code": {
+      "type": ["string", "null"]
+    },
+    "signed_days_count": {
+      "type": ["integer", "null"]
+    },
+    "division": {
+      "type": ["string", "null"]
+    },
+    "probed_at": {
+      "type": "string"
+    }
+  }
+}

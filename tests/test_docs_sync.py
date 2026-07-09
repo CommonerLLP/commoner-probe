@@ -45,6 +45,8 @@ class CliCommandSyncTests(unittest.TestCase):
                 "dpe-csr",
                 "mines-dmft",
                 "doe-pay-allowances",
+                "attendance",
+                "myneta",
                 "budget",
                 "academic-jobs",
                 "debates",

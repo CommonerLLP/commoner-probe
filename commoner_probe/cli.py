@@ -8,6 +8,7 @@ from pathlib import Path
 from .academia import AcademicJobsProbe
 from .answers import extract_answers
 from .atr_linkage import extract_atr_linkages
+from .attendance import AttendanceProbe
 from .bills import BILLS_API, BillsProbe
 from .budget import RBI_STATE_FINANCES_URL, BudgetProbe
 from .committees import CommitteeProbe, resolve_committees
@@ -20,6 +21,7 @@ from .evidence import build_dmft_evidence_bundle
 from .example_topics import list_example_topics, load_example_topic_text
 from .extract_debates import extract_debates
 from .indiacode import STATE_HANDLES, IndiaCodeProbe
+from .myneta import MyNetaProbe
 from .neva import StateAssemblyCrawler
 from .neva_portals import NevaPortal, iter_portals
 from .sansad import SansadProbe
@@ -396,6 +398,29 @@ def doe_pay_allowances_cmd(args: argparse.Namespace) -> None:
         print(json.dumps(record, ensure_ascii=False))
 
 
+def attendance_cmd(args: argparse.Namespace) -> None:
+    out = Path(args.out)
+    loksabhas = [int(x) for x in (_split_csv(args.loksabhas) or ["18"])]
+    sessions = {int(x) for x in _split_csv(args.sessions)} if args.sessions else None
+    probe = AttendanceProbe(out, sleep=args.sleep, loksabhas=loksabhas, sessions=sessions)
+    records = probe.probe(max_records=args.max_records, dry_run=args.dry_run)
+    for record in records:
+        print(json.dumps(record, ensure_ascii=False))
+
+
+def myneta_cmd(args: argparse.Namespace) -> None:
+    out = Path(args.out)
+    constituency_ids = [int(x) for x in _split_csv(args.constituency_ids)] if args.constituency_ids else None
+    probe = MyNetaProbe(out, sleep=args.sleep)
+    records = probe.probe(
+        constituency_ids=constituency_ids,
+        max_records=args.max_records,
+        dry_run=args.dry_run,
+    )
+    for record in records:
+        print(json.dumps(record, ensure_ascii=False))
+
+
 def budget_cmd(args: argparse.Namespace) -> None:
     out = Path(args.out)
     sources = _split_csv(args.sources) or ["union-budget"]
@@ -754,6 +779,43 @@ def build_parser() -> argparse.ArgumentParser:
         help="Fetch the listing page and print manifest records without downloading PDFs.",
     )
     doe.set_defaults(func=doe_pay_allowances_cmd)
+
+    attendance = sub.add_parser(
+        "attendance",
+        help="Probe Lok Sabha member-wise sitting attendance (sansad.in native API).",
+    )
+    attendance.add_argument("--out", required=True, help="Output directory")
+    attendance.add_argument("--loksabhas", default="18", help="Comma-separated Lok Sabha numbers, e.g. 17,18")
+    attendance.add_argument(
+        "--sessions",
+        help="Comma-separated session numbers to limit to; default = all sessions in the catalog",
+    )
+    attendance.add_argument("--max-records", type=int, help="Stop after N new records (smoke-test brake)")
+    attendance.add_argument("--sleep", type=float, default=0.5)
+    attendance.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="List candidate (loksabha, session) windows without fetching attendance.",
+    )
+    attendance.set_defaults(func=attendance_cmd)
+
+    myneta = sub.add_parser(
+        "myneta",
+        help="Probe ADR/MyNeta Lok Sabha 2024 candidate affidavit summaries (myneta.info).",
+    )
+    myneta.add_argument("--out", required=True, help="Output directory")
+    myneta.add_argument(
+        "--constituency-ids",
+        help="Comma-separated MyNeta constituency_id values to limit to; default = all 543",
+    )
+    myneta.add_argument("--max-records", type=int, help="Stop after N new candidate records (smoke-test brake)")
+    myneta.add_argument("--sleep", type=float, default=1.0)
+    myneta.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="List candidate IDs per constituency without fetching affidavit pages.",
+    )
+    myneta.set_defaults(func=myneta_cmd)
 
     budget = sub.add_parser(
         "budget",
