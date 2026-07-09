@@ -110,3 +110,54 @@ def test_robot_parser_is_cached_per_domain(monkeypatch):
     hc._get_robot_parser("https://cache.example/a")
     hc._get_robot_parser("https://cache.example/b")  # same domain, second path
     assert len(calls) == 1  # robots.txt fetched once per domain
+
+
+def test_robots_fetch_uses_given_user_agent(monkeypatch):
+    """The robots.txt fetch identity must match the identity that will
+    actually request pages (2026-07-09, added while wiring the
+    ministry-DDG adapter — see test_user_agent_override_avoids_waf_false_positive)."""
+    _clear_cache()
+    captured: dict = {}
+
+    def fake_urlopen(req, timeout=None):
+        captured["user_agent"] = req.headers.get("User-agent")  # urllib title-cases header keys
+        return _FakeResp(b"User-agent: *\nDisallow:\n")
+
+    monkeypatch.setattr(hc.urllib.request, "urlopen", fake_urlopen)
+    hc._get_robot_parser("https://ua-demo.example/page", user_agent="my-custom-agent/1.0")
+    assert captured["user_agent"] == "my-custom-agent/1.0"
+
+
+def test_user_agent_override_avoids_waf_false_positive(monkeypatch):
+    """Reproduces the mha.gov.in bug: a WAF returns 403 (not 404) for
+    commoner-probe's default URL-bearing User-Agent, which the fail-open
+    design's 401/403 branch turns into a real 'disallow all' — even though
+    the site has no robots.txt. A scheme-free override User-Agent clears the
+    WAF and gets the true 404 fail-open response. Verified live against
+    mha.gov.in 2026-07-09; this test pins the behaviour without network."""
+    _clear_cache()
+
+    def waf_sensitive_urlopen(req, timeout=None):
+        ua = req.headers.get("User-agent")
+        if ua == hc.USER_AGENT:  # default UA — WAF blocks it
+            raise urllib.error.HTTPError(req.full_url, 403, "Forbidden", hdrs=None, fp=None)
+        raise urllib.error.HTTPError(req.full_url, 404, "Not Found", hdrs=None, fp=None)  # no robots.txt
+
+    monkeypatch.setattr(hc.urllib.request, "urlopen", waf_sensitive_urlopen)
+
+    rp_default = hc._get_robot_parser("https://waf.example/page")
+    assert rp_default.can_fetch(hc.USER_AGENT, "https://waf.example/page") is False
+
+    _clear_cache()
+    rp_override = hc._get_robot_parser("https://waf.example/page", user_agent="scheme-free-agent/1.0")
+    assert rp_override.can_fetch("scheme-free-agent/1.0", "https://waf.example/page") is True
+
+
+def test_make_session_applies_user_agent_override():
+    session = hc.make_session(user_agent="override-agent/2.0")
+    assert session.headers["User-Agent"] == "override-agent/2.0"
+
+
+def test_make_session_default_user_agent_unchanged():
+    session = hc.make_session()
+    assert session.headers["User-Agent"] == hc.USER_AGENT

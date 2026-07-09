@@ -14,6 +14,7 @@ from .budget import RBI_STATE_FINANCES_URL, BudgetProbe
 from .committees import CommitteeProbe, resolve_committees
 from .csr.dpe import DpeCsrProbe
 from .csr.mca import McaCsrProbe
+from .ddg import MINISTRY_DDG_PORTALS, MinistryDDGPortal, MinistryDDGProbe, get_portal
 from .debates import LS_DEBATE_API, RS_DEBATE_API, DebateProbe
 from .dmft.mines import MinesDmftProbe
 from .doe import DoePayAllowancesProbe
@@ -394,6 +395,24 @@ def mines_dmft_cmd(args: argparse.Namespace) -> None:
 def doe_pay_allowances_cmd(args: argparse.Namespace) -> None:
     out = Path(args.out)
     probe = DoePayAllowancesProbe(out, sleep=args.sleep)
+    records = probe.probe(years=_split_csv(args.years), dry_run=args.dry_run)
+    for record in records:
+        print(json.dumps(record, ensure_ascii=False))
+
+
+def ministry_ddg_cmd(args: argparse.Namespace) -> None:
+    out = Path(args.out)
+    if args.listing_url:
+        if not args.ministry_name:
+            raise SystemExit("--ministry-name is required when passing --listing-url directly")
+        portal = MinistryDDGPortal(
+            ministry_code=args.ministry_code,
+            ministry_name=args.ministry_name,
+            listing_url=args.listing_url,
+        )
+    else:
+        portal = get_portal(args.ministry_code)
+    probe = MinistryDDGProbe(out, portal=portal, sleep=args.sleep)
     records = probe.probe(years=_split_csv(args.years), dry_run=args.dry_run)
     for record in records:
         print(json.dumps(record, ensure_ascii=False))
@@ -800,6 +819,39 @@ def build_parser() -> argparse.ArgumentParser:
         help="Fetch the listing page and print manifest records without downloading PDFs.",
     )
     doe.set_defaults(func=doe_pay_allowances_cmd)
+
+    ddg = sub.add_parser(
+        "ministry-ddg",
+        help=(
+            "Download a ministry's own 'Detailed Demands for Grants' (DDG) series "
+            f"from its listing page. Registry: {', '.join(p.ministry_code for p in MINISTRY_DDG_PORTALS)}."
+        ),
+    )
+    ddg.add_argument("--out", required=True, help="Output directory")
+    ddg.add_argument(
+        "--ministry-code",
+        required=True,
+        help="Registry code (see --help), or a new short slug when paired with --listing-url",
+    )
+    ddg.add_argument(
+        "--listing-url",
+        help="DDG listing-page URL for a ministry not yet in the registry (requires --ministry-name)",
+    )
+    ddg.add_argument(
+        "--ministry-name",
+        help="Human-readable ministry/department name, required with --listing-url",
+    )
+    ddg.add_argument(
+        "--years",
+        help="Comma-separated fiscal years to fetch, e.g. 2025-26,2026-27; default = all listed",
+    )
+    ddg.add_argument("--sleep", type=float, default=2.0, help="Pause between requests (default: 2.0)")
+    ddg.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Fetch the listing page and print manifest records without downloading PDFs.",
+    )
+    ddg.set_defaults(func=ministry_ddg_cmd)
 
     attendance = sub.add_parser(
         "attendance",

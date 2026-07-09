@@ -72,7 +72,7 @@ _last_request_by_domain: dict[str, float] = {}
 _robot_parsers: dict[str, urllib.robotparser.RobotFileParser] = {}
 
 
-def _get_robot_parser(url: str) -> urllib.robotparser.RobotFileParser:
+def _get_robot_parser(url: str, *, user_agent: str = USER_AGENT) -> urllib.robotparser.RobotFileParser:
     """Return a cached RobotFileParser for the domain of *url*.
 
     Fail-open: if robots.txt cannot be fetched (network error, timeout, 404,
@@ -84,6 +84,16 @@ def _get_robot_parser(url: str) -> urllib.robotparser.RobotFileParser:
     robots.txt with a bounded ``ROBOTS_TIMEOUT_SEC`` timeout, then hands the body
     to ``RobotFileParser.parse``. HTTP-status handling mirrors ``read()``:
     401/403 disallow everything, other failures fail open.
+
+    *user_agent* is used for the robots.txt fetch itself and is cached
+    alongside the parser — the fetch identity must match the identity that
+    will actually request pages, or the check is meaningless. One WAF-gated
+    government portal (mha.gov.in, verified 2026-07-09) returns 403 for
+    commoner-probe's default URL-bearing User-Agent specifically (the same
+    class of false-positive documented for indiabudget.gov.in in
+    ``budget/probe.py``'s ``BUDGET_USER_AGENT``), which this fail-open design
+    would otherwise turn into a real robots block via the 401/403 branch
+    below — even though the site has no robots.txt at all.
     """
     parsed = urlparse(url)
     domain = parsed.netloc
@@ -92,7 +102,7 @@ def _get_robot_parser(url: str) -> urllib.robotparser.RobotFileParser:
         robots_url = f"{parsed.scheme}://{domain}/robots.txt"
         rp.set_url(robots_url)
         try:
-            req = urllib.request.Request(robots_url, headers={"User-Agent": USER_AGENT})
+            req = urllib.request.Request(robots_url, headers={"User-Agent": user_agent})
             with urllib.request.urlopen(req, timeout=ROBOTS_TIMEOUT_SEC) as resp:
                 raw = resp.read()
             rp.parse(raw.decode("utf-8", errors="replace").splitlines())
@@ -153,9 +163,12 @@ try:
         and 5xx backoff. Preserves the .get() / .headers interface.
         """
 
-        def __init__(self, rate_limit_sec: float = DEFAULT_RATE_LIMIT_SEC) -> None:
+        def __init__(self, rate_limit_sec: float = DEFAULT_RATE_LIMIT_SEC, *, user_agent: str | None = None) -> None:
             self._session = _make_base_session()
             self.rate_limit_sec = rate_limit_sec
+            self._user_agent = user_agent or USER_AGENT
+            if user_agent:
+                self._session.headers["User-Agent"] = user_agent
             self.headers = self._session.headers
 
         def get(self, url: str, *, respect_robots: bool = True, **kwargs: Any) -> Any:
@@ -165,8 +178,8 @@ try:
             # public-interest official sources (e.g. a recruitment portal that
             # blanket-disallows crawlers); callers gate it on registry config.
             if respect_robots:
-                rp = _get_robot_parser(url)
-                if not rp.can_fetch(USER_AGENT, url):
+                rp = _get_robot_parser(url, user_agent=self._user_agent)
+                if not rp.can_fetch(self._user_agent, url):
                     raise PermissionError(f"Disallowed by robots.txt: {url}")
             domain = urlparse(url).netloc
             _rate_limit(domain, self.rate_limit_sec)
@@ -187,8 +200,8 @@ try:
         def __getattr__(self, name: str) -> Any:
             return getattr(self._session, name)
 
-    def make_session(rate_limit_sec: float = DEFAULT_RATE_LIMIT_SEC) -> RetrySession:
-        return RetrySession(rate_limit_sec=rate_limit_sec)
+    def make_session(rate_limit_sec: float = DEFAULT_RATE_LIMIT_SEC, *, user_agent: str | None = None) -> RetrySession:
+        return RetrySession(rate_limit_sec=rate_limit_sec, user_agent=user_agent)
 
 except ModuleNotFoundError:
     # Stdlib fallback — no SSRF guard, no retry, no cache, no rate-limit.
@@ -213,8 +226,8 @@ except ModuleNotFoundError:
                 yield self._body[i : i + chunk_size]
 
     class StdlibSession:  # type: ignore[no-redef]
-        def __init__(self) -> None:
-            self.headers: dict[str, str] = {"User-Agent": USER_AGENT}
+        def __init__(self, *, user_agent: str | None = None) -> None:
+            self.headers: dict[str, str] = {"User-Agent": user_agent or USER_AGENT}
 
         def get(self, url: str, **kwargs: Any) -> StdlibResponse:
             params = kwargs.get("params")
@@ -232,5 +245,5 @@ except ModuleNotFoundError:
 
     requests = types.SimpleNamespace(Session=StdlibSession)  # type: ignore[assignment]
 
-    def make_session(rate_limit_sec: float = DEFAULT_RATE_LIMIT_SEC) -> StdlibSession:  # type: ignore[misc]
-        return StdlibSession()
+    def make_session(rate_limit_sec: float = DEFAULT_RATE_LIMIT_SEC, *, user_agent: str | None = None) -> StdlibSession:  # type: ignore[misc]
+        return StdlibSession(user_agent=user_agent)
