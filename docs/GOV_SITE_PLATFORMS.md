@@ -95,19 +95,68 @@ anything about their content.
   above, discovered a day earlier before the shared-platform pattern was
   obvious.
 
+## Headless-browser rendering was tried (2026-07-09) — does NOT cleanly fix this group
+
+Installed Playwright + headless Chromium and live-tested it against 5 of the
+13 blocked ministries. Verdict: **necessary but not sufficient** — it did not
+cleanly recover a single one of the 5 tested, for two distinct reasons that
+don't share a fix:
+
+**1. A subset of ministries share an Akamai Bot Manager deployment that
+blocks the headless browser itself, not just `curl`.** Confirmed by the
+literal response body, not inference: MeitY, Power, and Labour (tested this
+session) return the identical Akamai fingerprint —
+`https://errors.edgesuite.net/<reference>` — to a real headless Chromium
+navigation, same as MHA's earlier robots.txt block and MCA's blanket 403.
+This is **not** a UA-string problem (the `SCHEME_FREE_USER_AGENT` fix that
+cleared MHA's robots.txt block does not apply here) — it's bot/TLS
+fingerprinting at the WAF layer. Checked the actual hosting signature across
+both groups: the Akamai-fronted ministries (MHA, MeitY, MCA, Power, likely
+Labour/Agriculture) are a distinct, shared infrastructure cluster; the
+ministries that work cleanly (DST, DoLR, MoEFCC, MoPNG, Steel, DEA, DoE) all
+return a bare `Server: Apache`/NIC signature with no CDN or bot-detection
+layer at all. This tracks with each ministry independently procuring its own
+hosting — there is no single government-wide WAF policy, only some
+ministries (mostly larger/higher-profile ones) have Akamai's paid
+bot-protection tier. Getting past this would mean fingerprint-evasion
+techniques (stealth-patched browsers) — a categorically different, more
+adversarial technique than plain scraping of a public disclosure, and
+deliberately not pursued without an explicit decision to do so.
+
+**2. For the non-WAF sites, the previously-found candidate URLs are often
+stale.** Housing & Urban Affairs' candidate (`/cms/detailed-demand-for-grants.php`)
+is a dead pre-migration link — the `.php` extension is the tell — and the
+current site's real navigation menu has no Budget/Grants entry in the same
+place at all (checked the live homepage nav, 112 links, none matched).
+MoRTH's candidate URL rendered a real page (Angular prerender, correct
+`<title>`) but not DDG content — same "URL moved, browser can't guess where
+to" problem. **The browser renders the site fine; the specific URL doesn't
+correspond to real content anymore.** This needs fresh per-site navigation
+discovery on the *current* site structure, not a generic headless fetch —
+i.e. real research time per ministry, the same kind this whole document
+already represents, not a one-time infrastructure investment.
+
+**Decision (2026-07-09, Commoner): stop here, document, do not pursue
+per-site URL rediscovery or WAF fingerprint-evasion right now.** Revisit if
+there's a specific data need that justifies the per-site research cost.
+
 ## What would actually move this forward
 
-1. **A headless-browser fetch tier.** The JS-SPA-blocked group is now the
-   *majority* of ministries checked, not an edge case. A Playwright-based
-   fallback (even a slow, low-concurrency one, given these are one-time
-   annual documents) would likely unlock most of that table in one piece of
-   infrastructure, rather than one-off reverse-engineering per ministry.
-2. **India-based egress for the network-unreachable group.** Worth a retry
+1. **India-based egress for the network-unreachable group.** Worth a retry
    from the india-fetch box (referenced elsewhere in org memory) before
-   concluding anything about Railways, Social Justice, or Defence.
-3. **An explicit policy call on the three flagged-but-working sites**
-   (Steel/Tribal TLS, WCD robots.txt) — these are the cheapest possible wins
-   if Commoner is comfortable with a scoped, documented override for each.
-4. **MCA's WAF** is a harder problem (TLS-fingerprint-level, not UA-string)
-   and probably isn't worth chasing until the headless-browser tier exists
-   anyway — it would likely need the same tooling.
+   concluding anything about Railways, Social Justice, or Defence — this
+   group is a genuinely different failure mode (connection-level, not
+   rendering or WAF) and the fix is plausible with zero new tooling.
+2. **An explicit policy call on the three flagged-but-working sites**
+   (Steel/Tribal TLS, WCD robots.txt) — the cheapest possible wins, since the
+   content is already known to be scrapeable; just needs a scoped, documented
+   override decision for each.
+3. **Per-site URL rediscovery**, ministry by ministry, for the non-WAF SPA
+   group (Housing, MoRTH, MoHFW, Mines, Textiles, Jal Shakti, Rural
+   Development's main dept., Commerce) — real research time, not
+   infrastructure. Housing and MoRTH's specific failure modes are now
+   documented above as a starting point.
+4. **The Akamai-fronted group (MeitY, Power, Labour, MCA, and likely
+   Agriculture)** is the hardest tier — fingerprint-evasion is a real
+   technique with real dual-use weight to it, not something to reach for by
+   default. Leave it out of scope until there's a specific reason to revisit.
