@@ -508,6 +508,38 @@ that needs OCR (the 2022-23 edition is one). doe.gov.in's WAF resets
 back-to-back requests, so the default `--sleep` is 3 seconds. Use `--dry-run`
 to enumerate the listing without downloading.
 
+### `commoner-probe attendance` — Lok Sabha member-wise sitting attendance
+
+```bash
+commoner-probe attendance \
+  --out data/attendance \
+  --loksabhas 18 \
+  --sessions 5
+```
+
+Acquires member-wise sitting attendance via the sansad.in native attendance
+API (`api_ls/member/getMemberAttendanceMemberWise`) — one `manifest.jsonl`
+record per member per session, with `signed_days_count` and `division`.
+Supersedes an earlier PRS-attendance want (primary source, no ToS question).
+`--sessions` defaults to every session in the `AllLoksabhaAndSessionDates`
+catalog for the given `--loksabhas`. Use `--dry-run` to list candidate
+(loksabha, session) windows without fetching.
+
+### `commoner-probe myneta` — ADR/MyNeta candidate affidavits (Lok Sabha 2024)
+
+```bash
+commoner-probe myneta \
+  --out data/myneta \
+  --constituency-ids 579
+```
+
+Acquires self-declared ECI-affidavit candidate summaries from myneta.info
+(Association for Democratic Reforms) for Lok Sabha 2024: assets, liabilities,
+declared criminal cases (read from the site's own Crime-O-Meter gauge value),
+age, education, self/spouse profession, and the per-candidate source URL.
+`--constituency-ids` defaults to all 543 constituencies. Use `--dry-run` to
+list candidate IDs per constituency without fetching affidavit pages.
+
 ### `commoner-probe bills` — bills & legislation catalog
 
 ```bash

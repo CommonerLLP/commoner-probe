@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CommonerLLP/commoner-probe/schemas/v1/manifest_myneta.json",
+  "title": "manifest.jsonl — ADR/MyNeta candidate affidavit",
+  "description": "One self-declared ECI-affidavit candidate summary from myneta.info (Association for Democratic Reforms). criminal_cases_declared is read from the site's own Crime-O-Meter gauge value, not re-derived from case-table row counts.",
+  "type": "object",
+  "required": [
+    "key",
+    "kind",
+    "record_type",
+    "source",
+    "election",
+    "candidate_id",
+    "source_url",
+    "probed_at"
+  ],
+  "properties": {
+    "key": {
+      "type": "string",
+      "pattern": "^MYNETA\\|LS2024\\|\\d+$"
+    },
+    "kind": {
+      "type": "string",
+      "const": "myneta_candidate"
+    },
+    "record_type": {
+      "type": "string",
+      "const": "myneta_candidate"
+    },
+    "source": {
+      "type": "string",
+      "const": "myneta.info"
+    },
+    "election": {
+      "type": "string",
+      "const": "LokSabha2024"
+    },
+    "candidate_id": {
+      "type": "integer"
+    },
+    "constituency_id": {
+      "type": ["integer", "null"]
+    },
+    "constituency_name": {
+      "type": ["string", "null"]
+    },
+    "name": {
+      "type": ["string", "null"]
+    },
+    "winner_status": {
+      "type": ["string", "null"]
+    },
+    "party": {
+      "type": ["string", "null"]
+    },
+    "age": {
+      "type": ["integer", "null"]
+    },
+    "self_profession": {
+      "type": ["string", "null"]
+    },
+    "spouse_profession": {
+      "type": ["string", "null"]
+    },
+    "education_category": {
+      "type": ["string", "null"]
+    },
+    "assets_rupees": {
+      "type": ["integer", "null"]
+    },
+    "liabilities_rupees": {
+      "type": ["integer", "null"]
+    },
+    "criminal_cases_declared": {
+      "type": ["integer", "null"]
+    },
+    "source_url": {
+      "type": "string",
+      "format": "uri"
+    },
+    "probed_at": {
+      "type": "string"
+    }
+  }
+}
