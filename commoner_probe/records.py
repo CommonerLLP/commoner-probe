@@ -529,6 +529,36 @@ class AnswerDfgRecommendation:
 
 
 # ---------------------------------------------------------------------------
+# manifest.jsonl record (legacy DSpace item)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class ManifestLegacyDspaceRecord:
+    """One legacy-DSpace (XMLUI/JSPUI) item record from manifest.jsonl."""
+
+    key: str
+    kind: str
+    record_type: str
+    source: str
+    portal_name: str
+    handle_id: str
+    handle_prefix: str
+    status: str
+    probed_at: str
+    title: str | None = None
+    issue_date_raw: str | None = None
+    publisher: str | None = None
+    type: str | None = None
+    collection: str | None = None
+    bitstream_paths: list = field(default_factory=list)
+    downloads: list = field(default_factory=list)
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "ManifestLegacyDspaceRecord":
+        return _from_dict(cls, d)
+
+
+# ---------------------------------------------------------------------------
 # manifest.jsonl record (attendance)
 # ---------------------------------------------------------------------------
 
@@ -684,6 +714,7 @@ __all__ = [
     "ManifestDoePayAllowancesRecord",
     "ManifestAttendanceRecord",
     "ManifestMynetaRecord",
+    "ManifestLegacyDspaceRecord",
     "ManifestBudgetRecord",
     "ManifestAcademicJobRecord",
     "ManifestFloorDebateRecord",

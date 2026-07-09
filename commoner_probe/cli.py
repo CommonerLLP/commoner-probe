@@ -17,6 +17,7 @@ from .csr.mca import McaCsrProbe
 from .debates import LS_DEBATE_API, RS_DEBATE_API, DebateProbe
 from .dmft.mines import MinesDmftProbe
 from .doe import DoePayAllowancesProbe
+from .dspace import DEFAULT_HANDLE_PREFIX, LegacyDSpaceProbe
 from .evidence import build_dmft_evidence_bundle
 from .example_topics import list_example_topics, load_example_topic_text
 from .extract_debates import extract_debates
@@ -404,6 +405,26 @@ def attendance_cmd(args: argparse.Namespace) -> None:
     sessions = {int(x) for x in _split_csv(args.sessions)} if args.sessions else None
     probe = AttendanceProbe(out, sleep=args.sleep, loksabhas=loksabhas, sessions=sessions)
     records = probe.probe(max_records=args.max_records, dry_run=args.dry_run)
+    for record in records:
+        print(json.dumps(record, ensure_ascii=False))
+
+
+def legacy_dspace_cmd(args: argparse.Namespace) -> None:
+    out = Path(args.out)
+    probe = LegacyDSpaceProbe(
+        out,
+        base_url=args.base_url,
+        portal_name=args.portal_name,
+        handle_prefix=args.handle_prefix,
+        sleep=args.sleep,
+        rpp=args.rpp,
+    )
+    records = probe.probe(
+        browse_type=args.browse_type,
+        max_records=args.max_records,
+        download=args.download,
+        dry_run=args.dry_run,
+    )
     for record in records:
         print(json.dumps(record, ensure_ascii=False))
 
@@ -816,6 +837,37 @@ def build_parser() -> argparse.ArgumentParser:
         help="List candidate IDs per constituency without fetching affidavit pages.",
     )
     myneta.set_defaults(func=myneta_cmd)
+
+    legacy_dspace = sub.add_parser(
+        "legacy-dspace",
+        help=(
+            "Probe a legacy DSpace (XMLUI/JSPUI) portal with no working REST API "
+            "via its browse index and item/bitstream pages."
+        ),
+    )
+    legacy_dspace.add_argument("--out", required=True, help="Output directory")
+    legacy_dspace.add_argument("--base-url", required=True, help="Portal base URL, e.g. https://aladigitallibrary.in")
+    legacy_dspace.add_argument("--portal-name", required=True, help="Short slug for this portal, e.g. assam-ala")
+    legacy_dspace.add_argument(
+        "--handle-prefix",
+        default=DEFAULT_HANDLE_PREFIX,
+        help=f"DSpace handle prefix (default: {DEFAULT_HANDLE_PREFIX})",
+    )
+    legacy_dspace.add_argument(
+        "--browse-type",
+        default="dateissued",
+        help="Browse index type to paginate, e.g. dateissued, title (default: dateissued)",
+    )
+    legacy_dspace.add_argument("--rpp", type=int, default=100, help="Results per browse page")
+    legacy_dspace.add_argument("--max-records", type=int, help="Stop after N new records (smoke-test brake)")
+    legacy_dspace.add_argument("--sleep", type=float, default=1.0)
+    legacy_dspace.add_argument("--download", action="store_true", help="Download bitstream PDFs (metadata-only by default)")
+    legacy_dspace.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="List candidate handles from the browse index without fetching item pages.",
+    )
+    legacy_dspace.set_defaults(func=legacy_dspace_cmd)
 
     budget = sub.add_parser(
         "budget",

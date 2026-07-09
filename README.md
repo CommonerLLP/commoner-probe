@@ -606,6 +606,28 @@ commoner-probe indiacode --out data/indiacode --all-states --max-acts 5
 | `--rpp` | `100` | Results per browse page (India Code enumeration) |
 | `--dry-run` | off | Emit one planning record per state without fetching |
 
+### `commoner-probe legacy-dspace` — legacy DSpace (XMLUI/JSPUI) portals
+
+```bash
+commoner-probe legacy-dspace \
+  --out data/assam-ala \
+  --base-url https://aladigitallibrary.in \
+  --portal-name assam-ala
+```
+
+Acquires items from a legacy DSpace instance with no working REST API
+(state-legislature digital libraries and similar archives), via its browse
+index and item/bitstream pages. Parameterised by `--base-url` and
+`--handle-prefix` (default `123456789`, the DSpace default) — not specific
+to any one portal. First verified target: the Assam Legislative Assembly
+Digital Library (DSpace 6.3, 2,922 items). Metadata-only by default; use
+`--download` to also fetch bitstream PDFs. `--dry-run` lists candidate
+handles from the browse index without fetching item pages.
+
+Distinct from `commoner-probe indiacode`, which targets indiacode.nic.in's
+JSPUI theme specifically (different browse-page markup) — the two adapters
+are kept separate rather than forcing one regex set across both themes.
+
 ### `commoner-probe budget` — Union Budget & RBI State-Finances files
 
 ```bash

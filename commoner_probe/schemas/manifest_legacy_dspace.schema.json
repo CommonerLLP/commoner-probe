@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CommonerLLP/commoner-probe/schemas/v1/manifest_legacy_dspace.json",
+  "title": "manifest.jsonl — legacy DSpace item (XMLUI/JSPUI)",
+  "description": "One item acquired from a legacy DSpace (XMLUI/JSPUI) portal with no working REST API, harvested via its browse index and item/bitstream pages. issue_date_raw is kept verbatim (e.g. 'Jan-  24') since these portals often render truncated or inconsistently formatted dates.",
+  "type": "object",
+  "required": [
+    "key",
+    "kind",
+    "record_type",
+    "source",
+    "portal_name",
+    "handle_id",
+    "handle_prefix",
+    "status",
+    "probed_at"
+  ],
+  "properties": {
+    "key": {
+      "type": "string",
+      "pattern": "^DSPACE\\|[a-z0-9-]+\\|\\d+$"
+    },
+    "kind": {
+      "type": "string",
+      "const": "legacy_dspace_item"
+    },
+    "record_type": {
+      "type": "string",
+      "const": "legacy_dspace_item"
+    },
+    "source": {
+      "type": "string",
+      "format": "uri"
+    },
+    "portal_name": {
+      "type": "string"
+    },
+    "handle_id": {
+      "type": "string"
+    },
+    "handle_prefix": {
+      "type": "string"
+    },
+    "title": {
+      "type": ["string", "null"]
+    },
+    "issue_date_raw": {
+      "type": ["string", "null"]
+    },
+    "publisher": {
+      "type": ["string", "null"]
+    },
+    "type": {
+      "type": ["string", "null"]
+    },
+    "collection": {
+      "type": ["string", "null"]
+    },
+    "bitstream_paths": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "downloads": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "dest", "sha256"],
+        "properties": {
+          "path": { "type": "string" },
+          "dest": { "type": "string" },
+          "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+        }
+      }
+    },
+    "status": {
+      "type": "string",
+      "enum": ["dry_run", "metadata_only", "downloaded", "no_bitstream_found"]
+    },
+    "probed_at": {
+      "type": "string"
+    }
+  }
+}

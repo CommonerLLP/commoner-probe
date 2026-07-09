@@ -47,6 +47,7 @@ class CliCommandSyncTests(unittest.TestCase):
                 "doe-pay-allowances",
                 "attendance",
                 "myneta",
+                "legacy-dspace",
                 "budget",
                 "academic-jobs",
                 "debates",
