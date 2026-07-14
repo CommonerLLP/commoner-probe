@@ -44,6 +44,7 @@ from typing import TYPE_CHECKING, Iterator
 from .records import (
     AnswerAtrResponse,
     AnswerDfgRecommendation,
+    AnswerNevaQaResponse,
     AnswerQaResponse,
     AtrLinkageRecord,
     ManifestAcademicJobRecord,
@@ -61,6 +62,7 @@ from .records import (
     ManifestMynetaRecord,
     ManifestQaRecord,
     ManifestTabledPaperRecord,
+    NevaDistrictRowRecord,
     RunRecord,
     VacancyRowRecord,
 )
@@ -229,6 +231,18 @@ class Corpus:
             if d.get("kind") == "atr_response":
                 yield AnswerAtrResponse.from_dict(d)
 
+    def answers_neva_qa(self) -> Iterator[AnswerNevaQaResponse]:
+        """Stream neva_qa_response records from answers.jsonl."""
+        for d in _iter_jsonl(self.out_dir / "answers.jsonl"):
+            if d.get("kind") == "neva_qa_response":
+                yield AnswerNevaQaResponse.from_dict(d)
+
+    def neva_district_rows(self) -> Iterator[NevaDistrictRowRecord]:
+        """Stream district-table rows from neva_district_rows.jsonl."""
+        for d in _iter_jsonl(self.out_dir / "neva_district_rows.jsonl"):
+            if d.get("kind") == "neva_district_row":
+                yield NevaDistrictRowRecord.from_dict(d)
+
     def answers_dfg(self) -> Iterator[AnswerDfgRecommendation]:
         """Stream dfg_recommendation records from answers.jsonl."""
         for d in _iter_jsonl(self.out_dir / "answers.jsonl"):
@@ -359,6 +373,8 @@ class Corpus:
         "manifest_legacy_dspace": "manifest_legacy_dspace",
         "manifest_tabled_papers": "manifest_tabled_papers",
         "answers_qa": "answers_qa",
+        "answers_neva_qa": "answers_neva_qa",
+        "neva_district_rows": "neva_district_rows",
         "answers_atr": "answers_atr",
         "answers_dfg": "answers_dfg",
         "vacancy_rows": "vacancy_rows",

@@ -455,7 +455,22 @@ A vacancy question answered without a sanctioned/vacant table emits a single
 marker record — `layout: "evasive"` for boilerplate/aggregate-only refusals
 (the refusal is itself data), `layout: "unknown"` for a genuine parse miss.
 
-Requires `pip install "commoner-probe[pdf]"`.
+**NeVA (Gujarati) corpora.** When the corpus directory carries a
+`questions.jsonl` (the state-assembly layout) instead of `manifest.jsonl`,
+`extract-answers` runs the Gujarati NeVA extractor instead: the two-column
+પ્રશ્ન|જવાબ layout is split by column geometry into `neva_qa_response`
+records, and district→figures table rows land in `neva_district_rows.jsonl`
+(district matched verbatim against the 33-district Gujarat gazetteer;
+figures in print order; Gujarati numerals translated). A share of Gujarat
+NeVA PDFs carries a broken embedded-font ToUnicode map that garbles the
+Gujarati text layer; every record carries a `quality` verdict — `clean`
+(portal metadata subject found verbatim), `repaired` (found after a
+glyph-repair map derived by aligning the clean subject against its garbled
+rendering), or `low` (unrecoverable text layer: the OCR backlog). The
+corruption is sometimes many-to-one, so repair is only applied where it
+can be proven against the reference line — never guessed.
+
+Requires `pip install "commoner-probe[pdf]"` (or a `pdftotext` binary on PATH).
 
 ### `commoner-probe atr-linkage` — ATR → original report
 

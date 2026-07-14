@@ -486,6 +486,52 @@ class AnswerQaResponse:
 
 
 @dataclass
+class AnswerNevaQaResponse:
+    """One NeVA Gujarati Q/A extraction (kind='neva_qa_response') from answers.jsonl."""
+
+    key: str
+    kind: str
+    source_pdf: str
+    extracted_at: str
+    question_text: str
+    answer_text: str
+    confidence: float
+    quality: str
+    extractor: str
+    boundary_marker: str = ""
+    question_subject: str | None = None
+    question_ref: str | None = None
+    language_classified: list = field(default_factory=list)
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "AnswerNevaQaResponse":
+        return _from_dict(cls, d)
+
+
+@dataclass
+class NevaDistrictRowRecord:
+    """One district→figures table row from neva_district_rows.jsonl."""
+
+    key: str
+    kind: str
+    source_pdf: str
+    extracted_at: str
+    district: str
+    figures: list
+    primary_figure: float
+    raw_line: str
+    quality: str
+    extractor: str
+    area: str = ""
+    line_no: int | None = None
+    language_classified: list = field(default_factory=list)
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "NevaDistrictRowRecord":
+        return _from_dict(cls, d)
+
+
+@dataclass
 class AnswerAtrResponse:
     """One ATR recommendation/response pair (kind='atr_response') from answers.jsonl."""
 
@@ -750,8 +796,10 @@ __all__ = [
     "ManifestBillRecord",
     "ManifestIndiaCodeRecord",
     "AnswerQaResponse",
+    "AnswerNevaQaResponse",
     "AnswerAtrResponse",
     "AnswerDfgRecommendation",
+    "NevaDistrictRowRecord",
     "VacancyRowRecord",
     "AtrLinkageRecord",
     "RunRecord",

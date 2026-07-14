@@ -581,8 +581,17 @@ def extract_debates_cmd(args: argparse.Namespace) -> None:
 
 def extract_answers_cmd(args: argparse.Namespace) -> None:
     out = Path(args.out)
+    if (out / "questions.jsonl").exists():
+        # NeVA state-assembly corpus layout (no manifest.jsonl).
+        from .neva_text import extract_neva_answers
+
+        extract_neva_answers(out, log_fn=print)
+        return
     if not (out / "manifest.jsonl").exists():
-        raise SystemExit(f"no manifest at {out}/manifest.jsonl — run 'sansad' first")
+        raise SystemExit(
+            f"no manifest at {out}/manifest.jsonl and no questions.jsonl — "
+            "run 'sansad' or 'state-assembly' first"
+        )
     extract_answers(out, refresh=args.refresh, log_fn=print)
 
 
