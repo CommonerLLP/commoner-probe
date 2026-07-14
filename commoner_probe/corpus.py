@@ -60,6 +60,7 @@ from .records import (
     ManifestMinesDmftRecord,
     ManifestMynetaRecord,
     ManifestQaRecord,
+    ManifestTabledPaperRecord,
     RunRecord,
     VacancyRowRecord,
 )
@@ -208,6 +209,12 @@ class Corpus:
             if d.get("kind") == "legacy_dspace_item":
                 yield ManifestLegacyDspaceRecord.from_dict(d)
 
+    def manifest_tabled_papers(self) -> Iterator[ManifestTabledPaperRecord]:
+        """Stream tabled-paper / title-search records from manifest.jsonl."""
+        for d in _iter_jsonl(self.out_dir / "manifest.jsonl"):
+            if d.get("kind") == "tabled_paper":
+                yield ManifestTabledPaperRecord.from_dict(d)
+
     # --- Answers ---
 
     def answers_qa(self) -> Iterator[AnswerQaResponse]:
@@ -350,6 +357,7 @@ class Corpus:
         "manifest_attendance": "manifest_attendance",
         "manifest_myneta": "manifest_myneta",
         "manifest_legacy_dspace": "manifest_legacy_dspace",
+        "manifest_tabled_papers": "manifest_tabled_papers",
         "answers_qa": "answers_qa",
         "answers_atr": "answers_atr",
         "answers_dfg": "answers_dfg",
