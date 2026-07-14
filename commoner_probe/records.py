@@ -605,6 +605,34 @@ class ManifestLegacyDspaceRecord:
 
 
 # ---------------------------------------------------------------------------
+# manifest.jsonl record (tabled paper / title-search item)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class ManifestTabledPaperRecord:
+    """One eLibrary title-search item (e.g. Papers Laid) from manifest.jsonl."""
+
+    key: str
+    kind: str
+    record_type: str
+    source: str
+    uuid: str
+    status: str
+    probed_at: str
+    run_id: str | None = None
+    handle: str | None = None
+    title: str | None = None
+    date_issued: str | None = None
+    uri: str | None = None
+    query: str | None = None
+    downloads: list = field(default_factory=list)
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "ManifestTabledPaperRecord":
+        return _from_dict(cls, d)
+
+
+# ---------------------------------------------------------------------------
 # manifest.jsonl record (attendance)
 # ---------------------------------------------------------------------------
 
@@ -761,6 +789,7 @@ __all__ = [
     "ManifestAttendanceRecord",
     "ManifestMynetaRecord",
     "ManifestLegacyDspaceRecord",
+    "ManifestTabledPaperRecord",
     "ManifestBudgetRecord",
     "ManifestAcademicJobRecord",
     "ManifestFloorDebateRecord",

@@ -369,6 +369,45 @@ commoner-probe sansad --all \
   --no-download
 ```
 
+### `commoner-probe sansad tabled` — tabled papers / title search
+
+The Parliament Digital Library holds more than Q&A — Papers Laid on the
+Table, reports, and reviews have no question number and never match the
+Q&A category facet. The `tabled` mode searches the eLibrary by title
+(or full text) with no category filter and downloads every PDF bitstream
+of each matching item with per-bitstream provenance (sha256, bytes,
+source URL).
+
+```bash
+commoner-probe sansad tabled \
+  --query '"Delhi Public Library"' \
+  --title-filter 'review|annual report|account' \
+  --max-records 20 \
+  --out data/tabled-dpl
+```
+
+Solr ORs bare terms — `--query 'library review'` matches every title
+containing *either* word, which can be tens of thousands of items with
+multi-MB scans each. Quote phrases, and use `--title-filter` /
+`--max-records` / `--max-pages` to keep runs bounded.
+
+| Flag | Default | What it does |
+|---|---|---|
+| `--query` | required | Title search query (Solr syntax) |
+| `--out` | required | Output corpus directory |
+| `--title-filter` | — | Keep only titles matching this regex (case-insensitive) |
+| `--full-text` | off | Search full text instead of titles only |
+| `--size` | `100` | Results per search page |
+| `--max-pages N` | — | Stop after N search pages (smoke-test) |
+| `--max-records N` | — | Stop after N new records (smoke-test) |
+| `--no-download` | off | Record metadata without downloading bitstreams |
+
+Records land in `manifest.jsonl` as `kind: "tabled_paper"`; PDFs under
+`pdfs/tabled/`. Note `elibrary.sansad.in` has been observed to fail DNS
+resolution from some non-India network paths (a DNS-level geo-fence);
+when that happens the command fails with an explicit geo-fence message
+pointing at India-egress, rather than a bare traceback.
+
 ### `commoner-probe committees` — standing committee reports
 
 ```bash
