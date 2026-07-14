@@ -546,6 +546,37 @@ Downloads raw Ministry of Mines static CSV snapshots and Odisha DMFT public
 JSON/report surfaces. Use `--dry-run` to print manifest records without opening
 network sessions.
 
+### `commoner-probe mospi` — MoSPI eSankhyiki statistics API
+
+The eSankhyiki portal fronts MoSPI's statistical datasets (PLFS, AISHE,
+UDISE, ASI, NAS, HCES registered; extensible) behind a REST API with one
+route family per dataset. The client wraps indicator discovery, filter
+discovery, paginated tidy-row pulls to CSV, and an exhaustive per-year
+dump mode — every pull gets a provenance manifest row (endpoint, exact
+params, row count, CSV sha256).
+
+```bash
+commoner-probe mospi --list-datasets
+commoner-probe mospi --dataset UDISE --indicators
+commoner-probe mospi --dataset UDISE --filters --param indicator_code=41
+commoner-probe mospi --dataset UDISE --pull \
+  --param indicator_code=41 --param year=2024-25 --param state_code=8 \
+  --out data/mospi
+commoner-probe mospi --dataset UDISE --dump-all \
+  --param indicator_code=41 --out data/mospi
+```
+
+Filter codes are dataset-specific API codes (PLFS `state_code=99` is
+All-India, AISHE uses `37`) — always read them from `--filters`, never
+guess. Omitting `state_code` returns all states in one pull.
+
+Two environment notes: `api.mospi.gov.in` is TCP-blocked from at least
+some non-India network paths — run from an India-egress host or set
+`HTTPS_PROXY=socks5h://...` to an India-region relay. The API's TLS
+chain uses a government CA missing from Python's default `certifi`
+bundle; point `REQUESTS_CA_BUNDLE` at a system bundle that carries it
+(e.g. `/etc/ssl/cert.pem` on macOS).
+
 ### `commoner-probe doe-pay-allowances` — DoE Pay & Allowances annual reports
 
 ```bash

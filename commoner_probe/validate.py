@@ -69,6 +69,8 @@ def _pick_schema_name(rec: dict) -> str | None:
         return "manifest_tabled_paper"
     if kind == "ministry_ddg_document":
         return "manifest_ministry_ddg"
+    if kind == "mospi_pull":
+        return "manifest_mospi"
     return None
 
 
