@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CommonerLLP/commoner-probe/schemas/v1/neva_district_row.json",
+  "title": "neva_district_rows.jsonl — district→figures table row",
+  "description": "One district table row extracted deterministically from a NeVA answer. figures carries every numeric token on the row in print order; column semantics (permits vs seizures vs revenue) are the consumer's interpretation, not this layer's. A row exists only where the district name matched the clean gazetteer verbatim on that line (a corrupted name never matches); quality carries the document-level text-layer verdict so consumers can filter harder.",
+  "type": "object",
+  "required": [
+    "key",
+    "kind",
+    "district",
+    "figures",
+    "primary_figure",
+    "raw_line",
+    "quality",
+    "extractor",
+    "source_pdf",
+    "extracted_at"
+  ],
+  "properties": {
+    "key": { "type": "string" },
+    "kind": { "type": "string", "const": "neva_district_row" },
+    "district": { "type": "string" },
+    "area": { "type": "string" },
+    "figures": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "number" }
+    },
+    "primary_figure": { "type": "number" },
+    "raw_line": { "type": "string" },
+    "line_no": { "type": "integer", "minimum": 1 },
+    "quality": { "type": "string", "enum": ["clean", "repaired", "low", "unknown"] },
+    "extractor": { "type": "string" },
+    "source_pdf": { "type": "string" },
+    "extracted_at": { "type": "string" },
+    "language_classified": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}
