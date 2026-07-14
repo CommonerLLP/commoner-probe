@@ -559,6 +559,33 @@ class ManifestLegacyDspaceRecord:
 
 
 # ---------------------------------------------------------------------------
+# manifest.jsonl record (MoSPI eSankhyiki pull)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class ManifestMospiRecord:
+    """One MoSPI eSankhyiki API pull record from manifest.jsonl."""
+
+    key: str
+    kind: str
+    record_type: str
+    source: str
+    dataset: str
+    endpoint: str
+    rows: int
+    csv_path: str
+    sha256: str
+    fetched_at: str
+    probed_at: str
+    params: dict = field(default_factory=dict)
+    truncated: bool = False
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "ManifestMospiRecord":
+        return _from_dict(cls, d)
+
+
+# ---------------------------------------------------------------------------
 # manifest.jsonl record (attendance)
 # ---------------------------------------------------------------------------
 
@@ -715,6 +742,7 @@ __all__ = [
     "ManifestAttendanceRecord",
     "ManifestMynetaRecord",
     "ManifestLegacyDspaceRecord",
+    "ManifestMospiRecord",
     "ManifestBudgetRecord",
     "ManifestAcademicJobRecord",
     "ManifestFloorDebateRecord",
