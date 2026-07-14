@@ -455,6 +455,17 @@ A vacancy question answered without a sanctioned/vacant table emits a single
 marker record — `layout: "evasive"` for boilerplate/aggregate-only refusals
 (the refusal is itself data), `layout: "unknown"` for a genuine parse miss.
 
+**Outsourcing/consultancy signals (committee reports).** For ATR and
+observations-bearing committee reports, the full report text is also
+scanned for outsourcing signals, emitted to `outsourcing_rows.jsonl`:
+`headcount` (a number adjacent to a workforce term — contractual staff,
+consultants, outsourced, Young Professionals, daily wagers), `spend`
+(a rupee amount on a consultancy/professional-services term's line,
+normalised to INR with crore/lakh multipliers), `vacancy` (the
+"X of Y posts ... vacant" prose pair), and `mention` (a term with no
+number — the withholding is itself data). Every row carries the source
+line as context and its line number for citation.
+
 **NeVA (Gujarati) corpora.** When the corpus directory carries a
 `questions.jsonl` (the state-assembly layout) instead of `manifest.jsonl`,
 `extract-answers` runs the Gujarati NeVA extractor instead: the two-column

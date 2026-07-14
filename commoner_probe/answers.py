@@ -34,6 +34,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .outsourcing import extract_outsourcing_signals
 from .textparse import extract_pdf_text, read_jsonl
 from .vacancy import LAYOUT_EVASIVE, LAYOUT_UNKNOWN, extract_vacancy_rows
 
@@ -468,6 +469,7 @@ class ExtractionStats:
     vacancy_rows: int = 0
     vacancy_evasive: int = 0
     vacancy_unknown: int = 0
+    outsourcing_signals: int = 0
     skipped_no_pdf: int = 0
     skipped_no_text: int = 0
     skipped_no_split: int = 0
@@ -537,6 +539,8 @@ def extract_answers(
 
     out_records: list[dict] = []
     vacancy_records: list[dict] = []
+    outsourcing_records: list[dict] = []
+    outsourcing_path = out_dir / "outsourcing_rows.jsonl"
     for rec in records:
         kind = _classify_source(rec)
         if kind == "skip":
@@ -568,6 +572,22 @@ def extract_answers(
             # records were tagged 'dfg_recommendation' regardless of source.
             "source_report_type": rec.get("report_type"),
         }
+
+        if kind in ("atr", "observations"):
+            # Outsourcing/consultancy signals live in the report body, not
+            # only in numbered recommendations — scan the full text even
+            # when the recommendation splitter finds nothing.
+            for signal in extract_outsourcing_signals(text):
+                outsourcing_records.append({
+                    "key": rec.get("key"),
+                    "run_id": rec.get("run_id"),
+                    "source_pdf": str(pdf.relative_to(out_dir)),
+                    "extracted_at": _now(),
+                    "committee": rec.get("committee") or rec.get("committee_slug"),
+                    "report_type": rec.get("report_type"),
+                    **signal.to_record(),
+                })
+                stats.outsourcing_signals += 1
 
         try:
             if kind == "qa":
@@ -633,6 +653,17 @@ def extract_answers(
     elif vacancy_path.exists():
         vacancy_path.unlink()
 
+    # outsourcing_rows.jsonl exists only for corpora with committee
+    # reports that carry outsourcing/consultancy signals.
+    if outsourcing_records:
+        otmp = outsourcing_path.with_name(outsourcing_path.name + ".tmp")
+        with otmp.open("w", encoding="utf-8") as f:
+            for row in outsourcing_records:
+                f.write(json.dumps(row, ensure_ascii=False) + "\n")
+        otmp.replace(outsourcing_path)
+    elif outsourcing_path.exists():
+        outsourcing_path.unlink()
+
     log_fn(
         f"answers.jsonl: qa={stats.qa_records} atr={stats.atr_records} "
         f"dfg={stats.dfg_records} skipped_no_pdf={stats.skipped_no_pdf} "
@@ -644,4 +675,6 @@ def extract_answers(
             f"vacancy_rows.jsonl: rows={stats.vacancy_rows} "
             f"evasive={stats.vacancy_evasive} unknown={stats.vacancy_unknown}"
         )
+    if outsourcing_records:
+        log_fn(f"outsourcing_rows.jsonl: rows={stats.outsourcing_signals}")
     return stats

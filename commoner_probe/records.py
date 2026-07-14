@@ -755,6 +755,36 @@ class VacancyRowRecord:
 
 
 # ---------------------------------------------------------------------------
+# outsourcing_rows.jsonl record
+# ---------------------------------------------------------------------------
+
+@dataclass
+class OutsourcingRowRecord:
+    """One outsourcing/consultancy signal (kind='outsourcing_signal') from outsourcing_rows.jsonl."""
+
+    key: str
+    kind: str
+    source_pdf: str
+    extracted_at: str
+    signal: str
+    term: str
+    context: str
+    line_no: int
+    extractor: str
+    run_id: str | None = None
+    value: float | None = None
+    unit: str | None = None
+    sanctioned: int | None = None
+    vacant: int | None = None
+    committee: str | None = None
+    report_type: str | None = None
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "OutsourcingRowRecord":
+        return _from_dict(cls, d)
+
+
+# ---------------------------------------------------------------------------
 # atr_linkage.jsonl record
 # ---------------------------------------------------------------------------
 
@@ -829,6 +859,7 @@ __all__ = [
     "AnswerDfgRecommendation",
     "NevaDistrictRowRecord",
     "VacancyRowRecord",
+    "OutsourcingRowRecord",
     "AtrLinkageRecord",
     "RunRecord",
     # Re-exported from entities

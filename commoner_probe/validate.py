@@ -191,6 +191,15 @@ def validate_corpus(
         log(f"  {n} records — {'ok' if ok else 'FAILED'}")
         any_error = any_error or (not ok)
 
+    # --- outsourcing_rows.jsonl ---
+    outsourcing_path = out_dir / "outsourcing_rows.jsonl"
+    if outsourcing_path.exists():
+        log(f"Validating {outsourcing_path.relative_to(out_dir)} ...")
+        ok = _validate_file(outsourcing_path, lambda _: "outsourcing_row")
+        n = sum(1 for line in outsourcing_path.read_text(encoding="utf-8").splitlines() if line.strip())
+        log(f"  {n} records — {'ok' if ok else 'FAILED'}")
+        any_error = any_error or (not ok)
+
     # --- neva_district_rows.jsonl ---
     neva_rows_path = out_dir / "neva_district_rows.jsonl"
     if neva_rows_path.exists():
