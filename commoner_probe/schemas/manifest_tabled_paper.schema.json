@@ -68,7 +68,7 @@
     },
     "status": {
       "type": "string",
-      "enum": ["metadata_only", "downloaded", "no_bitstream_found"]
+      "enum": ["metadata_only", "downloaded", "no_bitstream_found", "download_error"]
     },
     "probed_at": {
       "type": "string"

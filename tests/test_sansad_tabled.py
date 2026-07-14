@@ -259,6 +259,72 @@ def test_probe_tabled_raises_clear_geo_block_message(tmp_path, monkeypatch):
     assert "geo-fenced" in str(exc_info.value)
 
 
+def test_bundle_listing_failure_is_retryable_not_terminal(tmp_path):
+    """A transient non-200 on the bundles walk must not record a terminal
+    status — otherwise the item's PDFs are permanently hidden."""
+
+    class FlakyBundlesSession(FakeTabledSession):
+        def get(self, url, **kwargs):
+            if "/core/items/" in url and url.endswith("/bundles"):
+                return FakeResponse(status=503)
+            return super().get(url, **kwargs)
+
+    session = FlakyBundlesSession([_item("aa11", "DPL Review")])
+    probe = _probe(tmp_path, session)
+    assert probe.probe_tabled(query="dpl", download=True) == 1
+    (rec,) = _manifest(tmp_path)
+    assert rec["status"] == "download_error"
+    assert rec["downloads"] == []
+
+    # Next run with a healthy session retries and completes the item.
+    healthy = FakeTabledSession(
+        [_item("aa11", "DPL Review")],
+        bitstreams_by_uuid={"aa11": [_bitstream("bb22", "report.pdf")]},
+    )
+    probe2 = _probe(tmp_path, healthy)
+    assert probe2.probe_tabled(query="dpl", download=True) == 1
+    assert _manifest(tmp_path)[-1]["status"] == "downloaded"
+
+
+def test_partial_pdf_download_is_retryable(tmp_path):
+    class PartialContentSession(FakeTabledSession):
+        def get(self, url, **kwargs):
+            if url.endswith("/content") and "cc33" in url:
+                return FakeResponse(status=500, body=b"")
+            return super().get(url, **kwargs)
+
+    session = PartialContentSession(
+        [_item("aa11", "DPL Review")],
+        bitstreams_by_uuid={"aa11": [_bitstream("bb22", "p1.pdf"), _bitstream("cc33", "p2.pdf")]},
+    )
+    probe = _probe(tmp_path, session)
+    probe.probe_tabled(query="dpl", download=True)
+    (rec,) = _manifest(tmp_path)
+    assert rec["status"] == "download_error"
+    assert len(rec["downloads"]) == 1  # the one that succeeded is kept
+
+
+def test_runlog_finishes_on_non_geo_error(tmp_path):
+    """A partial run's manifest rows must have a matching _runs.jsonl record."""
+
+    class ExplodesOnSecondPage(FakeTabledSession):
+        def get(self, url, **kwargs):
+            if "/discover/search/objects" in url and "page=1" in url:
+                raise RuntimeError("HTTP 500 mid-run")
+            return super().get(url, **kwargs)
+
+    items = [_item(f"aa{i:02d}", f"DPL Review {i}") for i in range(4)]
+    session = ExplodesOnSecondPage(items, page_size=2)
+    probe = _probe(tmp_path, session)
+    with pytest.raises(RuntimeError):
+        probe.probe_tabled(query="dpl", download=False)
+    manifest = _manifest(tmp_path)
+    assert manifest, "records from the first page should have been appended"
+    runs = [json.loads(line) for line in (tmp_path / "_runs.jsonl").read_text(encoding="utf-8").splitlines()]
+    run_ids = {r["run_id"] for r in runs}
+    assert all(rec["run_id"] in run_ids for rec in manifest)
+
+
 def test_cli_tabled_subcommand_and_flat_sansad_coexist():
     parser = build_parser()
     args = parser.parse_args(["sansad", "tabled", "--query", "dpl review", "--out", "corpus"])

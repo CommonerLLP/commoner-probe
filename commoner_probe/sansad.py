@@ -906,8 +906,14 @@ class SansadProbe(BaseProbe):
                 return
             time.sleep(self.sleep)
 
-    def fetch_item_bitstreams(self, item_uuid: str, dest_dir: Path) -> list[dict]:
-        """Download every PDF bitstream of an item; return provenance rows.
+    def fetch_item_bitstreams(self, item_uuid: str, dest_dir: Path) -> tuple[list[dict], bool]:
+        """Download every PDF bitstream of an item.
+
+        Returns ``(provenance_rows, complete)``. ``complete`` is False
+        when any listing request failed or any PDF download failed —
+        callers must record a retryable status in that case, because an
+        empty/partial result from a transient failure is otherwise
+        indistinguishable from an item that genuinely has no PDF.
 
         Unlike ``ls_pdf_url`` (first PDF only), tabled papers can carry
         several bitstreams per item, so all are walked. PDFs stream to
@@ -915,18 +921,19 @@ class SansadProbe(BaseProbe):
         """
         r = self.session.get(f"{LS_API_BASE}/core/items/{item_uuid}/bundles", headers=HEADERS, timeout=30)
         if r.status_code != 200:
-            return []
+            return [], False
         bundles = r.json().get("_embedded", {}).get("bundles", [])
         original = next((b for b in bundles if b.get("name") == "ORIGINAL"), None)
         if not original:
-            return []
+            return [], True
         bitstreams_url = original.get("_links", {}).get("bitstreams", {}).get("href")
         if not bitstreams_url:
-            return []
+            return [], True
         r2 = self.session.get(bitstreams_url, headers=HEADERS, timeout=30)
         if r2.status_code != 200:
-            return []
+            return [], False
         downloads: list[dict] = []
+        complete = True
         for b in r2.json().get("_embedded", {}).get("bitstreams", []):
             name = b.get("name") or ""
             if not name.lower().endswith(".pdf"):
@@ -938,6 +945,7 @@ class SansadProbe(BaseProbe):
             uuid_seg = safe_filename_segment((b.get("uuid") or "")[:8])
             dest = dest_dir / f"{stem}_{uuid_seg}.pdf"
             if not self.write_pdf(content_url, dest, HEADERS):
+                complete = False
                 continue
             sha = hashlib.sha256()
             with dest.open("rb") as f:
@@ -951,7 +959,7 @@ class SansadProbe(BaseProbe):
                 "sha256": sha.hexdigest(),
                 "bytes": dest.stat().st_size,
             })
-        return downloads
+        return downloads, complete
 
     def _tabled_record(self, item: dict, *, run_id: str, query: str) -> dict:
         md = item.get("metadata", {})
@@ -1019,14 +1027,21 @@ class SansadProbe(BaseProbe):
                 if prior in self._TABLED_TERMINAL_STATUSES:
                     bkt_skipped_seen += 1
                     continue
-                if prior == "metadata_only" and not download:
+                if prior in ("metadata_only", "download_error") and not download:
                     bkt_skipped_seen += 1
                     continue
                 rec = self._tabled_record(item, run_id=run_id, query=query)
                 if download:
-                    downloads = self.fetch_item_bitstreams(item_uuid, self.pdf_dir / "tabled")
+                    downloads, complete = self.fetch_item_bitstreams(item_uuid, self.pdf_dir / "tabled")
                     rec["downloads"] = downloads
-                    rec["status"] = "downloaded" if downloads else "no_bitstream_found"
+                    if not complete:
+                        # Transient listing/download failure — retryable,
+                        # never terminal (distinct from true no-PDF items).
+                        rec["status"] = "download_error"
+                    elif downloads:
+                        rec["status"] = "downloaded"
+                    else:
+                        rec["status"] = "no_bitstream_found"
                 self.append(rec)
                 seen[key] = rec["status"]
                 added += 1
@@ -1039,10 +1054,12 @@ class SansadProbe(BaseProbe):
             self.runlog.record_error(where=f"tabled/{query}", exc=exc)
             hint = geo_fence_hint(exc)
             if hint:
-                self.runlog.finish(added=added)
                 raise SystemExit(hint) from exc
             raise
         finally:
+            # Bucket + finish run on every exit path — a partial run's
+            # manifest rows must never carry a run_id absent from
+            # _runs.jsonl.
             self.runlog.record_bucket(
                 kind="tabled_paper", query=query, title_filter=title_filter,
                 raw_returned=bkt_raw, no_match=bkt_no_match, kept=bkt_kept,
@@ -1050,5 +1067,5 @@ class SansadProbe(BaseProbe):
                 elapsed_ms=round((time.monotonic() - bkt_t0) * 1000, 1),
                 error=bkt_error,
             )
-        self.runlog.finish(added=added)
+            self.runlog.finish(added=added)
         return added
