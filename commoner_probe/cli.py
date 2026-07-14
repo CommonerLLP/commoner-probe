@@ -77,7 +77,35 @@ def _build_resolver_if_requested(out_dir: Path, with_entities: bool, log):
     return Resolver(store)
 
 
+def sansad_tabled_cmd(args: argparse.Namespace) -> None:
+    from .topics import TopicProfile
+
+    out = Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+    topic = TopicProfile(
+        name="tabled-papers",
+        description="",
+        search_groups=[],
+        lok_sabha_ministries=[],
+        rajya_sabha_ministry_likes=[],
+    )
+    probe = SansadProbe(topic, out, sleep=args.sleep)
+    probe.log(f"tabled query={args.query!r} title_filter={args.title_filter!r} download={not args.no_download}")
+    added = probe.probe_tabled(
+        query=args.query,
+        title_filter=args.title_filter,
+        title_scoped=not args.full_text,
+        size=args.size,
+        max_pages=args.max_pages,
+        max_records=args.max_records,
+        download=not args.no_download,
+    )
+    probe.log(f"done added={added}")
+
+
 def sansad_cmd(args: argparse.Namespace) -> None:
+    if not args.out:
+        raise SystemExit("--out is required")
     if args.all:
         if args.topic or args.member or args.entity_id:
             raise SystemExit("--all cannot be combined with --topic, --member, or --entity-id.")
@@ -634,7 +662,10 @@ def build_parser() -> argparse.ArgumentParser:
             "errors is marked suspect and re-crawled on the next run."
         ),
     )
-    sansad.add_argument("--out", required=True, help="Output corpus directory")
+    # required is enforced in sansad_cmd, not by argparse, so the parent
+    # parser tolerates the `sansad tabled` child invocation (same pattern
+    # as the indiacode crawl/query split).
+    sansad.add_argument("--out", help="Output corpus directory (required)")
     sansad.add_argument("--house", choices=["both", "ls", "rs"], default="both")
     sansad.add_argument("--from-date")
     sansad.add_argument("--to-date")
@@ -670,6 +701,22 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     sansad.set_defaults(func=sansad_cmd)
+
+    sansad_sub = sansad.add_subparsers(dest="sansad_command")
+    tabled = sansad_sub.add_parser(
+        "tabled",
+        help="Probe tabled papers / arbitrary-title records (Papers Laid on the Table).",
+    )
+    tabled.add_argument("--query", required=True, help="Title search query (Solr syntax, e.g. '\"Delhi Public Library\" review')")
+    tabled.add_argument("--out", required=True, help="Output corpus directory")
+    tabled.add_argument("--title-filter", help="Keep only items whose title matches this regex (case-insensitive)")
+    tabled.add_argument("--full-text", action="store_true", help="Search full text instead of scoping the query to titles")
+    tabled.add_argument("--size", type=int, default=100, help="Results per search page")
+    tabled.add_argument("--max-pages", type=int, help="Stop after N search pages (smoke-test brake)")
+    tabled.add_argument("--max-records", type=int, help="Stop after N new records (smoke-test brake)")
+    tabled.add_argument("--sleep", type=float, default=0.25)
+    tabled.add_argument("--no-download", action="store_true", help="Record metadata without downloading bitstreams")
+    tabled.set_defaults(func=sansad_tabled_cmd)
 
     cc = sub.add_parser("committees", help="Probe standing-committee reports")
     cc.add_argument("--topic", required=True, help="Path to topic profile JSON")
