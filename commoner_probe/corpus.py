@@ -60,6 +60,7 @@ from .records import (
     ManifestMinesDmftRecord,
     ManifestMynetaRecord,
     ManifestQaRecord,
+    OutsourcingRowRecord,
     RunRecord,
     VacancyRowRecord,
 )
@@ -236,6 +237,12 @@ class Corpus:
             if d.get("kind") == "vacancy_row":
                 yield VacancyRowRecord.from_dict(d)
 
+    def outsourcing_rows(self) -> Iterator[OutsourcingRowRecord]:
+        """Stream outsourcing/consultancy signals from outsourcing_rows.jsonl."""
+        for d in _iter_jsonl(self.out_dir / "outsourcing_rows.jsonl"):
+            if d.get("kind") == "outsourcing_signal":
+                yield OutsourcingRowRecord.from_dict(d)
+
     def atr_linkages(self) -> Iterator[AtrLinkageRecord]:
         """Stream records from atr_linkage.jsonl."""
         for d in _iter_jsonl(self.out_dir / "atr_linkage.jsonl"):
@@ -354,6 +361,7 @@ class Corpus:
         "answers_atr": "answers_atr",
         "answers_dfg": "answers_dfg",
         "vacancy_rows": "vacancy_rows",
+        "outsourcing_rows": "outsourcing_rows",
         "atr_linkages": "atr_linkages",
         "runs": "runs",
     }

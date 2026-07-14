@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CommonerLLP/commoner-probe/schemas/v1/outsourcing_row.json",
+  "title": "outsourcing_rows.jsonl — outsourcing/consultancy signal from a committee report",
+  "description": "One typed signal extracted from committee-report text: a headcount adjacent to a workforce term, a rupee spend on a consultancy term's line (value normalised to INR), an 'X of Y posts vacant' pair, or a bare mention (the term with no number — the withholding is itself data). context carries the full source line; line_no cites back into the PDF text.",
+  "type": "object",
+  "required": [
+    "key",
+    "kind",
+    "signal",
+    "term",
+    "context",
+    "line_no",
+    "extractor",
+    "source_pdf",
+    "extracted_at"
+  ],
+  "properties": {
+    "key": { "type": "string" },
+    "run_id": { "type": ["string", "null"] },
+    "kind": { "type": "string", "const": "outsourcing_signal" },
+    "signal": { "type": "string", "enum": ["headcount", "spend", "vacancy", "mention"] },
+    "term": { "type": "string" },
+    "context": { "type": "string" },
+    "line_no": { "type": "integer", "minimum": 1 },
+    "value": { "type": "number" },
+    "unit": { "type": "string", "enum": ["persons", "inr"] },
+    "sanctioned": { "type": "integer" },
+    "vacant": { "type": "integer" },
+    "committee": { "type": ["string", "null"] },
+    "report_type": { "type": ["string", "null"] },
+    "extractor": { "type": "string" },
+    "source_pdf": { "type": "string" },
+    "extracted_at": { "type": "string" }
+  }
+}
