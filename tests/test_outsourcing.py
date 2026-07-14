@@ -99,6 +99,35 @@ def test_years_and_percentages_are_not_headcounts():
         assert _by_kind(signals, KIND_MENTION), line
 
 
+def test_spend_and_headcount_coexist_on_one_line():
+    """Codex P2: spend must not swallow a same-line staff count."""
+    signals = extract_outsourcing_signals(
+        "The body engaged 102 consultants at a cost of Rs. 4.56 crore during the year."
+    )
+    (h,) = _by_kind(signals, KIND_HEADCOUNT)
+    (s,) = _by_kind(signals, KIND_SPEND)
+    assert h.value == 102
+    assert s.value == 4.56e7
+
+
+def test_rupee_amount_digits_are_not_headcounts():
+    signals = extract_outsourcing_signals(
+        "Rs. 12,50,000 was paid to consultants during the year."
+    )
+    assert _by_kind(signals, KIND_HEADCOUNT) == []
+    (s,) = _by_kind(signals, KIND_SPEND)
+    assert s.value == 1250000.0
+
+
+def test_financial_year_suffix_is_not_a_headcount():
+    """Codex P2: '2025-26' near a term must not emit headcount 26."""
+    signals = extract_outsourcing_signals(
+        "Consultancy services during 2025-26 were reviewed by the Committee."
+    )
+    assert _by_kind(signals, KIND_HEADCOUNT) == []
+    assert _by_kind(signals, KIND_MENTION)
+
+
 def test_durations_are_not_headcounts():
     signals = extract_outsourcing_signals(
         "regularize those who are working there for more than 10 years on contractual basis"

@@ -135,7 +135,9 @@ def _headcount_candidates(segment: str) -> list[tuple[int, int, int]]:
     for m in _INT_RE.finditer(segment):
         before = segment[m.start() - 1] if m.start() > 0 else ""
         after = segment[m.end()] if m.end() < len(segment) else ""
-        if before in ".%" or after in ".%":
+        # ``-``/``–`` exclusions keep financial-year suffixes out
+        # ("2025-26" must not yield a headcount of 26).
+        if before in ".%-–" or after in ".%-–":
             continue
         value = _to_int(m.group(0))
         if len(m.group(0)) == 4 and 1900 <= value <= 2100:
@@ -187,8 +189,13 @@ def extract_outsourcing_signals(text: str) -> list[OutsourcingSignal]:
                 vacant=_to_int(m.group("vacant")),
             ))
         seen_on_line: set[tuple[str, str]] = set()
+        # Rupee amounts are masked before headcount adjacency so an
+        # amount's digits never count as a staff count; offsets are
+        # preserved.
+        masked = _RUPEE_RE.sub(lambda m: " " * len(m.group(0)), line)
         for m in _TERM_RE.finditer(line):
             term = re.sub(r"\s+", " ", m.group("term")).strip()
+            emitted = False
             # pdftotext wraps prose mid-sentence, so the rupee amount for
             # a term is often on the line above ("Rs. 4.56 crore ... on\n
             # consultancy services"). Prose wraps carry no terminal
@@ -199,35 +206,38 @@ def extract_outsourcing_signals(text: str) -> list[OutsourcingSignal]:
                 wrapped = _RUPEE_RE.search(prev_line)
                 rupee = wrapped
             if rupee:
+                emitted = True
                 key = (term.lower(), "spend")
-                if key in seen_on_line:
-                    continue
-                seen_on_line.add(key)
-                amount = float(rupee.group("amount").replace(",", ""))
-                context = f"{prev_line} {line}" if wrapped else line
-                signals.append(OutsourcingSignal(
-                    kind=KIND_SPEND,
-                    term=term,
-                    context=context[:400],
-                    line_no=line_no,
-                    value=round(amount * _scale_factor(rupee.group("scale")), 2),
-                    unit="inr",
-                ))
-                continue
-            count = _headcount_near(line, m.start(), m.end())
+                if key not in seen_on_line:
+                    seen_on_line.add(key)
+                    amount = float(rupee.group("amount").replace(",", ""))
+                    context = f"{prev_line} {line}" if wrapped else line
+                    signals.append(OutsourcingSignal(
+                        kind=KIND_SPEND,
+                        term=term,
+                        context=context[:400],
+                        line_no=line_no,
+                        value=round(amount * _scale_factor(rupee.group("scale")), 2),
+                        unit="inr",
+                    ))
+            # A line can carry BOTH a spend and a headcount ("engaged 102
+            # consultants at a cost of Rs. 4.56 crore") — spend must not
+            # swallow the count.
+            count = _headcount_near(masked, m.start(), m.end())
             if count is not None:
+                emitted = True
                 key = (term.lower(), "headcount")
-                if key in seen_on_line:
-                    continue
-                seen_on_line.add(key)
-                signals.append(OutsourcingSignal(
-                    kind=KIND_HEADCOUNT,
-                    term=term,
-                    context=line[:400],
-                    line_no=line_no,
-                    value=count,
-                    unit="persons",
-                ))
+                if key not in seen_on_line:
+                    seen_on_line.add(key)
+                    signals.append(OutsourcingSignal(
+                        kind=KIND_HEADCOUNT,
+                        term=term,
+                        context=line[:400],
+                        line_no=line_no,
+                        value=count,
+                        unit="persons",
+                    ))
+            if emitted:
                 continue
             key = (term.lower(), "mention")
             if key in seen_on_line:
