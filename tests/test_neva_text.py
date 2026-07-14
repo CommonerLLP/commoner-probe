@@ -245,6 +245,37 @@ def test_records_validate_against_schemas(tmp_path, monkeypatch):
         jsonschema.validate(json.loads(line), row_schema)
 
 
+def test_extract_neva_answers_is_idempotent_on_rerun(tmp_path, monkeypatch):
+    _neva_corpus(tmp_path, "neva_permits.txt", PERMITS_SUBJECT, "GJ|q|15|8|3796|14")
+    from commoner_probe import textparse
+
+    monkeypatch.setattr(textparse, "extract_pdf_text", lambda p: _fixture("neva_permits.txt"))
+    first = extract_neva_answers(tmp_path, log_fn=lambda *_: None)
+    second = extract_neva_answers(tmp_path, log_fn=lambda *_: None)
+    assert first.qa_records == second.qa_records == 1
+
+
+def test_district_rows_come_from_answer_half_only(tmp_path, monkeypatch):
+    """A district + incidental number in the QUESTION prose must not
+    fabricate a table row; the answer column's real row still lands."""
+    text = (
+        "5\n"
+        "અમદાવાદ જિલ્લામાં દારૂની પરમીટ બાબત\n"
+        "*15/8/9999 કોઈ સભ્ય (ક્યાંક): માનનીય મંત્રીશ્રી જણાવવા કૃપા કરશે કે.-\n"
+        "     પ્રશ્ન                                િવાબ\n"
+        " (1) અમદાવાદ 2 વર્ષમાં કેટલી,     (1)\n"
+        "                                  અમદાવાદ 14862\n"
+    )
+    _neva_corpus(tmp_path, "x", "અમદાવાદ જિલ્લામાં દારૂની પરમીટ બાબત", "GJ|q|15|8|3796|5")
+    from commoner_probe import textparse
+
+    monkeypatch.setattr(textparse, "extract_pdf_text", lambda p: text)
+    stats = extract_neva_answers(tmp_path, log_fn=lambda *_: None)
+    rows = [json.loads(line) for line in (tmp_path / "neva_district_rows.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert stats.district_rows == len(rows) == 1
+    assert rows[0]["primary_figure"] == 14862
+
+
 def test_to_record_shape():
     qa = NevaQaExtraction(
         question_text="q", answer_text="a", confidence=0.8,

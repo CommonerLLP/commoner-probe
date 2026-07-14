@@ -414,7 +414,12 @@ def extract_neva_answers(
         qa.quality = quality
         out_records.append({**common, **qa.to_record()})
         stats.qa_records += 1
-        for row in extract_district_rows(repaired):
+        # Scan only the answer half: the question prose can mention a
+        # district next to an incidental number ("અમદાવાદ ... છેલ્લા 2
+        # વર્ષમાં"), and the tabled figures always live in the answer
+        # column / appendix statements. line_no on these rows indexes
+        # into answer_text.
+        for row in extract_district_rows(qa.answer_text):
             row_records.append({**common, "quality": quality, **row.to_record()})
             stats.district_rows += 1
 
@@ -426,7 +431,7 @@ def extract_neva_answers(
         with tmp.open("w", encoding="utf-8") as f:
             for r in records:
                 f.write(json.dumps(r, ensure_ascii=False) + "\n")
-        tmp.rename(path)
+        tmp.replace(path)
 
     log_fn(
         f"NeVA extraction: {stats.qa_records} qa records, "
