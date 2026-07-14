@@ -1,7 +1,10 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+import hashlib
 import json
+import re
+import socket
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -80,6 +83,37 @@ def month_windows(from_date: str, to_date: str) -> list[tuple[str, str]]:
         windows.append((cur.isoformat(), min(end, nxt - timedelta(days=1)).isoformat()))
         cur = nxt
     return windows
+
+
+def geo_fence_hint(exc: Exception, host: str = "elibrary.sansad.in") -> str | None:
+    """Return a human-readable geo-fence explanation for *exc*, or None.
+
+    sansad.in / elibrary.sansad.in are geo-fenced at the DNS level: from
+    non-India egress the hostnames return NXDOMAIN. That surfaces either as
+    a resolution error, or — because ``url_safety.is_safe_url`` also calls
+    ``getaddrinfo`` — as a misleading "rejected by SSRF guard" ValueError.
+    """
+    text = f"{type(exc).__name__}: {exc}".lower()
+    dns_markers = (
+        "getaddrinfo",
+        "name or service not known",
+        "nodename nor servname",
+        "nameresolution",
+        "temporary failure in name resolution",
+    )
+    hint = (
+        f"{host} unreachable ({type(exc).__name__}: {exc}). "
+        "The Parliament Digital Library is geo-fenced to India at the DNS "
+        "level; run this command from an India-egress host."
+    )
+    if any(m in text for m in dns_markers):
+        return hint
+    if "ssrf guard" in text:
+        try:
+            socket.getaddrinfo(host, None)
+        except socket.gaierror:
+            return hint
+    return None
 
 
 class SansadProbe(BaseProbe):
@@ -805,4 +839,233 @@ class SansadProbe(BaseProbe):
                 "recorded_at": now(),
             })
         self.runlog.finish(added=added)
+        return added
+
+    # --- Tabled papers / title-search mode ---
+
+    #: Terminal statuses for tabled-paper resume. "metadata_only" is
+    #: deliberately NOT always-terminal: a --no-download pass followed by
+    #: a downloads-enabled rerun must still fetch bitstreams for that item
+    #: (the 2026-07-03 indiacode.py resume-staleness lesson).
+    _TABLED_TERMINAL_STATUSES = frozenset({"downloaded", "no_bitstream_found"})
+
+    def load_seen_statuses(self) -> dict[str, str]:
+        """Map manifest key -> last recorded status (tabled-paper resume)."""
+        seen: dict[str, str] = {}
+        if not self.manifest.exists():
+            return seen
+        with self.manifest.open(encoding="utf-8") as f:
+            for line in f:
+                try:
+                    rec = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if rec.get("key"):
+                    seen[rec["key"]] = rec.get("status", "")
+        return seen
+
+    def search_titles(
+        self,
+        query: str,
+        *,
+        title_scoped: bool = True,
+        size: int = 100,
+        max_pages: int | None = None,
+    ) -> Iterator[dict]:
+        """Generic eLibrary discover search — no Q&A category filter.
+
+        Reaches the DSpace records the Q&A-profiled paths cannot, e.g.
+        Papers Laid on the Table. ``title_scoped`` wraps the query in a
+        Solr ``title:(...)`` clause so matches stay on the record title
+        rather than full text.
+        """
+        page = 0
+        while True:
+            q = f"title:({query})" if title_scoped else query
+            params = [
+                ("query", q),
+                ("dsoType", "item"),
+                ("page", str(page)),
+                ("size", str(size)),
+            ]
+            url = f"{LS_API_BASE}/discover/search/objects?" + urlencode(params)
+            r = self.session.get(url, headers=HEADERS, timeout=45)
+            r.raise_for_status()
+            result = r.json().get("_embedded", {}).get("searchResult", {})
+            objects = result.get("_embedded", {}).get("objects", [])
+            if not objects:
+                return
+            for obj in objects:
+                item = obj.get("_embedded", {}).get("indexableObject")
+                if item:
+                    yield item
+            page += 1
+            if page >= result.get("page", {}).get("totalPages", 0):
+                return
+            if max_pages is not None and page >= max_pages:
+                return
+            time.sleep(self.sleep)
+
+    def fetch_item_bitstreams(self, item_uuid: str, dest_dir: Path) -> tuple[list[dict], bool]:
+        """Download every PDF bitstream of an item.
+
+        Returns ``(provenance_rows, complete)``. ``complete`` is False
+        when any listing request failed or any PDF download failed —
+        callers must record a retryable status in that case, because an
+        empty/partial result from a transient failure is otherwise
+        indistinguishable from an item that genuinely has no PDF.
+
+        Unlike ``ls_pdf_url`` (first PDF only), tabled papers can carry
+        several bitstreams per item, so all are walked. PDFs stream to
+        local disk via ``write_pdf`` — never buffered in memory.
+        """
+        r = self.session.get(f"{LS_API_BASE}/core/items/{item_uuid}/bundles", headers=HEADERS, timeout=30)
+        if r.status_code != 200:
+            return [], False
+        bundles = r.json().get("_embedded", {}).get("bundles", [])
+        original = next((b for b in bundles if b.get("name") == "ORIGINAL"), None)
+        if not original:
+            return [], True
+        bitstreams_url = original.get("_links", {}).get("bitstreams", {}).get("href")
+        if not bitstreams_url:
+            return [], True
+        r2 = self.session.get(bitstreams_url, headers=HEADERS, timeout=30)
+        if r2.status_code != 200:
+            return [], False
+        downloads: list[dict] = []
+        complete = True
+        for b in r2.json().get("_embedded", {}).get("bitstreams", []):
+            name = b.get("name") or ""
+            if not name.lower().endswith(".pdf"):
+                continue
+            content_url = b.get("_links", {}).get("content", {}).get("href")
+            if not content_url:
+                continue
+            stem = safe_filename_segment(name[:-4])[:80]
+            uuid_seg = safe_filename_segment((b.get("uuid") or "")[:8])
+            dest = dest_dir / f"{stem}_{uuid_seg}.pdf"
+            if not self.write_pdf(content_url, dest, HEADERS):
+                complete = False
+                continue
+            sha = hashlib.sha256()
+            with dest.open("rb") as f:
+                for chunk in iter(lambda: f.read(65536), b""):
+                    sha.update(chunk)
+            downloads.append({
+                "bitstream_uuid": b.get("uuid"),
+                "name": name,
+                "url": content_url,
+                "dest": str(dest.relative_to(self.out_dir)),
+                "sha256": sha.hexdigest(),
+                "bytes": dest.stat().st_size,
+            })
+        return downloads, complete
+
+    def _tabled_record(self, item: dict, *, run_id: str, query: str) -> dict:
+        md = item.get("metadata", {})
+        return {
+            "key": f"TABLED|{item.get('uuid')}",
+            "run_id": run_id,
+            "kind": "tabled_paper",
+            "record_type": "tabled_paper",
+            "uuid": item.get("uuid"),
+            "handle": item.get("handle"),
+            "title": md_value(md, "dc.title"),
+            "date_issued": md_value(md, "dc.date.issued"),
+            "uri": md_value(md, "dc.identifier.uri"),
+            "source": "elibrary.sansad.in",
+            "query": query,
+            "status": "metadata_only",
+            "downloads": [],
+            "probed_at": now(),
+        }
+
+    def probe_tabled(
+        self,
+        *,
+        query: str,
+        title_filter: str | None = None,
+        title_scoped: bool = True,
+        size: int = 100,
+        max_pages: int | None = None,
+        max_records: int | None = None,
+        download: bool = True,
+    ) -> int:
+        run_id = self.runlog.start(
+            kind="tabled_paper",
+            scope={
+                "query": query,
+                "title_filter": title_filter,
+                "title_scoped": title_scoped,
+                "size": size,
+                "max_pages": max_pages,
+                "max_records": max_records,
+                "download": download,
+            },
+            topic_name=self.topic.name,
+            topic_path=self.topic_path,
+            classifier_config=self.topic.classifier_config,
+        )
+        seen = self.load_seen_statuses()
+        filt = re.compile(title_filter, re.IGNORECASE) if title_filter else None
+        added = 0
+        bkt_t0 = time.monotonic()
+        bkt_raw = bkt_kept = bkt_skipped_seen = bkt_no_match = 0
+        bkt_error: str | None = None
+        try:
+            for item in self.search_titles(query, title_scoped=title_scoped, size=size, max_pages=max_pages):
+                bkt_raw += 1
+                item_uuid = item.get("uuid")
+                if not item_uuid:
+                    continue
+                title = md_value(item.get("metadata", {}), "dc.title")
+                if filt and not filt.search(title or ""):
+                    bkt_no_match += 1
+                    continue
+                key = f"TABLED|{item_uuid}"
+                prior = seen.get(key)
+                if prior in self._TABLED_TERMINAL_STATUSES:
+                    bkt_skipped_seen += 1
+                    continue
+                if prior in ("metadata_only", "download_error") and not download:
+                    bkt_skipped_seen += 1
+                    continue
+                rec = self._tabled_record(item, run_id=run_id, query=query)
+                if download:
+                    downloads, complete = self.fetch_item_bitstreams(item_uuid, self.pdf_dir / "tabled")
+                    rec["downloads"] = downloads
+                    if not complete:
+                        # Transient listing/download failure — retryable,
+                        # never terminal (distinct from true no-PDF items).
+                        rec["status"] = "download_error"
+                    elif downloads:
+                        rec["status"] = "downloaded"
+                    else:
+                        rec["status"] = "no_bitstream_found"
+                self.append(rec)
+                seen[key] = rec["status"]
+                added += 1
+                bkt_kept += 1
+                if max_records is not None and added >= max_records:
+                    break
+                time.sleep(self.sleep)
+        except Exception as exc:  # noqa: BLE001
+            bkt_error = f"{type(exc).__name__}: {exc}"
+            self.runlog.record_error(where=f"tabled/{query}", exc=exc)
+            hint = geo_fence_hint(exc)
+            if hint:
+                raise SystemExit(hint) from exc
+            raise
+        finally:
+            # Bucket + finish run on every exit path — a partial run's
+            # manifest rows must never carry a run_id absent from
+            # _runs.jsonl.
+            self.runlog.record_bucket(
+                kind="tabled_paper", query=query, title_filter=title_filter,
+                raw_returned=bkt_raw, no_match=bkt_no_match, kept=bkt_kept,
+                skipped_seen=bkt_skipped_seen,
+                elapsed_ms=round((time.monotonic() - bkt_t0) * 1000, 1),
+                error=bkt_error,
+            )
+            self.runlog.finish(added=added)
         return added

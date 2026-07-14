@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CommonerLLP/commoner-probe/schemas/v1/manifest_tabled_paper.json",
+  "title": "manifest.jsonl — tabled paper / title-search item (eLibrary DSpace)",
+  "description": "One Parliament Digital Library item acquired via the generic title-search mode (no Q&A category filter), e.g. Papers Laid on the Table. downloads carries one provenance row per PDF bitstream fetched.",
+  "type": "object",
+  "required": [
+    "key",
+    "kind",
+    "record_type",
+    "source",
+    "uuid",
+    "status",
+    "probed_at"
+  ],
+  "properties": {
+    "key": {
+      "type": "string",
+      "pattern": "^TABLED\\|[a-f0-9-]+$"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "kind": {
+      "type": "string",
+      "const": "tabled_paper"
+    },
+    "record_type": {
+      "type": "string",
+      "const": "tabled_paper"
+    },
+    "source": {
+      "type": "string",
+      "const": "elibrary.sansad.in"
+    },
+    "uuid": {
+      "type": "string"
+    },
+    "handle": {
+      "type": ["string", "null"]
+    },
+    "title": {
+      "type": ["string", "null"]
+    },
+    "date_issued": {
+      "type": ["string", "null"]
+    },
+    "uri": {
+      "type": ["string", "null"]
+    },
+    "query": {
+      "type": "string"
+    },
+    "downloads": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["bitstream_uuid", "name", "url", "dest", "sha256", "bytes"],
+        "properties": {
+          "bitstream_uuid": { "type": "string" },
+          "name": { "type": "string" },
+          "url": { "type": "string", "format": "uri" },
+          "dest": { "type": "string" },
+          "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+          "bytes": { "type": "integer" }
+        }
+      }
+    },
+    "status": {
+      "type": "string",
+      "enum": ["metadata_only", "downloaded", "no_bitstream_found", "download_error"]
+    },
+    "probed_at": {
+      "type": "string"
+    }
+  }
+}

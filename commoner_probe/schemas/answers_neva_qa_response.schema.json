@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CommonerLLP/commoner-probe/schemas/v1/answers_neva_qa_response.json",
+  "title": "answers.jsonl — NeVA Gujarati Q/A extraction",
+  "description": "One Gujarati NeVA question PDF split into question and answer halves via the two-column layout. quality records the text-layer trust level: clean (metadata subject found verbatim), repaired (found after a reference-calibrated glyph repair), low (glyph-corrupted beyond provable repair — OCR-fallback candidate), unknown (no reference available).",
+  "type": "object",
+  "required": [
+    "key",
+    "kind",
+    "question_text",
+    "answer_text",
+    "confidence",
+    "quality",
+    "extractor",
+    "source_pdf",
+    "extracted_at"
+  ],
+  "properties": {
+    "key": { "type": "string" },
+    "kind": { "type": "string", "const": "neva_qa_response" },
+    "question_text": { "type": "string" },
+    "answer_text": { "type": "string" },
+    "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "quality": { "type": "string", "enum": ["clean", "repaired", "low", "unknown"] },
+    "extractor": { "type": "string" },
+    "boundary_marker": { "type": "string" },
+    "question_subject": { "type": "string" },
+    "question_ref": { "type": "string" },
+    "source_pdf": { "type": "string" },
+    "extracted_at": { "type": "string" },
+    "language_classified": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}

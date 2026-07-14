@@ -65,6 +65,8 @@ def _pick_schema_name(rec: dict) -> str | None:
         return "manifest_myneta"
     if kind == "legacy_dspace_item":
         return "manifest_legacy_dspace"
+    if kind == "tabled_paper":
+        return "manifest_tabled_paper"
     if kind == "ministry_ddg_document":
         return "manifest_ministry_ddg"
     if kind == "mospi_pull":
@@ -77,6 +79,7 @@ def _schema_for_answers_kind(kind: str) -> str | None:
         "qa_response": "answers_qa_response",
         "atr_response": "answers_atr_response",
         "dfg_recommendation": "answers_dfg_recommendation",
+        "neva_qa_response": "answers_neva_qa_response",
     }.get(kind)
 
 
@@ -185,6 +188,15 @@ def validate_corpus(
         log(f"Validating {answers_path.relative_to(out_dir)} ...")
         ok = _validate_file(answers_path, lambda r: _schema_for_answers_kind(r.get("kind", "")))
         n = sum(1 for line in answers_path.read_text(encoding="utf-8").splitlines() if line.strip())
+        log(f"  {n} records — {'ok' if ok else 'FAILED'}")
+        any_error = any_error or (not ok)
+
+    # --- neva_district_rows.jsonl ---
+    neva_rows_path = out_dir / "neva_district_rows.jsonl"
+    if neva_rows_path.exists():
+        log(f"Validating {neva_rows_path.relative_to(out_dir)} ...")
+        ok = _validate_file(neva_rows_path, lambda _: "neva_district_row")
+        n = sum(1 for line in neva_rows_path.read_text(encoding="utf-8").splitlines() if line.strip())
         log(f"  {n} records — {'ok' if ok else 'FAILED'}")
         any_error = any_error or (not ok)
 
