@@ -369,6 +369,45 @@ commoner-probe sansad --all \
   --no-download
 ```
 
+### `commoner-probe sansad tabled` — tabled papers / title search
+
+The Parliament Digital Library holds more than Q&A — Papers Laid on the
+Table, reports, and reviews have no question number and never match the
+Q&A category facet. The `tabled` mode searches the eLibrary by title
+(or full text) with no category filter and downloads every PDF bitstream
+of each matching item with per-bitstream provenance (sha256, bytes,
+source URL).
+
+```bash
+commoner-probe sansad tabled \
+  --query '"Delhi Public Library"' \
+  --title-filter 'review|annual report|account' \
+  --max-records 20 \
+  --out data/tabled-dpl
+```
+
+Solr ORs bare terms — `--query 'library review'` matches every title
+containing *either* word, which can be tens of thousands of items with
+multi-MB scans each. Quote phrases, and use `--title-filter` /
+`--max-records` / `--max-pages` to keep runs bounded.
+
+| Flag | Default | What it does |
+|---|---|---|
+| `--query` | required | Title search query (Solr syntax) |
+| `--out` | required | Output corpus directory |
+| `--title-filter` | — | Keep only titles matching this regex (case-insensitive) |
+| `--full-text` | off | Search full text instead of titles only |
+| `--size` | `100` | Results per search page |
+| `--max-pages N` | — | Stop after N search pages (smoke-test) |
+| `--max-records N` | — | Stop after N new records (smoke-test) |
+| `--no-download` | off | Record metadata without downloading bitstreams |
+
+Records land in `manifest.jsonl` as `kind: "tabled_paper"`; PDFs under
+`pdfs/tabled/`. Note `elibrary.sansad.in` has been observed to fail DNS
+resolution from some non-India network paths (a DNS-level geo-fence);
+when that happens the command fails with an explicit geo-fence message
+pointing at India-egress, rather than a bare traceback.
+
 ### `commoner-probe committees` — standing committee reports
 
 ```bash
@@ -427,7 +466,22 @@ normalised to INR with crore/lakh multipliers), `vacancy` (the
 number — the withholding is itself data). Every row carries the source
 line as context and its line number for citation.
 
-Requires `pip install "commoner-probe[pdf]"`.
+**NeVA (Gujarati) corpora.** When the corpus directory carries a
+`questions.jsonl` (the state-assembly layout) instead of `manifest.jsonl`,
+`extract-answers` runs the Gujarati NeVA extractor instead: the two-column
+પ્રશ્ન|જવાબ layout is split by column geometry into `neva_qa_response`
+records, and district→figures table rows land in `neva_district_rows.jsonl`
+(district matched verbatim against the 33-district Gujarat gazetteer;
+figures in print order; Gujarati numerals translated). A share of Gujarat
+NeVA PDFs carries a broken embedded-font ToUnicode map that garbles the
+Gujarati text layer; every record carries a `quality` verdict — `clean`
+(portal metadata subject found verbatim), `repaired` (found after a
+glyph-repair map derived by aligning the clean subject against its garbled
+rendering), or `low` (unrecoverable text layer: the OCR backlog). The
+corruption is sometimes many-to-one, so repair is only applied where it
+can be proven against the reference line — never guessed.
+
+Requires `pip install "commoner-probe[pdf]"` (or a `pdftotext` binary on PATH).
 
 ### `commoner-probe atr-linkage` — ATR → original report
 
@@ -502,6 +556,37 @@ commoner-probe mines-dmft \
 Downloads raw Ministry of Mines static CSV snapshots and Odisha DMFT public
 JSON/report surfaces. Use `--dry-run` to print manifest records without opening
 network sessions.
+
+### `commoner-probe mospi` — MoSPI eSankhyiki statistics API
+
+The eSankhyiki portal fronts MoSPI's statistical datasets (PLFS, AISHE,
+UDISE, ASI, NAS, HCES registered; extensible) behind a REST API with one
+route family per dataset. The client wraps indicator discovery, filter
+discovery, paginated tidy-row pulls to CSV, and an exhaustive per-year
+dump mode — every pull gets a provenance manifest row (endpoint, exact
+params, row count, CSV sha256).
+
+```bash
+commoner-probe mospi --list-datasets
+commoner-probe mospi --dataset UDISE --indicators
+commoner-probe mospi --dataset UDISE --filters --param indicator_code=41
+commoner-probe mospi --dataset UDISE --pull \
+  --param indicator_code=41 --param year=2024-25 --param state_code=8 \
+  --out data/mospi
+commoner-probe mospi --dataset UDISE --dump-all \
+  --param indicator_code=41 --out data/mospi
+```
+
+Filter codes are dataset-specific API codes (PLFS `state_code=99` is
+All-India, AISHE uses `37`) — always read them from `--filters`, never
+guess. Omitting `state_code` returns all states in one pull.
+
+Two environment notes: `api.mospi.gov.in` is TCP-blocked from at least
+some non-India network paths — run from an India-egress host or set
+`HTTPS_PROXY=socks5h://...` to an India-region relay. The API's TLS
+chain uses a government CA missing from Python's default `certifi`
+bundle; point `REQUESTS_CA_BUNDLE` at a system bundle that carries it
+(e.g. `/etc/ssl/cert.pem` on macOS).
 
 ### `commoner-probe doe-pay-allowances` — DoE Pay & Allowances annual reports
 

@@ -486,6 +486,52 @@ class AnswerQaResponse:
 
 
 @dataclass
+class AnswerNevaQaResponse:
+    """One NeVA Gujarati Q/A extraction (kind='neva_qa_response') from answers.jsonl."""
+
+    key: str
+    kind: str
+    source_pdf: str
+    extracted_at: str
+    question_text: str
+    answer_text: str
+    confidence: float
+    quality: str
+    extractor: str
+    boundary_marker: str = ""
+    question_subject: str | None = None
+    question_ref: str | None = None
+    language_classified: list = field(default_factory=list)
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "AnswerNevaQaResponse":
+        return _from_dict(cls, d)
+
+
+@dataclass
+class NevaDistrictRowRecord:
+    """One district→figures table row from neva_district_rows.jsonl."""
+
+    key: str
+    kind: str
+    source_pdf: str
+    extracted_at: str
+    district: str
+    figures: list
+    primary_figure: float
+    raw_line: str
+    quality: str
+    extractor: str
+    area: str = ""
+    line_no: int | None = None
+    language_classified: list = field(default_factory=list)
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "NevaDistrictRowRecord":
+        return _from_dict(cls, d)
+
+
+@dataclass
 class AnswerAtrResponse:
     """One ATR recommendation/response pair (kind='atr_response') from answers.jsonl."""
 
@@ -555,6 +601,61 @@ class ManifestLegacyDspaceRecord:
 
     @classmethod
     def from_dict(cls, d: dict) -> "ManifestLegacyDspaceRecord":
+        return _from_dict(cls, d)
+
+
+# ---------------------------------------------------------------------------
+# manifest.jsonl record (MoSPI eSankhyiki pull)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class ManifestMospiRecord:
+    """One MoSPI eSankhyiki API pull record from manifest.jsonl."""
+
+    key: str
+    kind: str
+    record_type: str
+    source: str
+    dataset: str
+    endpoint: str
+    rows: int
+    csv_path: str
+    sha256: str
+    fetched_at: str
+    probed_at: str
+    params: dict = field(default_factory=dict)
+    truncated: bool = False
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "ManifestMospiRecord":
+        return _from_dict(cls, d)
+
+
+# ---------------------------------------------------------------------------
+# manifest.jsonl record (tabled paper / title-search item)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class ManifestTabledPaperRecord:
+    """One eLibrary title-search item (e.g. Papers Laid) from manifest.jsonl."""
+
+    key: str
+    kind: str
+    record_type: str
+    source: str
+    uuid: str
+    status: str
+    probed_at: str
+    run_id: str | None = None
+    handle: str | None = None
+    title: str | None = None
+    date_issued: str | None = None
+    uri: str | None = None
+    query: str | None = None
+    downloads: list = field(default_factory=list)
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "ManifestTabledPaperRecord":
         return _from_dict(cls, d)
 
 
@@ -745,14 +846,18 @@ __all__ = [
     "ManifestAttendanceRecord",
     "ManifestMynetaRecord",
     "ManifestLegacyDspaceRecord",
+    "ManifestMospiRecord",
+    "ManifestTabledPaperRecord",
     "ManifestBudgetRecord",
     "ManifestAcademicJobRecord",
     "ManifestFloorDebateRecord",
     "ManifestBillRecord",
     "ManifestIndiaCodeRecord",
     "AnswerQaResponse",
+    "AnswerNevaQaResponse",
     "AnswerAtrResponse",
     "AnswerDfgRecommendation",
+    "NevaDistrictRowRecord",
     "VacancyRowRecord",
     "OutsourcingRowRecord",
     "AtrLinkageRecord",

@@ -23,6 +23,7 @@ from .evidence import build_dmft_evidence_bundle
 from .example_topics import list_example_topics, load_example_topic_text
 from .extract_debates import extract_debates
 from .indiacode import STATE_HANDLES, IndiaCodeProbe
+from .mospi import MospiClient, MospiProbe
 from .myneta import MyNetaProbe
 from .neva import StateAssemblyCrawler
 from .neva_portals import NevaPortal, iter_portals
@@ -77,7 +78,35 @@ def _build_resolver_if_requested(out_dir: Path, with_entities: bool, log):
     return Resolver(store)
 
 
+def sansad_tabled_cmd(args: argparse.Namespace) -> None:
+    from .topics import TopicProfile
+
+    out = Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+    topic = TopicProfile(
+        name="tabled-papers",
+        description="",
+        search_groups=[],
+        lok_sabha_ministries=[],
+        rajya_sabha_ministry_likes=[],
+    )
+    probe = SansadProbe(topic, out, sleep=args.sleep)
+    probe.log(f"tabled query={args.query!r} title_filter={args.title_filter!r} download={not args.no_download}")
+    added = probe.probe_tabled(
+        query=args.query,
+        title_filter=args.title_filter,
+        title_scoped=not args.full_text,
+        size=args.size,
+        max_pages=args.max_pages,
+        max_records=args.max_records,
+        download=not args.no_download,
+    )
+    probe.log(f"done added={added}")
+
+
 def sansad_cmd(args: argparse.Namespace) -> None:
+    if not args.out:
+        raise SystemExit("--out is required")
     if args.all:
         if args.topic or args.member or args.entity_id:
             raise SystemExit("--all cannot be combined with --topic, --member, or --entity-id.")
@@ -176,6 +205,49 @@ def sansad_cmd(args: argparse.Namespace) -> None:
                 download=not args.no_download,
             )
     probe.log(f"DONE added={added} total={len(seen)}")
+
+
+def _parse_kv_params(pairs: list[str] | None) -> dict:
+    params: dict = {}
+    for pair in pairs or []:
+        if "=" not in pair:
+            raise SystemExit(f"--param expects KEY=VALUE, got {pair!r}")
+        k, v = pair.split("=", 1)
+        params[k.strip()] = v.strip()
+    return params
+
+
+def mospi_cmd(args: argparse.Namespace) -> None:
+    params = _parse_kv_params(args.param)
+    client = MospiClient(sleep=args.sleep)
+    if args.list_datasets:
+        for name in client.list_datasets():
+            print(name)
+        return
+    if not args.dataset:
+        raise SystemExit("--dataset is required unless --list-datasets is given")
+    if args.indicators:
+        for ind in client.indicators(args.dataset, **params):
+            print(json.dumps(ind, ensure_ascii=False))
+        return
+    if args.filters:
+        print(json.dumps(client.filters(args.dataset, **params), ensure_ascii=False, indent=2))
+        return
+    if not args.out:
+        raise SystemExit("--out is required for --pull / --dump-all")
+    probe = MospiProbe(Path(args.out), sleep=args.sleep)
+    if args.dump_all:
+        records = probe.dump_all(
+            args.dataset,
+            params,
+            years=_split_csv(args.years),
+            max_rows_per_pull=args.max_rows,
+        )
+        for rec in records:
+            print(f"{rec['key']}  rows={rec['rows']}  {rec['csv_path']}")
+        return
+    rec = probe.pull_to_csv(args.dataset, params, max_rows=args.max_rows)
+    print(f"{rec['key']}  rows={rec['rows']}  {rec['csv_path']}")
 
 
 def committees_cmd(args: argparse.Namespace) -> None:
@@ -553,8 +625,17 @@ def extract_debates_cmd(args: argparse.Namespace) -> None:
 
 def extract_answers_cmd(args: argparse.Namespace) -> None:
     out = Path(args.out)
+    if (out / "questions.jsonl").exists():
+        # NeVA state-assembly corpus layout (no manifest.jsonl).
+        from .neva_text import extract_neva_answers
+
+        extract_neva_answers(out, log_fn=print)
+        return
     if not (out / "manifest.jsonl").exists():
-        raise SystemExit(f"no manifest at {out}/manifest.jsonl — run 'sansad' first")
+        raise SystemExit(
+            f"no manifest at {out}/manifest.jsonl and no questions.jsonl — "
+            "run 'sansad' or 'state-assembly' first"
+        )
     extract_answers(out, refresh=args.refresh, log_fn=print)
 
 
@@ -634,7 +715,10 @@ def build_parser() -> argparse.ArgumentParser:
             "errors is marked suspect and re-crawled on the next run."
         ),
     )
-    sansad.add_argument("--out", required=True, help="Output corpus directory")
+    # required is enforced in sansad_cmd, not by argparse, so the parent
+    # parser tolerates the `sansad tabled` child invocation (same pattern
+    # as the indiacode crawl/query split).
+    sansad.add_argument("--out", help="Output corpus directory (required)")
     sansad.add_argument("--house", choices=["both", "ls", "rs"], default="both")
     sansad.add_argument("--from-date")
     sansad.add_argument("--to-date")
@@ -670,6 +754,22 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     sansad.set_defaults(func=sansad_cmd)
+
+    sansad_sub = sansad.add_subparsers(dest="sansad_command")
+    tabled = sansad_sub.add_parser(
+        "tabled",
+        help="Probe tabled papers / arbitrary-title records (Papers Laid on the Table).",
+    )
+    tabled.add_argument("--query", required=True, help="Title search query (Solr syntax, e.g. '\"Delhi Public Library\" review')")
+    tabled.add_argument("--out", required=True, help="Output corpus directory")
+    tabled.add_argument("--title-filter", help="Keep only items whose title matches this regex (case-insensitive)")
+    tabled.add_argument("--full-text", action="store_true", help="Search full text instead of scoping the query to titles")
+    tabled.add_argument("--size", type=int, default=100, help="Results per search page")
+    tabled.add_argument("--max-pages", type=int, help="Stop after N search pages (smoke-test brake)")
+    tabled.add_argument("--max-records", type=int, help="Stop after N new records (smoke-test brake)")
+    tabled.add_argument("--sleep", type=float, default=0.25)
+    tabled.add_argument("--no-download", action="store_true", help="Record metadata without downloading bitstreams")
+    tabled.set_defaults(func=sansad_tabled_cmd)
 
     cc = sub.add_parser("committees", help="Probe standing-committee reports")
     cc.add_argument("--topic", required=True, help="Path to topic profile JSON")
@@ -819,6 +919,28 @@ def build_parser() -> argparse.ArgumentParser:
         help="Fetch the listing page and print manifest records without downloading PDFs.",
     )
     doe.set_defaults(func=doe_pay_allowances_cmd)
+
+    mospi = sub.add_parser(
+        "mospi",
+        help="Probe MoSPI eSankhyiki statistics API (PLFS/AISHE/UDISE/ASI/NAS/HCES). India egress required.",
+    )
+    mospi.add_argument("--list-datasets", action="store_true", help="Print registered datasets and exit")
+    mospi.add_argument("--dataset", help="Dataset name, e.g. PLFS, UDISE, AISHE, HCES, NAS, ASI")
+    mospi.add_argument("--indicators", action="store_true", help="Print the dataset's indicator list as JSONL")
+    mospi.add_argument("--filters", action="store_true", help="Print valid filter values for the given --param selection")
+    mospi.add_argument("--pull", action="store_true", help="Pull tidy rows to CSV with a provenance manifest row (default action)")
+    mospi.add_argument("--dump-all", action="store_true", help="One pull per available year (all states per pull)")
+    mospi.add_argument(
+        "--param",
+        action="append",
+        metavar="KEY=VALUE",
+        help="Query param, repeatable — e.g. --param indicator_code=41 --param state_code=8. Codes come from --filters; never guess them.",
+    )
+    mospi.add_argument("--years", help="Comma-separated years for --dump-all (default: every year the filter endpoint offers)")
+    mospi.add_argument("--out", help="Output corpus directory (required for --pull / --dump-all)")
+    mospi.add_argument("--max-rows", type=int, help="Stop after N rows per pull (smoke-test brake)")
+    mospi.add_argument("--sleep", type=float, default=0.5)
+    mospi.set_defaults(func=mospi_cmd)
 
     ddg = sub.add_parser(
         "ministry-ddg",
