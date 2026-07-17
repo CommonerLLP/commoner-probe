@@ -344,5 +344,66 @@ class CrawlIntegrationTests(unittest.TestCase):
         self.assertEqual(run["errors"], [])
 
 
+# --------------------------------------------------------------------------- #
+# PDF download headers — REQ-0005 latent-406 class                            #
+# --------------------------------------------------------------------------- #
+
+
+class PdfDownloadHeaderTests(unittest.TestCase):
+    """Binary PDF fetches must not carry the JSON Accept header (the
+    REQ-0005 rsdoc.nic.in 406 class). Live check 2026-07-17: sansad.in/getFile
+    currently tolerates the header (206 application/pdf both ways) — this pins
+    the hardening. API calls must keep the JSON Accept header."""
+
+    def setUp(self):
+        self.topic = load_topic(ROOT / "examples" / "topics" / "libraries.json")
+        self.profile_path = ROOT / "examples" / "topics" / "libraries.json"
+        self.captured: list[tuple[str, dict]] = []
+
+    def _capture_probe(self, tmp: str, routes: dict[str, dict]) -> CommitteeProbe:
+        captured = self.captured
+
+        class HeaderCaptureSession(FakeSession):
+            def get(self, url, **kwargs):
+                captured.append((url, kwargs.get("headers") or {}))
+                return super().get(url, **kwargs)
+
+        probe = CommitteeProbe(
+            self.topic,
+            Path(tmp),
+            sleep=0,
+            lok_sabha_no=18,
+            topic_path=self.profile_path,
+        )
+        probe.session = HeaderCaptureSession(routes)
+        return probe
+
+    def test_ls_pdf_download_drops_json_accept_but_api_keeps_it(self):
+        page1 = {"_metadata": {"totalPages": 1}, "records": [_ls_record(35)]}
+        with tempfile.TemporaryDirectory() as tmp:
+            probe = self._capture_probe(tmp, {"api_ls/committee": page1, "getFile": {}})
+            probe.probe_ls(set(), committees=["finance"], from_date=None, to_date=None,
+                           max_records=None, download=True)
+        api_headers = [h for url, h in self.captured if "api_ls" in url]
+        pdf_headers = [h for url, h in self.captured if "getFile" in url]
+        self.assertTrue(api_headers and pdf_headers)
+        for h in api_headers:
+            self.assertEqual(h.get("Accept"), "application/json")
+        for h in pdf_headers:
+            self.assertNotIn("Accept", h)
+
+    def test_rs_pdf_download_drops_json_accept_keeps_referer(self):
+        page1 = {"_metadata": {"totalPages": 1}, "records": [_rs_record(174)]}
+        with tempfile.TemporaryDirectory() as tmp:
+            probe = self._capture_probe(tmp, {"api_rs/committee": page1, "getFile": {}})
+            probe.probe_rs(set(), committees=["health"], from_date=None, to_date=None,
+                           max_records=None, download=True)
+        pdf_headers = [h for url, h in self.captured if "getFile" in url]
+        self.assertTrue(pdf_headers)
+        for h in pdf_headers:
+            self.assertNotIn("Accept", h)
+            self.assertEqual(h.get("Referer"), "https://sansad.in/rs/committees")
+
+
 if __name__ == "__main__":
     unittest.main()

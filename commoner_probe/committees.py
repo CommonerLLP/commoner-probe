@@ -40,6 +40,13 @@ LS_HEADERS = {
     "User-Agent": "commoner-probe/0.5.0 (+https://github.com/CommonerLLP/commoner-probe; public-interest research; rate-limited)",
 }
 RS_HEADERS = {**LS_HEADERS, "Referer": "https://sansad.in/rs/committees"}
+# Binary PDF fetches must not carry the JSON Accept header — the REQ-0005
+# latent-406 class (rsdoc.nic.in 406'd every RS debates PDF while reporting
+# fetch_status ok). Live check 2026-07-17: sansad.in/getFile (LS + RS
+# committee PDFs) currently tolerates the header (206 application/pdf both
+# ways), so this is hardening against the class, not a live-bug fix.
+LS_PDF_HEADERS = {k: v for k, v in LS_HEADERS.items() if k != "Accept"}
+RS_PDF_HEADERS = {k: v for k, v in RS_HEADERS.items() if k != "Accept"}
 
 # slug -> (display name, sansad committeeCode). LS-side Department-Related
 # Standing Committees (DRSCs). Display names canonical here — the API's
@@ -461,7 +468,7 @@ class CommitteeProbe(BaseProbe):
                             f"{safe_filename_segment(report_no)}.pdf"
                         )
                         pdf_path = self.pdf_dir / "ls" / fname
-                        if self.write_pdf(rec["pdf_url"], pdf_path, LS_HEADERS):
+                        if self.write_pdf(rec["pdf_url"], pdf_path, LS_PDF_HEADERS):
                             rec["pdf_path"] = str(pdf_path.relative_to(self.out_dir))
                     self.append(rec)
                     seen.add(key)
@@ -576,7 +583,7 @@ class CommitteeProbe(BaseProbe):
                             f"{safe_filename_segment(report_no)}.pdf"
                         )
                         pdf_path = self.pdf_dir / "rs" / fname
-                        if self.write_pdf(rec["pdf_url"], pdf_path, RS_HEADERS):
+                        if self.write_pdf(rec["pdf_url"], pdf_path, RS_PDF_HEADERS):
                             rec["pdf_path"] = str(pdf_path.relative_to(self.out_dir))
                     self.append(rec)
                     seen.add(key)
