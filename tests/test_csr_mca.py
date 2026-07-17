@@ -4,7 +4,19 @@ import hashlib
 import json
 import urllib.parse
 
+import pytest
+
+from commoner_probe.csr import mca
 from commoner_probe.csr.mca import McaCsrProbe, parse_csrf_token
+
+
+@pytest.fixture(autouse=True)
+def _no_dns_ssrf_guard(monkeypatch):
+    """Keep unit tests DNS-free: the SSRF guard now runs in McaCsrProbe's
+    constructor (Codex PR#11 fix) and the default mcacdm.nic.in URL would
+    otherwise trigger a real DNS lookup. Guard behaviour itself is pinned
+    with IP-literal tests below, which need no DNS."""
+    monkeypatch.setattr(mca, "is_safe_url", lambda url: True)
 
 
 def test_parse_csrf_token_reads_hidden_input() -> None:
@@ -163,3 +175,32 @@ def test_corpus_streams_mca_csr_manifest_records(tmp_path) -> None:
     assert records[0].key == "MCA_CSR|FY 2022-23"
     assert records[0].financial_year == "FY 2022-23"
     assert records[0].sha256 == "a" * 64
+
+
+# SSRF-guard regression (Codex PR#11): the configurable source_page/export_url
+# constructor params are opened via raw urllib, bypassing RetrySession's
+# guard. These use the REAL guard with IP literals — no DNS needed.
+
+
+def test_init_rejects_link_local_export_url(tmp_path, monkeypatch) -> None:
+    from commoner_probe.url_safety import is_safe_url as real_guard
+
+    monkeypatch.setattr(mca, "is_safe_url", real_guard)  # undo the autouse stub
+    with pytest.raises(ValueError, match="SSRF"):
+        McaCsrProbe(tmp_path, sleep=0, export_url="http://169.254.169.254/latest/meta-data")
+
+
+def test_init_rejects_loopback_source_page(tmp_path, monkeypatch) -> None:
+    from commoner_probe.url_safety import is_safe_url as real_guard
+
+    monkeypatch.setattr(mca, "is_safe_url", real_guard)  # undo the autouse stub
+    with pytest.raises(ValueError, match="SSRF"):
+        McaCsrProbe(tmp_path, sleep=0, source_page="http://127.0.0.1:8080/internal")
+
+
+def test_init_rejects_private_base_url(tmp_path, monkeypatch) -> None:
+    from commoner_probe.url_safety import is_safe_url as real_guard
+
+    monkeypatch.setattr(mca, "is_safe_url", real_guard)  # undo the autouse stub
+    with pytest.raises(ValueError, match="SSRF"):
+        McaCsrProbe(tmp_path, sleep=0, base_url="http://10.0.0.5")

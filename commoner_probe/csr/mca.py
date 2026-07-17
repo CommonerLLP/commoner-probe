@@ -12,6 +12,7 @@ from html.parser import HTMLParser
 from pathlib import Path
 
 from commoner_probe.http_client import USER_AGENT
+from commoner_probe.url_safety import is_safe_url
 
 BASE_URL = "https://www.mcacdm.nic.in"
 CSR_PAGE_PATH = "/csr-data"
@@ -66,6 +67,13 @@ class McaCsrProbe:
         self.base_url = base_url
         self.source_page = source_page or urllib.parse.urljoin(base_url, CSR_PAGE_PATH)
         self.export_url = export_url
+        # These URLs are opened below via raw urllib (no RetrySession), so the
+        # SSRF guard must run here: a crafted source_page/export_url could
+        # otherwise reach loopback/link-local/internal address space (Codex
+        # review, PR #11).
+        for url in (self.source_page, self.export_url):
+            if not is_safe_url(url):
+                raise ValueError(f"URL rejected by SSRF guard: {url}")
         self.manifest = out_dir / "manifest.jsonl"
 
     def init_session(self) -> tuple[urllib.request.OpenerDirector, str | None]:
