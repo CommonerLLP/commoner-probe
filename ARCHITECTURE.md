@@ -62,10 +62,8 @@ manifest records only.
    acquisition.
 3. **Resume safety**: reruns skip only terminal statuses
    (`downloaded`, `skipped_exists`, `no_pdf_found`); a metadata-only pass
-   must never block a later download pass. This is the target contract —
-   held by indiacode, dspace, and sansad tabled; the debates adapter still
-   marks every appended row seen regardless of status (known gap, tracked
-   in the repo TODO).
+   must never block a later download pass. Held by indiacode, dspace,
+   sansad tabled, and debates.
 4. **Access posture**: fail open on robots.txt fetch failure, fail closed
    on SSRF, and never work around a CAPTCHA or an access control.
 5. **Live verification**: unit tests pin behaviour, and adapters are also

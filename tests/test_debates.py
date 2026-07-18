@@ -135,7 +135,7 @@ def test_probe_records_days_with_transcripts_only(tmp_path):
     assert r["loksabha"] == 18 and r["session_no"] == 7
     assert r["date"] == "2026-01-28"
     assert r["pdf_url"].endswith("abc?source=dsp2")
-    assert r["fetch_status"] == "ok"
+    assert r["fetch_status"] == "metadata_only"
     assert r["pdf_path"] is None  # not downloaded by default
 
     manifest = [json.loads(line) for line in (tmp_path / "manifest.jsonl").read_text().splitlines()]
@@ -194,7 +194,7 @@ def test_probe_records_rajya_sabha_full_day_transcripts(tmp_path):
     assert rec["date"] == "2026-01-28"
     assert rec["segment"] == "Full Day"
     assert rec["pdf_url"].endswith("/full.pdf")
-    assert rec["fetch_status"] == "ok"
+    assert rec["fetch_status"] == "metadata_only"
 
 
 def test_probe_records_rajya_sabha_segments_when_full_day_absent(tmp_path):
@@ -227,7 +227,7 @@ def test_pdf_download_omits_json_accept_header(tmp_path):
     probe = _probe(tmp_path, house="rs", sessions=[270])
     records = probe.probe(download=True, max_records=1)
     rec = records[0]
-    assert rec["fetch_status"] == "ok"
+    assert rec["fetch_status"] == "downloaded"
     assert rec["pdf_path"] is not None
     assert rec["sha256"] == hashlib.sha256(PDF_BODY).hexdigest()
 
@@ -244,6 +244,7 @@ def test_download_failure_is_recorded_in_runlog(tmp_path):
     probe.session = FailingDownloadSession()
     records = probe.probe(download=True, max_records=1)
     rec = records[0]
+    assert rec["fetch_status"] == "download_error"  # retryable, never terminal
     assert rec["pdf_path"] is None
     assert rec["sha256"] is None
 
@@ -313,3 +314,70 @@ def test_corpus_streams_floor_debates(tmp_path):
     records = list(Corpus(tmp_path).manifest_floor_debates())
     assert len(records) == 1
     assert records[0].loksabha == 18 and records[0].session_no == 7
+
+
+# Resume-staleness regression (Codex on PR #50's resume-safety invariant):
+# the same bug class fixed in indiacode (2026-07-03) and dspace (2026-07-08).
+# A metadata-only or failed-download row must never block a later
+# downloads-enabled rerun; "downloaded" is the only terminal status.
+
+
+def test_metadata_only_pass_does_not_block_download_rerun(tmp_path):
+    _probe(tmp_path, loksabhas=[18], sessions=[7]).probe()  # metadata-only
+
+    probe = _probe(tmp_path, loksabhas=[18], sessions=[7])
+    records = probe.probe(download=True)
+    assert {r["fetch_status"] for r in records} == {"downloaded"}
+    assert all(r["sha256"] == hashlib.sha256(PDF_BODY).hexdigest() for r in records)
+
+    # last row per key wins on the next resume
+    seen = _probe(tmp_path, loksabhas=[18], sessions=[7]).load_seen()
+    assert seen["DEBATE|18|7|2026-01-28"] == "downloaded"
+    # and a third downloads run has nothing left to do
+    assert _probe(tmp_path, loksabhas=[18], sessions=[7]).probe(download=True) == []
+
+
+def test_metadata_only_rerun_without_download_stays_idempotent(tmp_path):
+    _probe(tmp_path, loksabhas=[18], sessions=[7]).probe()
+    assert _probe(tmp_path, loksabhas=[18], sessions=[7]).probe() == []
+
+
+def test_failed_download_is_retried_on_next_download_run(tmp_path):
+    probe = _probe(tmp_path, house="rs", sessions=[270])
+
+    class FailingDownloadSession(FakeSession):
+        def get(self, url, **kwargs):
+            if "cms.rajyasabha.nic.in" in url:
+                return FakeResponse(status=500)
+            return super().get(url, **kwargs)
+
+    probe.session = FailingDownloadSession()
+    first = probe.probe(download=True, max_records=1)
+    assert first[0]["fetch_status"] == "download_error"
+
+    retry = _probe(tmp_path, house="rs", sessions=[270])
+    records = retry.probe(download=True, max_records=1)
+    assert records[0]["key"] == first[0]["key"]
+    assert records[0]["fetch_status"] == "downloaded"
+    assert records[0]["sha256"] == hashlib.sha256(PDF_BODY).hexdigest()
+
+
+def test_legacy_ok_rows_resume_by_pdf_path_presence(tmp_path):
+    # Pre-fix corpora carry fetch_status "ok" for both downloaded and
+    # metadata-only rows; pdf_path presence disambiguates on load.
+    legacy = [
+        {"key": "DEBATE|18|7|2026-01-28", "fetch_status": "ok", "pdf_path": "pdfs/debates/x.pdf"},
+        {"key": "DEBATE|18|7|2026-01-29", "fetch_status": "ok", "pdf_path": None},
+    ]
+    (tmp_path / "manifest.jsonl").write_text(
+        "\n".join(json.dumps(r) for r in legacy) + "\n", encoding="utf-8"
+    )
+    probe = _probe(tmp_path, loksabhas=[18], sessions=[7])
+    assert probe.load_seen() == {
+        "DEBATE|18|7|2026-01-28": "downloaded",
+        "DEBATE|18|7|2026-01-29": "metadata_only",
+    }
+    records = probe.probe(download=True)
+    # only the metadata-only legacy day is re-processed (1 Feb has no pdf)
+    assert {r["key"] for r in records} == {"DEBATE|18|7|2026-01-29"}
+    assert records[0]["fetch_status"] == "downloaded"
