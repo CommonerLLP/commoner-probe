@@ -49,8 +49,10 @@ land. Version-bump checklist: bump `pyproject.toml`, CHANGELOG entry,
   scans): build once, shared, when a second consumer needs it.
 - India Code Wayback snapshot-on-fetch — no second adapter needs it;
   revisit as a shared capability if that changes.
-- Global `requests_cache` stale-if-error + per-domain rate-limit defaults —
-  evaluate against all existing corpora before enabling.
+- Making `requests_cache` a required default — the cache is optional-install
+  today (when present it already runs with 6h TTL + stale-if-error, and the
+  one-second per-domain rate limit is always on); evaluate against all
+  existing corpora before requiring it.
 - Package rename to `probe` / `compose` on PyPI (Phase 2) — kept separate
   from code movement by decision.
 

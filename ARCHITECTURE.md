@@ -15,8 +15,10 @@ disclosure portal
   → Corpus read API → downstream consumers
 ```
 
-Every acquisition run also appends `_runs.jsonl` (run id, scope, counts,
-errors) — the append-only audit trail for the corpus.
+Instrumented adapters also append `_runs.jsonl` (run id, scope, counts,
+errors) — the append-only audit trail for the corpus. Not every adapter is
+instrumented yet: lighter ones (bills, attendance, academic-jobs) write
+manifest records only.
 
 ## Layers
 
@@ -27,7 +29,9 @@ errors) — the append-only audit trail for the corpus.
   `requests_cache` with stale-if-error, and a User-Agent override path for
   WAF false-positives. With `requests` absent, a zero-dependency stdlib
   fallback preserves the `requests.Response` interface
-  (`text`/`content`/`json`/`iter_content`/`raise_for_status`).
+  (`text`/`content`/`json`/`iter_content`/`raise_for_status`) but carries
+  only the honest User-Agent — the SSRF guard, robots check, rate limit,
+  backoff, and cache require the `requests` install.
 - **`base.py`** — `BaseProbe`: manifest append, seen-set resume (only
   terminal statuses skipped), `write_pdf`, run logging.
 - **Adapters** — one module per source family: `sansad.py`,
@@ -58,7 +62,10 @@ errors) — the append-only audit trail for the corpus.
    acquisition.
 3. **Resume safety**: reruns skip only terminal statuses
    (`downloaded`, `skipped_exists`, `no_pdf_found`); a metadata-only pass
-   must never block a later download pass.
+   must never block a later download pass. This is the target contract —
+   held by indiacode, dspace, and sansad tabled; the debates adapter still
+   marks every appended row seen regardless of status (known gap, tracked
+   in the repo TODO).
 4. **Access posture**: fail open on robots.txt fetch failure, fail closed
    on SSRF, and never work around a CAPTCHA or an access control.
 5. **Live verification**: unit tests pin behaviour, and adapters are also
