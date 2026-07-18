@@ -63,9 +63,11 @@ from .records import (
     ManifestMynetaRecord,
     ManifestPrsMpTrackRecord,
     ManifestQaRecord,
+    ManifestQuestionListRecord,
     ManifestTabledPaperRecord,
     NevaDistrictRowRecord,
     OutsourcingRowRecord,
+    QuestionListRowRecord,
     RunRecord,
     VacancyRowRecord,
 )
@@ -213,6 +215,18 @@ class Corpus:
         for d in _iter_jsonl(self.out_dir / "manifest.jsonl"):
             if d.get("kind") == "prs_mp_track":
                 yield ManifestPrsMpTrackRecord.from_dict(d)
+
+    def manifest_question_lists(self) -> Iterator[ManifestQuestionListRecord]:
+        """Stream pre-admission question-list/Bulletin records from manifest.jsonl."""
+        for d in _iter_jsonl(self.out_dir / "manifest.jsonl"):
+            if d.get("kind") == "question_list":
+                yield ManifestQuestionListRecord.from_dict(d)
+
+    def question_list_rows(self) -> Iterator[QuestionListRowRecord]:
+        """Stream parsed rows from questions_list.jsonl."""
+        for d in _iter_jsonl(self.out_dir / "questions_list.jsonl"):
+            if d.get("kind") == "question_list_row":
+                yield QuestionListRowRecord.from_dict(d)
 
     def manifest_legacy_dspace(self) -> Iterator[ManifestLegacyDspaceRecord]:
         """Stream legacy-DSpace item records from manifest.jsonl."""

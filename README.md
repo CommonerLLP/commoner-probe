@@ -427,6 +427,47 @@ resolution from some non-India network paths (a DNS-level geo-fence);
 when that happens the command fails with an explicit geo-fence message
 pointing at India-egress, rather than a bare traceback.
 
+### `commoner-probe questions-list` — pre-admission question lists + Bulletins
+
+```bash
+commoner-probe questions-list \
+  --out data/questions-list-2026-monsoon \
+  --house both \
+  --from-date 2026-07-20 \
+  --to-date 2026-07-24 \
+  --sessions 8,271
+```
+
+Writes `manifest.jsonl` document records for daily List of Questions and
+Bulletin PDFs exposed by the Sansad item-wise business APIs. Downloaded PDFs
+go under `pdfs/questions-list/`; parsed question rows go to
+`questions_list.jsonl` when the PDF text layout exposes block boundaries.
+
+| Flag | Default | What it does |
+|---|---|---|
+| `--out` | required | Output corpus directory |
+| `--house` | `both` | `ls`, `rs`, or `both` |
+| `--from-date` | required | Earliest sitting date (YYYY-MM-DD) |
+| `--to-date` | required | Latest sitting date (YYYY-MM-DD) |
+| `--loksabhas` | `18` | Lok Sabha numbers for LS session-date enumeration |
+| `--sessions` | all | Session numbers. LS and RS use different numbering; for 2026-07-20, live check found LS `8` and RS `271`. |
+| `--no-download` | off | Record PDF URLs only |
+| `--max-records N` | — | Stop after N new document records |
+| `--dry-run` | off | Enumerate scoped dates without API document calls |
+| `--reset` | off | Wipe existing manifest/question rows and start fresh |
+
+Live-smoke example:
+
+```bash
+commoner-probe questions-list \
+  --out /tmp/questions-list-smoke \
+  --house ls \
+  --from-date 2026-07-20 \
+  --to-date 2026-07-20 \
+  --sessions 8 \
+  --max-records 1
+```
+
 ### `commoner-probe committees` — standing committee reports
 
 ```bash

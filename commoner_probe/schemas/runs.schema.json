@@ -7,7 +7,7 @@
   "required": ["run_id", "kind", "scope", "topic_name", "topic_path", "topic_hash", "classifier_mode", "classifier_config_redacted", "tool_version", "started_at", "added", "errors", "bucket_attempts", "elapsed_ms"],
   "properties": {
     "run_id": { "type": "string", "description": "UUID4 hex (32 chars)" },
-    "kind": { "type": "string", "enum": ["qa", "committee_report", "floor_debate", "tabled_paper"] },
+    "kind": { "type": "string", "enum": ["qa", "committee_report", "floor_debate", "tabled_paper", "question_list"] },
     "scope": { "type": "object", "description": "Crawl parameters; free-form per crawler kind" },
     "topic_name": { "type": "string" },
     "topic_path": { "type": "string" },

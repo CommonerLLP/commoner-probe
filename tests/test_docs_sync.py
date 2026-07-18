@@ -50,6 +50,7 @@ class CliCommandSyncTests(unittest.TestCase):
                 "attendance",
                 "myneta",
                 "prs",
+                "questions-list",
                 "legacy-dspace",
                 "budget",
                 "academic-jobs",
