@@ -97,6 +97,9 @@ class ManifestQaRecord:
     responder_role_at_event: str | None = None
     pdf_url: str | None = None
     pdf_path: str | None = None
+    # Member-ID retrieval (REQ-0028): RS rows echo the API's mp_code,
+    # LS portal rows carry the requested roster mpCode.
+    mp_code: int | None = None
     # LS-only
     uuid: str | None = None
     handle: str | None = None
