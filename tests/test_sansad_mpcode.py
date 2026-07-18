@@ -170,6 +170,20 @@ class TestRSByCode:
         assert all(r["mp_code"] == 2372 for r in recs)
         assert all(r["found_via_query"] == "mp_code:2372" for r in recs)
 
+    def test_corpus_api_round_trips_mp_code(self, tmp_path):
+        # Codex PR#51 finding: ManifestQaRecord.from_dict drops unknown keys,
+        # so the Corpus API must carry mp_code as a first-class field.
+        from commoner_probe.corpus import Corpus
+
+        session = FakeRSSession({"ses_no=267 and mp_code=2372": [self._rs_row(2372, 1)]})
+        probe = _probe(tmp_path, session, mp_code=2372)
+        probe.probe_rs(
+            seen=set(), sessions=[267], from_date=None, to_date=None,
+            qtype_filter=None, limit=None, max_buckets=None, max_records=None, download=False,
+        )
+        recs = list(Corpus(probe.out_dir).manifest_qa())
+        assert recs and recs[0].mp_code == 2372
+
     def test_probe_rs_names_the_member_from_the_roster(self, tmp_path):
         session = FakeRSSession({"ses_no=267 and mp_code=2372": []})
         probe = _probe(tmp_path, session, mp_code=2372)
