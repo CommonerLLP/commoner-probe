@@ -110,8 +110,13 @@ _QUESTION_ROW_RE = re.compile(
     r"(?P<ministry>[A-Z][A-Z0-9 ,/&().:'\"-]{2,})\s*$"
 )
 _QUESTION_START_RE = re.compile(
-    r"^\s*[†\u2020]?\s*\*?\s*(?P<qno>\d{1,5})\.\s*"
-    r"(?P<asker>(?:Shri|Smt\.?|Shrimati|Dr\.?|Prof\.?|Adv\.?|Kumari|Kunwar|Ms\.?|Miss|Mr\.?|Mrs\.?|Md\.?|Thiru|Km\.?)\b.+?)\s*$",
+    # LS heads read "*1." / "†*3." with a dot; RS heads read "553 Name:" with no
+    # dot. A "#" marker may precede the name in RS lists. Heads always end with
+    # ":" - requiring it keeps bare numbers (page numbers, index lines) out.
+    r"^\s*[†\u2020]?\s*\*?\s*(?P<qno>\d{1,5})\.?\s*#?\s*"
+    r"(?P<asker>(?:Shri|Smt\.?|Shrimati|Sushri|Dr\.?|Prof\.?|Adv\.?|Kumari|Kunwar|"
+    r"Ms\.?|Miss|Mr\.?|Mrs\.?|Md\.?|Mohd\.?|Thiru|Thirumathi|Selvi|Km\.?|Kum\.?|"
+    r"Sardar|Er\.?|Sant|Baba|Ch\.?|Com\.?)\b.+?):\s*$",
     re.IGNORECASE,
 )
 _MINISTER_RE = re.compile(r"^\s*Will the Minister of (?P<ministry>.+?)\s*$", re.IGNORECASE)
@@ -120,17 +125,51 @@ _NOISE_LINES = {
     "RAJYA SABHA",
     "be pleased to state:",
 }
+_WRITTEN_HEADER_RE = re.compile(r"List of Questions for WRITTEN ANSWERS", re.IGNORECASE)
+_CORRIGENDA_HEADER_RE = re.compile(r"^\s*CORRIGEND(?:UM|A)", re.IGNORECASE)
+_STATED_TOTAL_RE = re.compile(r"Total\s+number\s+of\s+questions\s*[-–—:]+\s*(\d+)", re.IGNORECASE)
 
 
-def parse_question_rows(text: str, *, house: str, sitting_date: str, list_type: str, source_pdf: str) -> list[dict[str, Any]]:
-    """Extract rows from observed Sansad question-list PDF text.
+def stated_totals(text: str) -> list[int]:
+    """The per-section "Total Number of Questions - N" declarations, in order."""
+    return [int(m.group(1)) for m in _STATED_TOTAL_RE.finditer(text)]
 
-    The current LS list is block-structured, not tabular: subject heading,
-    ``*qno. asker``, optional more askers, ``Will the Minister of ...``, body.
-    A table-line fallback is kept for older or alternate layouts.
+
+def corrigenda_present(text: str) -> bool:
+    return any(_CORRIGENDA_HEADER_RE.match(line) for line in text.splitlines())
+
+
+def _sections(lines: list[str], list_type: str) -> list[tuple[list[str], str]]:
+    """Split a list PDF into parseable sections with their list_type.
+
+    The LS daily PDF carries BOTH the oral (starred, *1-20) and written
+    (unstarred, 1-230) sections, whose question numbers overlap - they must be
+    parsed as separate numbering spaces or written 1-20 vanish as duplicates
+    of the starred section. CORRIGENDUM/CORRIGENDA sections (which may sit
+    between the two or at the tail, and restate question numbers) are excluded
+    from row parsing. RS lists arrive pre-split per type and pass through
+    whole, truncated at any corrigenda.
     """
+    written_at = next((i for i, line in enumerate(lines) if _WRITTEN_HEADER_RE.search(line)), None)
+    corr = [i for i, line in enumerate(lines) if _CORRIGENDA_HEADER_RE.match(line)]
+    if list_type == "question_list" and written_at is not None:
+        oral_end = min([i for i in corr if i < written_at] + [written_at])
+        written_end = min([i for i in corr if i > written_at] + [len(lines)])
+        return [
+            (lines[:oral_end], "question_list_starred"),
+            (lines[written_at:written_end], "question_list_unstarred"),
+        ]
+    end = min(corr + [len(lines)])
+    return [(lines[:end], list_type)]
+
+
+def _parse_block_segment(
+    lines: list[str], *, house: str, sitting_date: str, list_type: str, source_pdf: str
+) -> list[dict[str, Any]]:
+    """Block-structured rows from one section: subject heading, ``*qno. asker``
+    (LS) or ``qno asker:`` (RS), optional more askers, ``Will the Minister of
+    ...``, body. Question numbers are a per-section namespace."""
     rows: list[dict[str, Any]] = []
-    lines = [line.rstrip() for line in text.splitlines()]
     seen_qnos: set[str] = set()
     i = 0
     while i < len(lines):
@@ -181,12 +220,35 @@ def parse_question_rows(text: str, *, house: str, sitting_date: str, list_type: 
                 "ministry": ministry,
                 "text": "\n".join(body),
                 "source_pdf": source_pdf,
-                "extractor": "commoner_probe.questions_list.parse_question_rows.v1",
+                "extractor": "commoner_probe.questions_list.parse_question_rows.v2",
                 "extracted_at": _now_iso(),
             })
             seen_qnos.add(qno)
         i = max(j, i + 1)
-    for line in lines:
+    return rows
+
+
+def parse_question_rows(text: str, *, house: str, sitting_date: str, list_type: str, source_pdf: str) -> list[dict[str, Any]]:
+    """Extract rows from observed Sansad question-list PDF text.
+
+    Sections are parsed independently (see ``_sections``): the LS daily PDF
+    holds overlapping starred and unstarred numbering spaces, so rows carry the
+    section's list_type, not the whole document's. The table-line fallback is
+    kept for older or alternate layouts and only runs when no block rows parse.
+    """
+    all_lines = [line.rstrip() for line in text.splitlines()]
+    rows: list[dict[str, Any]] = []
+    for seg_lines, seg_type in _sections(all_lines, list_type):
+        rows.extend(
+            _parse_block_segment(
+                seg_lines, house=house, sitting_date=sitting_date,
+                list_type=seg_type, source_pdf=source_pdf,
+            )
+        )
+    if rows:
+        return rows
+    seen_qnos: set[str] = set()
+    for line in all_lines:
         m = _QUESTION_ROW_RE.match(line)
         if not m:
             continue
@@ -208,12 +270,11 @@ def parse_question_rows(text: str, *, house: str, sitting_date: str, list_type: 
             "ministry": ministry,
             "text": "",
             "source_pdf": source_pdf,
-            "extractor": "commoner_probe.questions_list.parse_question_rows.v1",
+            "extractor": "commoner_probe.questions_list.parse_question_rows.v2",
             "extracted_at": _now_iso(),
         })
         seen_qnos.add(m.group("qno"))
     return rows
-
 
 class QuestionsListProbe:
     """Acquire daily question-list and Bulletin PDFs for Sansad sitting dates."""
@@ -439,6 +500,24 @@ class QuestionsListProbe:
                 rows = parse_question_rows(text, house=house, sitting_date=sitting_date, list_type=document_type, source_pdf=rel)
                 self.append_question_rows(rows)
                 rec["question_rows_extracted"] = len(rows)
+                expected = stated_totals(text)
+                rec["question_rows_expected"] = sum(expected) if expected else None
+                rec["corrigenda_present"] = corrigenda_present(text)
+                if not expected:
+                    rec["parse_status"] = "no_stated_total"
+                elif sum(expected) == len(rows):
+                    rec["parse_status"] = "reconciled"
+                else:
+                    # the list itself declares its size; a mismatch is a parse
+                    # failure, not noise
+                    rec["parse_status"] = "count_mismatch"
+                    self.runlog.record_error(
+                        f"parse:{rel}",
+                        ValueError(
+                            f"stated totals {expected} (sum {sum(expected)}) != "
+                            f"{len(rows)} parsed rows"
+                        ),
+                    )
         self.append_manifest(rec)
         seen[key] = str(rec["fetch_status"])
         return rec
