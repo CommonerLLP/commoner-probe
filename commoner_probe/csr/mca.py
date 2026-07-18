@@ -46,6 +46,20 @@ def parse_csrf_token(html: str) -> str | None:
     return parser.csrf_token
 
 
+class _GuardedRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Re-run the SSRF guard on every redirect target.
+
+    The initial URL is validated before the open, but a public host can
+    answer with a Location pointing at loopback/link-local/internal space —
+    the default handler would follow it (Codex review, PR #49).
+    """
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if not is_safe_url(newurl):
+            raise ValueError(f"Redirect target rejected by SSRF guard: {newurl}")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
 class McaCsrProbe:
     """Download MCA CSR company-wise raw data with manifest logging.
 
@@ -67,18 +81,24 @@ class McaCsrProbe:
         self.base_url = base_url
         self.source_page = source_page or urllib.parse.urljoin(base_url, CSR_PAGE_PATH)
         self.export_url = export_url
-        # These URLs are opened below via raw urllib (no RetrySession), so the
-        # SSRF guard must run here: a crafted source_page/export_url could
-        # otherwise reach loopback/link-local/internal address space (Codex
-        # review, PR #11).
-        for url in (self.source_page, self.export_url):
-            if not is_safe_url(url):
-                raise ValueError(f"URL rejected by SSRF guard: {url}")
         self.manifest = out_dir / "manifest.jsonl"
 
+    def _guard(self, url: str) -> None:
+        # These URLs are opened via raw urllib (no RetrySession), so the SSRF
+        # guard must run here: a crafted source_page/export_url could
+        # otherwise reach loopback/link-local/internal address space (Codex
+        # review, PR #11). Checked at each network open, not construction, so
+        # dry runs never require DNS (Codex review, PR #49).
+        if not is_safe_url(url):
+            raise ValueError(f"URL rejected by SSRF guard: {url}")
+
     def init_session(self) -> tuple[urllib.request.OpenerDirector, str | None]:
+        self._guard(self.source_page)
         cookie_jar = http.cookiejar.CookieJar()
-        opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cookie_jar))
+        opener = urllib.request.build_opener(
+            urllib.request.HTTPCookieProcessor(cookie_jar),
+            _GuardedRedirectHandler(),
+        )
         req = urllib.request.Request(self.source_page, headers={"User-Agent": USER_AGENT})
         with opener.open(req, timeout=30) as resp:
             html = resp.read().decode("utf-8", errors="replace")
@@ -125,6 +145,7 @@ class McaCsrProbe:
         if opener is None:
             raise ValueError("opener is required when dry_run is false")
 
+        self._guard(self.export_url)
         data = urllib.parse.urlencode({
             "csrf_token": csrf_token or "",
             "financialyear[]": _format_financial_year(year),
