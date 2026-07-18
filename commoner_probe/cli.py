@@ -27,6 +27,7 @@ from .mospi import MospiClient, MospiProbe
 from .myneta import MyNetaProbe
 from .neva import StateAssemblyCrawler
 from .neva_portals import NevaPortal, iter_portals
+from .prs import PRS_CRAWL_DELAY_SEC, PrsProbe
 from .sansad import SansadProbe
 from .stats import compute_stats, print_stats
 from .topics import load_topic
@@ -555,6 +556,24 @@ def myneta_cmd(args: argparse.Namespace) -> None:
         print(json.dumps(record, ensure_ascii=False))
 
 
+def prs_cmd(args: argparse.Namespace) -> None:
+    if args.surface != "mp-track":
+        raise SystemExit("only --surface mp-track is implemented for REQ-0029 in this slice")
+    out = Path(args.out)
+    houses = ["ls", "rs"] if args.house == "both" else [args.house]
+    loksabhas = [int(x) for x in (_split_csv(args.loksabhas) or ["18"])]
+    probe = PrsProbe(out, sleep=args.sleep)
+    records = probe.probe_mptrack(
+        houses=houses,
+        loksabhas=loksabhas,
+        max_records=args.max_records,
+        download=args.download,
+        dry_run=args.dry_run,
+    )
+    for record in records:
+        print(json.dumps(record, ensure_ascii=False))
+
+
 def budget_cmd(args: argparse.Namespace) -> None:
     out = Path(args.out)
     sources = _split_csv(args.sources) or ["union-budget"]
@@ -1045,6 +1064,38 @@ def build_parser() -> argparse.ArgumentParser:
         help="List candidate IDs per constituency without fetching affidavit pages.",
     )
     myneta.set_defaults(func=myneta_cmd)
+
+    prs = sub.add_parser(
+        "prs",
+        help="Probe PRS Legislative Research surfaces for internal research (REQ-0029).",
+    )
+    prs.add_argument("--out", required=True, help="Output corpus directory")
+    prs.add_argument(
+        "--surface",
+        choices=["mp-track"],
+        default="mp-track",
+        help="PRS surface to acquire; current slice implements mp-track.",
+    )
+    prs.add_argument("--house", choices=["ls", "rs", "both"], default="ls")
+    prs.add_argument("--loksabhas", default="18", help="Comma-separated Lok Sabha numbers, e.g. 17,18")
+    prs.add_argument("--max-records", type=int, help="Stop after N new rows (smoke-test brake)")
+    prs.add_argument(
+        "--download",
+        action="store_true",
+        help="Retain the source CSV under csv/prs-mp-track and stamp sha256.",
+    )
+    prs.add_argument(
+        "--sleep",
+        type=float,
+        default=PRS_CRAWL_DELAY_SEC,
+        help=f"Pause between PRS requests; robots.txt declares Crawl-delay {PRS_CRAWL_DELAY_SEC:g}.",
+    )
+    prs.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Discover source CSV URLs without fetching CSV rows or writing manifest.jsonl.",
+    )
+    prs.set_defaults(func=prs_cmd)
 
     legacy_dspace = sub.add_parser(
         "legacy-dspace",

@@ -184,6 +184,34 @@ class TestRSByCode:
         recs = list(Corpus(probe.out_dir).manifest_qa())
         assert recs and recs[0].mp_code == 2372
 
+    def test_manifest_qa_record_keeps_existing_positional_order(self):
+        from commoner_probe.records import ManifestQaRecord
+
+        rec = ManifestQaRecord(
+            "k",
+            "qa",
+            "Lok Sabha",
+            "title",
+            "2026-07-18",
+            "UNSTARRED",
+            "1",
+            "MINISTRY",
+            ["MP"],
+            "elibrary.sansad.in",
+            None,
+            None,
+            [],
+            [],
+            [],
+            None,
+            None,
+            None,
+            None,
+            "uuid-1",
+        )
+        assert rec.uuid == "uuid-1"
+        assert rec.mp_code is None
+
     def test_probe_rs_names_the_member_from_the_roster(self, tmp_path):
         session = FakeRSSession({"ses_no=267 and mp_code=2372": []})
         probe = _probe(tmp_path, session, mp_code=2372)
