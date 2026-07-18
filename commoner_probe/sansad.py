@@ -21,6 +21,23 @@ LS_API_BASE = "https://elibrary.sansad.in/server/api"
 RS_API_SEARCH = "https://rsdoc.nic.in/Question/Search_Questions"
 LS_CATEGORY_QA = "Part 1(Questions And Answers)"
 
+# sansad.in portal (Next.js + api_ls) surfaces, live-verified 2026-07-17
+# (REQ-0028 recon):
+# * qetAllQuestions — the LS question list. `sessionNumber` is the honored
+#   session param; `sessionNo` is silently IGNORED (falls back to the
+#   latest session). Rows carry member NAMES (array), no mpCode.
+# * AllLoksabhaAndSessionDates — session calendar per Lok Sabha.
+# * member/member-list — roster with stable mpCode + lastLoksabha.
+# The portal's member-filtered question endpoints (qetFilteredQuestionsAns
+# et al., seen in the site's JS registry) resisted systematic param
+# probing — do NOT build on them until a browser capture verifies the
+# call shape.
+LS_PORTAL_QUESTION_LIST_API = "https://sansad.in/api_ls/question/qetAllQuestions"
+LS_PORTAL_SESSIONS_API = "https://sansad.in/api_ls/business/AllLoksabhaAndSessionDates"
+LS_PORTAL_ROSTER_API = "https://sansad.in/api_ls/member/member-list"
+RS_PORTAL_ROSTER_API = "https://sansad.in/api_rs/member/member-list"
+LS_PORTAL_SOURCE = "sansad.in/api_ls/question"
+
 HEADERS = {
     "Accept": "application/json",
     "User-Agent": "commoner-probe/0.5.0 (+https://github.com/CommonerLLP/commoner-probe; public-interest research; rate-limited)",
@@ -30,6 +47,9 @@ RS_HEADERS = {
     "Origin": "https://sansad.in",
     "Referer": "https://sansad.in/",
 }
+# Binary PDF fetches must not carry the JSON Accept header (the REQ-0005
+# latent-406 class) — same pattern as debates.py's PDF_HEADERS.
+PDF_HEADERS = {k: v for k, v in HEADERS.items() if k != "Accept"}
 
 
 
@@ -127,8 +147,11 @@ class SansadProbe(BaseProbe):
         resolver=None,
         member_name: str | None = None,
         enumerate_all: bool = False,
+        mp_code: int | None = None,
     ):
-        # Allow missing topic if member_name is given
+        if member_name and mp_code is not None:
+            raise ValueError("member_name and mp_code are mutually exclusive")
+        # Allow missing topic if member_name or mp_code is given
         if topic is None:
             # We mock a minimal topic profile for the BaseProbe init
             from .topics import TopicProfile
@@ -142,9 +165,15 @@ class SansadProbe(BaseProbe):
             resolver=resolver,
         )
         self.member_name = member_name
+        self.mp_code = mp_code
         self.enumerate_all = enumerate_all
         self.windows_path = out_dir / "_windows.jsonl"
         self._roster: MPRoster | None = None
+        if self.member_name:
+            self.log(
+                "WARNING: --member uses name-prefix matching, which is identity-UNSAFE "
+                "where names collide across members/terms (REQ-0028). Prefer --mp-code."
+            )
 
     @property
     def roster(self):
@@ -351,6 +380,7 @@ class SansadProbe(BaseProbe):
             "answer_text": row.get("ans_text"),
             "pdf_url": row.get("files"),
             "pdf_url_hindi": row.get("hindifiles"),
+            "mp_code": row.get("mp_code"),
             "source": "rsdoc.nic.in",
             "found_via_query": found_via,
             "status": (row.get("status") or "").strip(),
@@ -487,8 +517,13 @@ class SansadProbe(BaseProbe):
         self.runlog.finish(added=added)
         return added
 
-    def rs_search_session(self, ses_no: int, ministry_like: str, member_name: str | None = None) -> list[dict]:
-        if member_name:
+    def rs_search_session(self, ses_no: int, ministry_like: str, member_name: str | None = None, mp_code: int | None = None) -> list[dict]:
+        if mp_code is not None:
+            # Identity-safe member retrieval (REQ-0028): rows carry the
+            # roster-pinned mp_code, live-verified against the RS roster
+            # 2026-07-17 (mpCode 2372 = "Shri Sanjay Singh" both sides).
+            where = f"ses_no={ses_no} and mp_code={mp_code}"
+        elif member_name:
             where = f"ses_no={ses_no} and name like '{member_name}%'"
             if ministry_like:
                 where += f" and min_name like '{ministry_like}%'"
@@ -520,11 +555,18 @@ class SansadProbe(BaseProbe):
         download: bool,
     ) -> int:
         sessions_list = list(sessions)
+        rs_member_name = None
+        if self.mp_code is not None:
+            member = self.resolve_rs_member(self.mp_code)
+            rs_member_name = (member.get("mpName") or "").strip()
+            self.log(f"RS mpCode {self.mp_code} = {rs_member_name!r} (code-pinned whereclause retrieval).")
         run_id = self.runlog.start(
             kind="qa",
             scope={
                 "house": "rs",
                 "sessions": sessions_list,
+                "mp_code": self.mp_code,
+                "member": rs_member_name,
                 "from_date": from_date,
                 "to_date": to_date,
                 "limit": limit,
@@ -538,7 +580,7 @@ class SansadProbe(BaseProbe):
         )
         self.log("RS: keeping all ministry-matched rows (no in-crawler classification).")
         added = 0
-        ministries = [""] if self.member_name else self.topic.rajya_sabha_ministry_likes
+        ministries = [""] if (self.member_name or self.mp_code is not None) else self.topic.rajya_sabha_ministry_likes
         if max_buckets is not None:
             ministries = ministries[:max_buckets]
         for ses_no in sessions_list:
@@ -549,7 +591,7 @@ class SansadProbe(BaseProbe):
                 bkt_raw = bkt_after_date = bkt_kept = bkt_skipped_seen = bkt_no_match = 0
                 bkt_error: str | None = None
                 try:
-                    records = self.rs_search_session(ses_no, ministry, member_name=self.member_name)
+                    records = self.rs_search_session(ses_no, ministry, member_name=self.member_name, mp_code=self.mp_code)
                 except Exception as exc:  # noqa: BLE001
                     bkt_error = f"{type(exc).__name__}: {exc}"
                     self.log(f"RS failed session={ses_no} ministry={ministry}: {exc}")
@@ -565,6 +607,12 @@ class SansadProbe(BaseProbe):
                 kept_for_bucket = 0
                 for row in records:
                     bkt_raw += 1
+                    if self.mp_code is not None and row.get("mp_code") != self.mp_code:
+                        # Drift guard: the API should honour the mp_code
+                        # whereclause, but a row for anyone else is dropped
+                        # and counted, never silently kept (REQ-0028).
+                        bkt_no_match += 1
+                        continue
                     date = rs_date_iso(row.get("ans_date"))
                     qtype = (row.get("qtype") or "").strip()
                     if qtype_filter and qtype.lower() != qtype_filter:
@@ -581,7 +629,8 @@ class SansadProbe(BaseProbe):
                     if self.topic.filter_fn is not None and not self.topic.filter_fn(title, ministry):
                         bkt_no_match += 1
                         continue
-                    rec = self._rs_record(row, run_id=run_id, found_via=ministry)
+                    found_via = f"mp_code:{self.mp_code}" if self.mp_code is not None else ministry
+                    rec = self._rs_record(row, run_id=run_id, found_via=found_via)
                     if (
                         self.topic.record_filter_fn is not None
                         and not self.topic.record_filter_fn(rec)
@@ -619,6 +668,200 @@ class SansadProbe(BaseProbe):
                     elapsed_ms=round((time.monotonic() - bkt_t0) * 1000, 1),
                     error=None,
                 )
+        self.runlog.finish(added=added)
+        return added
+
+    # ---- member-ID retrieval (REQ-0028) ----
+
+    def resolve_rs_member(self, mp_code: int) -> dict:
+        """Exact RS roster row for an mpCode. Raises KeyError when absent.
+
+        Retrieval itself is code-pinned in the rsdoc whereclause; this lookup
+        exists so the run log names who the code belongs to before any rows
+        are attributed to it.
+        """
+        r = self.session.get(RS_PORTAL_ROSTER_API, headers=HEADERS, timeout=45)
+        r.raise_for_status()
+        matches = [m for m in r.json() if int(m.get("mpCode") or 0) == mp_code]
+        if not matches:
+            raise KeyError(f"no RS roster member with mpCode={mp_code}")
+        return matches[0]
+
+    def resolve_ls_member(self, mp_code: int) -> dict:
+        """Exact LS roster row for an mpCode. Raises KeyError when absent.
+
+        Also warns when the resolved name is shared by another roster entry —
+        the question list carries names, not codes, so an exact-name filter
+        cannot distinguish same-named members (documented limitation).
+        """
+        r = self.session.get(LS_PORTAL_ROSTER_API, headers=HEADERS, timeout=45)
+        r.raise_for_status()
+        rows = r.json()
+        matches = [m for m in rows if int(m.get("mpCode") or 0) == mp_code]
+        if not matches:
+            raise KeyError(f"no LS roster member with mpCode={mp_code}")
+        member = matches[0]
+        name = (member.get("mpName") or "").strip()
+        same_name = [m for m in rows if (m.get("mpName") or "").strip() == name and int(m.get("mpCode") or 0) != mp_code]
+        if same_name:
+            self.log(
+                f"WARNING: LS roster has {len(same_name)} other entr(y/ies) named {name!r}; "
+                "exact-name filtering cannot distinguish them from mpCode "
+                f"{mp_code} (no member code in the question list)."
+            )
+        return member
+
+    def ls_portal_sessions(self, loksabha: int) -> list[dict]:
+        """Session calendar (sessionNo + sessionPeriod + dates) for one Lok Sabha."""
+        r = self.session.get(LS_PORTAL_SESSIONS_API, headers=HEADERS, timeout=45)
+        r.raise_for_status()
+        for block in r.json():
+            if int(block.get("loksabha") or 0) == loksabha:
+                return block.get("sessions") or []
+        return []
+
+    def ls_question_list_page(self, loksabha: int, session_number: int, page_no: int, page_size: int = 100) -> list[dict]:
+        """One page of the sansad.in LS portal question list.
+
+        Live-verified contract (2026-07-17): `sessionNumber` is the honored
+        session param — `sessionNo` is silently ignored (endpoint falls back
+        to the latest session). Rows carry member NAMES, no mpCode.
+        """
+        r = self.session.get(
+            LS_PORTAL_QUESTION_LIST_API,
+            params={"lkNo": loksabha, "sessionNumber": session_number, "pageNo": page_no, "pageSize": page_size, "locale": "en"},
+            headers=HEADERS,
+            timeout=60,
+        )
+        r.raise_for_status()
+        data = r.json()
+        rows: list[dict] = []
+        for block in data if isinstance(data, list) else []:
+            rows.extend(block.get("listOfQuestions") or [])
+        return rows
+
+    @staticmethod
+    def _ls_portal_date(value: str | None) -> str:
+        """'dd.mm.yyyy' → ISO; passthrough-truncate like parse_ls_date on failure."""
+        if not value:
+            return ""
+        value = value.strip()
+        try:
+            return datetime.strptime(value, "%d.%m.%Y").strftime("%Y-%m-%d")
+        except ValueError:
+            return value[:10]
+
+    def _ls_portal_record(self, row: dict, *, run_id: str, loksabha: int, session_number: int, mp_code: int) -> dict:
+        date = self._ls_portal_date(row.get("date"))
+        qtype = (row.get("type") or "").strip()
+        qno = str(row.get("quesNo") or "").strip()
+        askers = [(m or "").strip() for m in (row.get("member") or []) if (m or "").strip()]
+        return {
+            "key": stable_key("Lok Sabha", qtype, qno, date),
+            "run_id": run_id,
+            "kind": "qa",
+            "house": "Lok Sabha",
+            "title": (row.get("subjects") or "").strip(),
+            "date": date,
+            "qtype": qtype,
+            "qno": qno,
+            "ministry": (row.get("ministry") or "").strip(),
+            "askers": askers,
+            "pdf_url": row.get("questionsFilePath"),
+            "pdf_url_hindi": row.get("questionsFilePathHindi"),
+            "mp_code": mp_code,
+            "source": LS_PORTAL_SOURCE,
+            "found_via_query": f"mp_code:{mp_code}",
+            "session": str(session_number),
+            "loksabhanumber": str(loksabha),
+            "probed_at": now(),
+        }
+
+    def probe_ls_mpcode(
+        self,
+        seen: set[str],
+        *,
+        mp_code: int,
+        from_date: str | None,
+        to_date: str | None,
+        qtype_filter: str | None,
+        max_records: int | None,
+        download: bool,
+    ) -> int:
+        """Per-member LS retrieval by roster mpCode (REQ-0028).
+
+        The LS question list has no member code in its rows, so retrieval is
+        roster-resolved EXACT-name filtering over session-bounded lists — not
+        prefix matching. The term window defaults to the member's
+        lastLoksabha (the roster's term marker).
+        """
+        member = self.resolve_ls_member(mp_code)
+        name = (member.get("mpName") or "").strip()
+        loksabha = int(member.get("lastLoksabha") or 0)
+        self.log(
+            f"LS mpCode {mp_code} = {name!r} (lastLoksabha {loksabha}). "
+            "NOTE: LS identification is an exact-name join — the question "
+            "list carries names, not codes. RS retrieval by mp_code is "
+            "code-pinned; LS is name-pinned after roster resolution."
+        )
+        run_id = self.runlog.start(
+            kind="qa",
+            scope={"house": "ls", "mp_code": mp_code, "member": name, "loksabha": loksabha,
+                   "from_date": from_date, "to_date": to_date, "download": download},
+            topic_name=self.topic.name,
+            topic_path=self.topic_path,
+            classifier_config=self.topic.classifier_config,
+        )
+        added = 0
+        sessions = self.ls_portal_sessions(loksabha)
+        for session in sessions:
+            ses_no = int(session.get("sessionNo") or 0)
+            page_no = 1
+            while True:
+                rows = self.ls_question_list_page(loksabha, ses_no, page_no)
+                if not rows:
+                    break
+                drifted = 0
+                for row in rows:
+                    row_ses = (row.get("sessionNo") or "").strip()
+                    if row_ses and row_ses != str(ses_no):
+                        # Drift guard: the endpoint silently ignores unknown
+                        # session params — never let another session's rows
+                        # leak into this bucket unmarked.
+                        drifted += 1
+                        continue
+                    date = self._ls_portal_date(row.get("date"))
+                    if not date_in_range(date, from_date, to_date):
+                        continue
+                    qtype = (row.get("type") or "").strip()
+                    if qtype_filter and qtype.lower() != qtype_filter:
+                        continue
+                    members = [(m or "").strip() for m in (row.get("member") or [])]
+                    if name not in members:
+                        continue
+                    rec = self._ls_portal_record(row, run_id=run_id, loksabha=loksabha, session_number=ses_no, mp_code=mp_code)
+                    if rec["key"] in seen:
+                        continue
+                    if download and rec.get("pdf_url"):
+                        qtype_seg = safe_filename_segment((rec["qtype"] or "U").upper()[:1])
+                        qno_seg = safe_filename_segment(rec["qno"] or "X")
+                        fname = f"{qtype_seg}{qno_seg}_{loksabha}_{ses_no}.pdf"
+                        pdf_path = self.pdf_dir / "ls" / fname
+                        if self.write_pdf(rec["pdf_url"], pdf_path, PDF_HEADERS):
+                            rec["pdf_path"] = str(pdf_path.relative_to(self.out_dir))
+                    rec.setdefault("language_classified", ["en"])
+                    self._enrich_askers(rec)
+                    self.append(rec)
+                    seen.add(rec["key"])
+                    added += 1
+                    if max_records is not None and added >= max_records:
+                        self.runlog.finish(added=added)
+                        return added
+                if drifted:
+                    self.log(f"WARNING: LS session {ses_no} page {page_no}: {drifted} row(s) carried a different sessionNo — skipped (endpoint session drift).")
+                page_no += 1
+                time.sleep(self.sleep)
+            self.log(f"LS session {ses_no}: running total added={added}")
         self.runlog.finish(added=added)
         return added
 

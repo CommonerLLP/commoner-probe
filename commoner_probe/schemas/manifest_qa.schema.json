@@ -36,7 +36,8 @@
     },
     "responder_entity_id": { "type": ["string", "null"] },
     "responder_role_at_event": { "type": ["string", "null"] },
-    "source": { "type": "string", "enum": ["elibrary.sansad.in", "rsdoc.nic.in"] },
+    "source": { "type": "string", "enum": ["elibrary.sansad.in", "rsdoc.nic.in", "sansad.in/api_ls/question"] },
+    "mp_code": { "type": ["integer", "null"], "description": "Stable member code (REQ-0028 member-ID retrieval). RS: mp_code echoed by the rsdoc API row (code-pinned). LS portal: the requested roster mpCode (roster-resolved exact-name join). Absent on topic/name-mode records." },
     "found_via_query": { "type": "string" },
     "probed_at": { "type": "string" },
     "language_classified": { "type": "array", "items": { "type": "string" } },
@@ -52,7 +53,7 @@
     "ses_no": { "type": ["integer", "null"], "description": "RS session number (RS only)" },
     "question_text": { "type": ["string", "null"], "description": "Full question text from RS API (RS only)" },
     "answer_text": { "type": ["string", "null"], "description": "Full answer text from RS API (RS only)" },
-    "pdf_url_hindi": { "type": ["string", "null"], "description": "Hindi PDF URL (RS only)" },
+    "pdf_url_hindi": { "type": ["string", "null"], "description": "Hindi PDF URL (RS API and LS sansad.in portal records)" },
     "status": { "type": "string", "description": "Raw question status from RS API (RS only)" }
   }
 }
