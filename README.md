@@ -655,6 +655,24 @@ age, education, self/spouse profession, and the per-candidate source URL.
 `--constituency-ids` defaults to all 543 constituencies. Use `--dry-run` to
 list candidate IDs per constituency without fetching affidavit pages.
 
+### `commoner-probe prs` — PRS Legislative Research MP Track
+
+```bash
+commoner-probe prs \
+  --out data/prs \
+  --surface mp-track \
+  --house both \
+  --loksabhas 17,18
+```
+
+Acquires PRS Legislative Research MP Track CSV rows for internal research only.
+Rows are stamped `source: prsindia.org` so downstream consumers can segregate
+PRS-derived data and avoid republication of PRS text. The current slice
+implements `--surface mp-track` for 17th/18th Lok Sabha and Rajya Sabha.
+Metadata-only is the default; pass `--download` to retain the source CSV under
+`csv/prs-mp-track/` with a sha256. PRS `robots.txt` declares `Crawl-delay: 10`,
+so the default `--sleep` is 10 seconds.
+
 ### `commoner-probe bills` — bills & legislation catalog
 
 ```bash

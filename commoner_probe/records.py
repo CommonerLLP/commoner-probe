@@ -97,9 +97,6 @@ class ManifestQaRecord:
     responder_role_at_event: str | None = None
     pdf_url: str | None = None
     pdf_path: str | None = None
-    # Member-ID retrieval (REQ-0028): RS rows echo the API's mp_code,
-    # LS portal rows carry the requested roster mpCode.
-    mp_code: int | None = None
     # LS-only
     uuid: str | None = None
     handle: str | None = None
@@ -115,6 +112,10 @@ class ManifestQaRecord:
     answer_text: str | None = None
     pdf_url_hindi: str | None = None
     status: str | None = None
+    # Member-ID retrieval (REQ-0028): RS rows echo the API's mp_code,
+    # LS portal rows carry the requested roster mpCode. Keep this field after
+    # the pre-existing positional fields so older callers do not shift LS args.
+    mp_code: int | None = None
 
     @classmethod
     def from_dict(cls, d: dict) -> "ManifestQaRecord":
@@ -726,6 +727,59 @@ class ManifestMynetaRecord:
 
 
 # ---------------------------------------------------------------------------
+# manifest.jsonl record (PRS MP Track)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class ManifestPrsMpTrackRecord:
+    """One PRS Legislative Research MP Track record from manifest.jsonl."""
+
+    key: str
+    kind: str
+    record_type: str
+    source: str
+    source_page_url: str
+    csv_url: str
+    house: str
+    house_code: str
+    mp_election_index: int | None
+    mp_name: str | None
+    status: str
+    probed_at: str
+    csv_path: str | None = None
+    csv_sha256: str | None = None
+    loksabha: int | None = None
+    nature_membership: str | None = None
+    term_start_date_raw: str | None = None
+    term_end_date_raw: str | None = None
+    term: str | None = None
+    constituency: str | None = None
+    state: str | None = None
+    party: str | None = None
+    gender: str | None = None
+    educational_qualification: str | None = None
+    educational_qualification_details: str | None = None
+    age: int | None = None
+    debates: Any = None
+    private_member_bills: Any = None
+    questions: Any = None
+    attendance: Any = None
+    mp_note: str | None = None
+    national_average_debate: Any = None
+    national_average_pmb: Any = None
+    national_average_questions: Any = None
+    attendance_national_average: Any = None
+    state_average_debate: Any = None
+    state_average_pmb: Any = None
+    state_average_questions: Any = None
+    attendance_state_average: Any = None
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "ManifestPrsMpTrackRecord":
+        return _from_dict(cls, d)
+
+
+# ---------------------------------------------------------------------------
 # vacancy_rows.jsonl record
 # ---------------------------------------------------------------------------
 
@@ -848,6 +902,7 @@ __all__ = [
     "ManifestDoePayAllowancesRecord",
     "ManifestAttendanceRecord",
     "ManifestMynetaRecord",
+    "ManifestPrsMpTrackRecord",
     "ManifestLegacyDspaceRecord",
     "ManifestMospiRecord",
     "ManifestTabledPaperRecord",

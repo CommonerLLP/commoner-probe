@@ -1,0 +1,149 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CommonerLLP/commoner-probe/schemas/v1/manifest_prs_mp_track.json",
+  "title": "manifest.jsonl — PRS MP Track",
+  "description": "One PRS Legislative Research MP Track row. PRS-derived records are internal-research-only and stamped source=prsindia.org for downstream segregation.",
+  "type": "object",
+  "required": [
+    "key",
+    "kind",
+    "record_type",
+    "source",
+    "source_page_url",
+    "csv_url",
+    "house",
+    "house_code",
+    "mp_election_index",
+    "mp_name",
+    "status",
+    "probed_at"
+  ],
+  "properties": {
+    "key": {
+      "type": "string",
+      "pattern": "^PRS_MP_TRACK\\|(ls|rs)\\|(\\d+|rs)\\|\\d+$"
+    },
+    "kind": {
+      "type": "string",
+      "const": "prs_mp_track"
+    },
+    "record_type": {
+      "type": "string",
+      "const": "prs_mp_track"
+    },
+    "source": {
+      "type": "string",
+      "const": "prsindia.org"
+    },
+    "source_page_url": {
+      "type": "string",
+      "format": "uri"
+    },
+    "csv_url": {
+      "type": "string",
+      "format": "uri"
+    },
+    "csv_path": {
+      "type": ["string", "null"]
+    },
+    "csv_sha256": {
+      "type": ["string", "null"],
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "house": {
+      "type": "string"
+    },
+    "house_code": {
+      "type": "string",
+      "enum": ["ls", "rs"]
+    },
+    "loksabha": {
+      "type": ["integer", "null"]
+    },
+    "mp_election_index": {
+      "type": ["integer", "null"]
+    },
+    "mp_name": {
+      "type": ["string", "null"]
+    },
+    "nature_membership": {
+      "type": ["string", "null"]
+    },
+    "term_start_date_raw": {
+      "type": ["string", "null"]
+    },
+    "term_end_date_raw": {
+      "type": ["string", "null"]
+    },
+    "term": {
+      "type": ["string", "null"]
+    },
+    "constituency": {
+      "type": ["string", "null"]
+    },
+    "state": {
+      "type": ["string", "null"]
+    },
+    "party": {
+      "type": ["string", "null"]
+    },
+    "gender": {
+      "type": ["string", "null"]
+    },
+    "educational_qualification": {
+      "type": ["string", "null"]
+    },
+    "educational_qualification_details": {
+      "type": ["string", "null"]
+    },
+    "age": {
+      "type": ["integer", "null"]
+    },
+    "debates": {
+      "type": ["number", "string", "null"]
+    },
+    "private_member_bills": {
+      "type": ["number", "string", "null"]
+    },
+    "questions": {
+      "type": ["number", "string", "null"]
+    },
+    "attendance": {
+      "type": ["number", "string", "null"]
+    },
+    "mp_note": {
+      "type": ["string", "null"]
+    },
+    "national_average_debate": {
+      "type": ["number", "string", "null"]
+    },
+    "national_average_pmb": {
+      "type": ["number", "string", "null"]
+    },
+    "national_average_questions": {
+      "type": ["number", "string", "null"]
+    },
+    "attendance_national_average": {
+      "type": ["number", "string", "null"]
+    },
+    "state_average_debate": {
+      "type": ["number", "string", "null"]
+    },
+    "state_average_pmb": {
+      "type": ["number", "string", "null"]
+    },
+    "state_average_questions": {
+      "type": ["number", "string", "null"]
+    },
+    "attendance_state_average": {
+      "type": ["number", "string", "null"]
+    },
+    "status": {
+      "type": "string",
+      "enum": ["metadata_only", "downloaded"]
+    },
+    "probed_at": {
+      "type": "string"
+    }
+  }
+}
