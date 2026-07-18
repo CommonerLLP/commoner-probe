@@ -124,8 +124,20 @@ class DebateProbe:
         self.session = make_session()
         self.runlog = RunLog(out_dir)
 
-    def load_seen(self) -> set[str]:
-        seen: set[str] = set()
+    #: Statuses that never need re-processing. Everything else
+    #: ("metadata_only", "download_error") is retryable on a later
+    #: downloads-enabled run — the resume-staleness bug class fixed in
+    #: indiacode (2026-07-03) and dspace (2026-07-08).
+    _TERMINAL_STATUSES = frozenset({"downloaded"})
+
+    def load_seen(self) -> dict[str, str]:
+        """Map manifest key -> effective fetch_status (last row wins).
+
+        Legacy rows carry ``fetch_status: "ok"`` whether or not a PDF was
+        downloaded — those map to "downloaded"/"metadata_only" by
+        ``pdf_path`` presence so old corpora resume correctly.
+        """
+        seen: dict[str, str] = {}
         if not self.manifest.exists():
             return seen
         with self.manifest.open(encoding="utf-8") as f:
@@ -134,8 +146,13 @@ class DebateProbe:
                     rec = json.loads(line)
                 except json.JSONDecodeError:
                     continue
-                if rec.get("key"):
-                    seen.add(rec["key"])
+                key = rec.get("key")
+                if not key:
+                    continue
+                status = rec.get("fetch_status") or ""
+                if status == "ok":
+                    status = "downloaded" if rec.get("pdf_path") else "metadata_only"
+                seen[key] = status
         return seen
 
     def append_manifest(self, record: dict) -> None:
@@ -336,13 +353,14 @@ class DebateProbe:
                     for session_no, raw_date in self.iter_sitting_dates(catalog, loksabha):
                         date_iso = date_to_iso(raw_date)
                         key = f"DEBATE|{loksabha}|{session_no}|{date_iso}"
-                        if key in seen:
+                        prior = seen.get(key)
+                        if prior in self._TERMINAL_STATUSES or (prior is not None and not download):
                             continue
                         if dry_run:
                             out.append(self._ls_record(
                                 loksabha, session_no, date_iso, pdf_url=None, status="dry_run", run_id=run_id
                             ))
-                            seen.add(key)
+                            seen[key] = "dry_run"
                             continue
                         try:
                             pdf_url = self.debate_pdf_url(loksabha, session_no, date_to_mdy(raw_date))
@@ -351,13 +369,16 @@ class DebateProbe:
                             continue
                         if not pdf_url:
                             continue
-                        rec = self._ls_record(loksabha, session_no, date_iso, pdf_url=pdf_url, status="ok", run_id=run_id)
                         if download:
                             fname = f"ls{loksabha}_s{session_no}_{safe_filename_segment(date_iso)}.pdf"
                             rel, sha = self._download_pdf(pdf_url, self.pdf_dir / fname)
+                            status = "downloaded" if rel else "download_error"
+                            rec = self._ls_record(loksabha, session_no, date_iso, pdf_url=pdf_url, status=status, run_id=run_id)
                             rec["pdf_path"], rec["sha256"] = rel, sha
+                        else:
+                            rec = self._ls_record(loksabha, session_no, date_iso, pdf_url=pdf_url, status="metadata_only", run_id=run_id)
                         self.append_manifest(rec)
-                        seen.add(key)
+                        seen[key] = rec["fetch_status"]
                         out.append(rec)
                         added += 1
                         if max_records is not None and added >= max_records:
@@ -389,10 +410,11 @@ class DebateProbe:
                     key_prefix = f"DEBATE|RS|{session_no}|{date_iso}"
                     if dry_run:
                         key = key_prefix
-                        if key in seen:
+                        prior = seen.get(key)
+                        if prior in self._TERMINAL_STATUSES or (prior is not None and not download):
                             continue
                         out.append(self._rs_record(session_no, date_iso, pdf_url=None, status="dry_run", run_id=run_id))
-                        seen.add(key)
+                        seen[key] = "dry_run"
                         continue
                     try:
                         pdfs = self.rs_debate_pdfs(session_no, raw_date)
@@ -402,23 +424,25 @@ class DebateProbe:
                     for row in pdfs:
                         segment = str(row.get("Time") or row.get("Name") or "").strip() or None
                         key = key_prefix + (f"|{safe_filename_segment(segment)}" if segment else "")
-                        if key in seen:
+                        prior = seen.get(key)
+                        if prior in self._TERMINAL_STATUSES or (prior is not None and not download):
                             continue
-                        rec = self._rs_record(
-                            session_no,
-                            date_iso,
-                            pdf_url=row.get("FileUrl"),
-                            status="ok",
-                            run_id=run_id,
-                            segment=segment,
-                        )
-                        if download and rec["pdf_url"]:
+                        pdf_url = row.get("FileUrl")
+                        if download and pdf_url:
                             suffix = safe_filename_segment(segment or "full-day")
                             fname = f"rs_s{session_no}_{safe_filename_segment(date_iso)}_{suffix}.pdf"
-                            rel, sha = self._download_pdf(rec["pdf_url"], self.pdf_dir / fname)
+                            rel, sha = self._download_pdf(pdf_url, self.pdf_dir / fname)
+                            status = "downloaded" if rel else "download_error"
+                            rec = self._rs_record(
+                                session_no, date_iso, pdf_url=pdf_url, status=status, run_id=run_id, segment=segment,
+                            )
                             rec["pdf_path"], rec["sha256"] = rel, sha
+                        else:
+                            rec = self._rs_record(
+                                session_no, date_iso, pdf_url=pdf_url, status="metadata_only", run_id=run_id, segment=segment,
+                            )
                         self.append_manifest(rec)
-                        seen.add(key)
+                        seen[key] = rec["fetch_status"]
                         out.append(rec)
                         added += 1
                         if max_records is not None and added >= max_records:

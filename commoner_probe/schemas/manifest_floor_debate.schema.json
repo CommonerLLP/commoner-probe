@@ -28,7 +28,7 @@
     "pdf_url": { "type": ["string", "null"] },
     "pdf_path": { "type": ["string", "null"] },
     "sha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
-    "fetch_status": { "type": "string", "enum": ["ok", "dry_run", "fetch_error"] },
+    "fetch_status": { "type": "string", "enum": ["metadata_only", "downloaded", "download_error", "dry_run", "fetch_error", "ok"], "description": "\"ok\" is the legacy pre-resume-fix value (downloaded/metadata-only ambiguous, disambiguated by pdf_path presence on resume); new rows carry the explicit statuses" },
     "fetched_at": { "type": "string" },
     "probed_at": { "type": "string" },
     "error": { "type": "string" }
