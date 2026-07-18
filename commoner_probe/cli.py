@@ -108,18 +108,27 @@ def sansad_cmd(args: argparse.Namespace) -> None:
     if not args.out:
         raise SystemExit("--out is required")
     if args.all:
-        if args.topic or args.member or args.entity_id:
-            raise SystemExit("--all cannot be combined with --topic, --member, or --entity-id.")
+        if args.topic or args.member or args.entity_id or args.mp_code is not None:
+            raise SystemExit("--all cannot be combined with --topic, --member, --entity-id, or --mp-code.")
         if args.house in ("both", "ls") and not (args.from_date and args.to_date):
             raise SystemExit("--all requires --from-date and --to-date for the Lok Sabha crawl.")
         if args.house in ("both", "rs") and not args.sessions:
             raise SystemExit("--all requires an explicit --sessions range for the Rajya Sabha crawl.")
+    if args.mp_code is not None:
+        if args.member or args.entity_id:
+            raise SystemExit("--mp-code cannot be combined with --member or --entity-id.")
+        if args.house == "both":
+            raise SystemExit(
+                "--mp-code requires an explicit --house ls or --house rs: "
+                "LS and RS member codes are separate numbering spaces, so one "
+                "code must never be applied to both houses."
+            )
 
     topic = None
     if args.topic:
         topic = load_topic(args.topic)
-    elif not args.member and not args.entity_id and not args.all:
-        raise SystemExit("--topic is required unless --member, --entity-id, or --all is provided.")
+    elif not args.member and not args.entity_id and not args.all and args.mp_code is None:
+        raise SystemExit("--topic is required unless --member, --entity-id, --mp-code, or --all is provided.")
 
     out = Path(args.out)
     if args.reset and (out / "manifest.jsonl").exists():
@@ -151,12 +160,25 @@ def sansad_cmd(args: argparse.Namespace) -> None:
         resolver=resolver,
         member_name=member_name,
         enumerate_all=args.all,
+        mp_code=args.mp_code,
     )
     seen = probe.load_seen()
     probe.log(f"resume seen={len(seen)} topic={probe.topic.name} download={not args.no_download}")
     qtype_filter = None if args.qtype == "both" else args.qtype
     reset_windows = frozenset(args.reset_window or [])
     added = 0
+    if args.house == "ls" and args.mp_code is not None:
+        added += probe.probe_ls_mpcode(
+            seen,
+            mp_code=args.mp_code,
+            from_date=args.from_date,
+            to_date=args.to_date,
+            qtype_filter=qtype_filter,
+            max_records=args.max_records,
+            download=not args.no_download,
+        )
+        probe.log(f"DONE added={added} total={len(seen)}")
+        return
     if args.house in ("both", "ls"):
         if args.all:
             added += probe.probe_ls_all(
@@ -702,8 +724,20 @@ def build_parser() -> argparse.ArgumentParser:
 
     sansad = sub.add_parser("sansad", help="Probe Lok Sabha / Rajya Sabha parliamentary questions")
     sansad.add_argument("--topic", help="Path to topic profile JSON (required unless --member, --entity-id, or --all given)")
-    sansad.add_argument("--member", help="Member name for per-member retrieval mode")
+    sansad.add_argument("--member", help="Member name for per-member retrieval mode (name-prefix matching; identity-UNSAFE where names collide — prefer --mp-code)")
     sansad.add_argument("--entity-id", help="Stable entity ID for per-member retrieval mode")
+    sansad.add_argument(
+        "--mp-code",
+        type=int,
+        help=(
+            "Stable member code for identity-safe per-member retrieval. "
+            "Requires an explicit --house ls or --house rs (LS and RS member "
+            "codes are separate numbering spaces). RS retrieval is code-pinned "
+            "in the API whereclause; LS retrieval resolves the code against "
+            "the sansad.in roster and exact-name-joins the question list, "
+            "scoped to the member's lastLoksabha."
+        ),
+    )
     sansad.add_argument(
         "--all",
         action="store_true",

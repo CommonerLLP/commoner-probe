@@ -339,7 +339,9 @@ commoner-probe sansad \
 
 | Flag | Default | What it does |
 |---|---|---|
-| `--topic` | required* | Path to topic profile JSON (*unless `--member`, `--entity-id`, or `--all`) |
+| `--topic` | required* | Path to topic profile JSON (*unless `--member`, `--entity-id`, `--mp-code`, or `--all`) |
+| `--member` | — | Per-member retrieval by name prefix (identity-UNSAFE where names collide — prefer `--mp-code`) |
+| `--mp-code N` | — | Identity-safe per-member retrieval by stable member code; requires explicit `--house ls` or `--house rs` |
 | `--all` | off | Full-corpus enumeration: every question, no topic/member filter |
 | `--out` | required | Output corpus directory |
 | `--house` | `both` | `ls`, `rs`, or `both` |
@@ -353,6 +355,23 @@ commoner-probe sansad \
 | `--max-buckets N` | — | Only run the first N search/ministry combos |
 | `--reset` | off | Wipe existing manifest and start fresh |
 | `--reset-window ID` | — | Force re-crawl of one enumeration window (repeatable) |
+
+**Member-ID retrieval** (`--mp-code`) is the identity-safe per-member mode.
+Name-prefix retrieval (`--member`) mis-attributes wherever names collide
+across members or terms (a real incident: a name-prefix pull returned an
+earlier, different RS MP's 2012 records under a current member's assumed
+on-file name). LS and RS member codes are separate numbering spaces, so
+`--mp-code` refuses `--house both`. RS retrieval pins the code in the API
+whereclause and drops any row echoing a different `mp_code`; LS retrieval
+resolves the code against the sansad.in roster, then exact-name-joins the
+portal question list scoped to the member's `lastLoksabha` (the LS question
+list carries names, not codes — the roster resolution warns when another
+roster entry shares the resolved name, and only the member's last Lok Sabha
+is covered).
+
+```bash
+commoner-probe sansad --mp-code 2372 --house rs --sessions 260-267 --out data/sanjay-singh
+```
 
 **Full-corpus enumeration** (`--all`) pages through every question — LS in
 calendar-month windows over `--from-date`/`--to-date`, RS one window per

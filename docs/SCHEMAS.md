@@ -82,6 +82,7 @@ records, `house`.
 | `pdf_url` | string\|null | yes | PDF URL (English); may be null | sansad.py:414 |
 | `pdf_url_hindi` | string\|null | yes | Hindi PDF URL; may be null | sansad.py:415 |
 | `pdf_path` | string | cond | Relative path; present only when download succeeded | sansad.py:428 |
+| `mp_code` | integer\|null | cond | Stable member code echoed by the API row; stamped on member-ID retrieval (REQ-0028) | sansad.py |
 | `source` | string | yes | `"rsdoc.nic.in"` | sansad.py:416 |
 | `found_via_query` | string | yes | Ministry filter string used as crawl query | sansad.py:417 |
 | `status` | string | yes | Raw question status from API | sansad.py:418 |
@@ -91,6 +92,13 @@ records, `house`.
 **Note — field divergence vs Shape A**: RS Q/A records lack `uuid`, `handle`,
 `session`, `loksabhanumber`, `uri`, `found_via_group`. They carry `qslno`,
 `ses_no`, `question_text`, `answer_text`, `pdf_url_hindi`, `status` instead.
+
+**Note — LS member-ID variant (`--mp-code`, REQ-0028)**: LS records retrieved
+via the sansad.in portal question list carry `source =
+"sansad.in/api_ls/question"`, `mp_code` (the requested roster mpCode),
+`pdf_url_hindi`, and `found_via_query = "mp_code:{N}"`; they lack `uuid`,
+`handle`, `uri`, and `found_via_group` (the portal list is not the eLibrary
+DSpace surface).
 Both shapes share `key`, `run_id`, `kind`, `house`, `title`, `date`, `qtype`,
 `qno`, `ministry`, `askers`, `asker_details`, `asker_entity_ids`,
 `responder_entity_id`, `responder_role_at_event`, `source`, `found_via_query`,
