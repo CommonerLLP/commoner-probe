@@ -65,6 +65,8 @@ def _pick_schema_name(rec: dict) -> str | None:
         return "manifest_myneta"
     if kind == "prs_mp_track":
         return "manifest_prs_mp_track"
+    if kind == "question_list":
+        return "manifest_question_list"
     if kind == "legacy_dspace_item":
         return "manifest_legacy_dspace"
     if kind == "tabled_paper":
@@ -190,6 +192,15 @@ def validate_corpus(
         log(f"Validating {answers_path.relative_to(out_dir)} ...")
         ok = _validate_file(answers_path, lambda r: _schema_for_answers_kind(r.get("kind", "")))
         n = sum(1 for line in answers_path.read_text(encoding="utf-8").splitlines() if line.strip())
+        log(f"  {n} records — {'ok' if ok else 'FAILED'}")
+        any_error = any_error or (not ok)
+
+    # --- questions_list.jsonl ---
+    questions_list_path = out_dir / "questions_list.jsonl"
+    if questions_list_path.exists():
+        log(f"Validating {questions_list_path.relative_to(out_dir)} ...")
+        ok = _validate_file(questions_list_path, lambda _: "question_list_row")
+        n = sum(1 for line in questions_list_path.read_text(encoding="utf-8").splitlines() if line.strip())
         log(f"  {n} records — {'ok' if ok else 'FAILED'}")
         any_error = any_error or (not ok)
 

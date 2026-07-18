@@ -28,6 +28,7 @@ from .myneta import MyNetaProbe
 from .neva import StateAssemblyCrawler
 from .neva_portals import NevaPortal, iter_portals
 from .prs import PRS_CRAWL_DELAY_SEC, PrsProbe
+from .questions_list import QuestionsListProbe
 from .sansad import SansadProbe
 from .stats import compute_stats, print_stats
 from .topics import load_topic
@@ -103,6 +104,31 @@ def sansad_tabled_cmd(args: argparse.Namespace) -> None:
         download=not args.no_download,
     )
     probe.log(f"done added={added}")
+
+
+def questions_list_cmd(args: argparse.Namespace) -> None:
+    out = Path(args.out)
+    if args.reset and (out / "manifest.jsonl").exists():
+        (out / "manifest.jsonl").unlink()
+    if args.reset and (out / "questions_list.jsonl").exists():
+        (out / "questions_list.jsonl").unlink()
+    probe = QuestionsListProbe(
+        out,
+        house=args.house,
+        loksabhas=parse_session_range(args.loksabhas) if args.loksabhas else None,
+        sessions=parse_session_range(args.sessions) if args.sessions else None,
+        from_date=args.from_date,
+        to_date=args.to_date,
+        sleep=args.sleep,
+    )
+    records = probe.probe(
+        max_records=args.max_records,
+        download=not args.no_download,
+        dry_run=args.dry_run,
+    )
+    for rec in records:
+        print(json.dumps(rec, ensure_ascii=False))
+    print(f"done records={len(records)}")
 
 
 def sansad_cmd(args: argparse.Namespace) -> None:
@@ -823,6 +849,23 @@ def build_parser() -> argparse.ArgumentParser:
     tabled.add_argument("--sleep", type=float, default=0.25)
     tabled.add_argument("--no-download", action="store_true", help="Record metadata without downloading bitstreams")
     tabled.set_defaults(func=sansad_tabled_cmd)
+
+    questions_list = sub.add_parser(
+        "questions-list",
+        help="Acquire pre-admission daily List of Questions and Bulletin PDFs from sansad.in.",
+    )
+    questions_list.add_argument("--out", required=True, help="Output corpus directory")
+    questions_list.add_argument("--house", choices=["both", "ls", "rs"], default="both")
+    questions_list.add_argument("--from-date", required=True, help="Earliest sitting date (YYYY-MM-DD)")
+    questions_list.add_argument("--to-date", required=True, help="Latest sitting date (YYYY-MM-DD)")
+    questions_list.add_argument("--loksabhas", help="Lok Sabha numbers, e.g. 18 or 17-18 (default 18)")
+    questions_list.add_argument("--sessions", help="Session numbers, e.g. 270-271")
+    questions_list.add_argument("--max-records", type=int, help="Stop after N new document records")
+    questions_list.add_argument("--sleep", type=float, default=0.25)
+    questions_list.add_argument("--no-download", action="store_true", help="Record metadata without downloading PDFs")
+    questions_list.add_argument("--dry-run", action="store_true", help="Enumerate scoped dates without API document calls")
+    questions_list.add_argument("--reset", action="store_true")
+    questions_list.set_defaults(func=questions_list_cmd)
 
     cc = sub.add_parser("committees", help="Probe standing-committee reports")
     cc.add_argument("--topic", required=True, help="Path to topic profile JSON")

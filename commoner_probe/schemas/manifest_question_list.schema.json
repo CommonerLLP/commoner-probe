@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CommonerLLP/commoner-probe/schemas/v1/manifest_question_list.json",
+  "title": "Manifest Question List Record",
+  "type": "object",
+  "required": [
+    "key",
+    "run_id",
+    "kind",
+    "record_type",
+    "source",
+    "house",
+    "session_no",
+    "sitting_date",
+    "document_kind",
+    "document_type",
+    "fetch_status",
+    "fetched_at",
+    "probed_at"
+  ],
+  "properties": {
+    "key": { "type": "string" },
+    "run_id": { "type": "string" },
+    "kind": { "const": "question_list" },
+    "record_type": {
+      "type": "string",
+      "enum": [
+        "question_list",
+        "question_list_starred",
+        "question_list_unstarred",
+        "bulletin1",
+        "bulletin2"
+      ]
+    },
+    "source": { "type": "string" },
+    "house": { "type": "string", "enum": ["Lok Sabha", "Rajya Sabha"] },
+    "loksabha": { "type": ["integer", "null"] },
+    "session_no": { "type": "integer" },
+    "sitting_date": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+    "document_kind": { "type": "string", "enum": ["question_list", "bulletin1", "bulletin2"] },
+    "document_type": { "type": "string" },
+    "pdf_url": { "type": ["string", "null"] },
+    "pdf_path": { "type": ["string", "null"] },
+    "sha256": { "type": ["string", "null"] },
+    "fetch_status": {
+      "type": "string",
+      "enum": ["metadata_only", "downloaded", "download_error", "not_published"]
+    },
+    "question_rows_extracted": { "type": "integer", "minimum": 0 },
+    "fetched_at": { "type": "string" },
+    "probed_at": { "type": "string" }
+  },
+  "additionalProperties": true
+}

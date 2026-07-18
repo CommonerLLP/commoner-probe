@@ -780,6 +780,61 @@ class ManifestPrsMpTrackRecord:
 
 
 # ---------------------------------------------------------------------------
+# manifest.jsonl record (pre-admission question lists / Bulletins)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class ManifestQuestionListRecord:
+    """One pre-admission List of Questions or Bulletin record from manifest.jsonl."""
+
+    key: str
+    run_id: str
+    kind: str
+    record_type: str
+    source: str
+    house: str
+    session_no: int
+    sitting_date: str
+    document_kind: str
+    document_type: str
+    fetch_status: str
+    fetched_at: str
+    probed_at: str
+    loksabha: int | None = None
+    pdf_url: str | None = None
+    pdf_path: str | None = None
+    sha256: str | None = None
+    question_rows_extracted: int | None = None
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "ManifestQuestionListRecord":
+        return _from_dict(cls, d)
+
+
+@dataclass
+class QuestionListRowRecord:
+    """One parsed row from questions_list.jsonl."""
+
+    key: str
+    kind: str
+    house: str
+    sitting_date: str
+    list_type: str
+    qno: str
+    askers: list[str]
+    source_pdf: str
+    extractor: str
+    extracted_at: str
+    subject: str | None = None
+    ministry: str | None = None
+    text: str | None = None
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "QuestionListRowRecord":
+        return _from_dict(cls, d)
+
+
+# ---------------------------------------------------------------------------
 # vacancy_rows.jsonl record
 # ---------------------------------------------------------------------------
 

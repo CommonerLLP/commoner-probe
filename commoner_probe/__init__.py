@@ -17,9 +17,11 @@ from .records import (  # noqa: F401
     ManifestMinesDmftRecord,
     ManifestPrsMpTrackRecord,
     ManifestQaRecord,
+    ManifestQuestionListRecord,
     MinisterialAppointment,
     MpMembership,
     Person,
+    QuestionListRowRecord,
     RunRecord,
 )
 
@@ -33,6 +35,8 @@ __all__ = [
     "ManifestCommitteeReportRecord",
     "ManifestMinesDmftRecord",
     "ManifestPrsMpTrackRecord",
+    "ManifestQuestionListRecord",
+    "QuestionListRowRecord",
     "AnswerQaResponse",
     "AnswerAtrResponse",
     "AnswerDfgRecommendation",
