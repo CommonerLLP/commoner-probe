@@ -374,3 +374,79 @@ def test_records_validate_against_schema(tmp_path, monkeypatch):
     probe = _probe(tmp_path, pdf_for_url={URL_2223: PDF_SCANNED})
     for record in probe.probe(years=["2022-23"]):
         Draft202012Validator(schema).validate(record)
+
+
+# dolr.gov.in is a WordPress "document-category" listing: the DDG series
+# spills onto a page 2 (Codex review, PR #42 — page 1 alone silently dropped
+# the older editions). discover() must follow same-listing /page/<N>/ links.
+DOLR_LISTING_URL = "https://dolr.gov.in/document-category/detailed-demand-for-grants/"
+
+DOLR_PAGE1_HTML = """
+<html><body><table><tbody>
+<tr>
+  <td>1</td>
+  <td>Detailed Demand for Grants 2025-26</td>
+  <td><a href="/wp-content/uploads/2025/03/DDG-2025-26.pdf">View</a></td>
+</tr>
+</tbody></table>
+<nav class="pagination">
+  <a class="page-numbers" href="https://dolr.gov.in/document-category/detailed-demand-for-grants/page/1/">1</a>
+  <a class="page-numbers" href="https://dolr.gov.in/document-category/detailed-demand-for-grants/page/2/">2</a>
+  <a class="page-numbers" href="https://dolr.gov.in/document-category/other-category/page/2/">Other section</a>
+</nav>
+</body></html>
+"""
+
+DOLR_PAGE2_HTML = """
+<html><body><table><tbody>
+<tr>
+  <td>2</td>
+  <td>Detailed Demand for Grants 2024-25</td>
+  <td><a href="/wp-content/uploads/2024/03/DDG-2024-25.pdf">View</a></td>
+</tr>
+</tbody></table>
+</body></html>
+"""
+
+
+def test_discover_follows_wordpress_pagination(tmp_path):
+    """Page 2 of a paginated listing must be fetched; the page-1 self-link
+    must not be re-requested; a paginated link to a *different* section of
+    the site must not be followed."""
+    portal = get_portal("dolr")
+    probe = MinistryDDGProbe(tmp_path, portal=portal, sleep=0)
+    page2_url = DOLR_LISTING_URL + "page/2/"
+
+    class DolrSession(FakeSession):
+        def get(self, url, **kwargs):
+            self.calls.append(url)
+            if url == portal.listing_url:
+                return FakeResponse(text=DOLR_PAGE1_HTML)
+            if url == page2_url:
+                return FakeResponse(text=DOLR_PAGE2_HTML)
+            raise AssertionError(f"unrouted url: {url}")
+
+    probe.session = DolrSession()
+    docs = probe.discover()
+    assert [d["year"] for d in docs] == ["2025-26", "2024-25"]
+    assert docs[0]["url"].endswith("/wp-content/uploads/2025/03/DDG-2025-26.pdf")
+    assert docs[1]["url"].endswith("/wp-content/uploads/2024/03/DDG-2024-25.pdf")
+    assert probe.session.calls == [portal.listing_url, page2_url]
+
+
+def test_discover_single_page_listing_unchanged(tmp_path):
+    """A listing with no /page/<N>/ links makes exactly one request."""
+    portal = get_portal("dolr")
+    probe = MinistryDDGProbe(tmp_path, portal=portal, sleep=0)
+
+    class SinglePageSession(FakeSession):
+        def get(self, url, **kwargs):
+            self.calls.append(url)
+            if url == portal.listing_url:
+                return FakeResponse(text=DOLR_PAGE2_HTML)  # no pagination nav
+            raise AssertionError(f"unrouted url: {url}")
+
+    probe.session = SinglePageSession()
+    docs = probe.discover()
+    assert [d["year"] for d in docs] == ["2024-25"]
+    assert probe.session.calls == [portal.listing_url]

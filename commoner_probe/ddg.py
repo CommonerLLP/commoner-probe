@@ -201,6 +201,13 @@ _TAG_RE = re.compile(r"<[^>]+>")
 # tribal.nic.in's other 42 non-DDG PDFs on the same page — zero false
 # positives).
 _DDG_FILENAME_RE = re.compile(r"ddg", re.IGNORECASE)
+# WordPress "document-category" listings paginate as <listing>/page/<N>/ —
+# dolr.gov.in's DDG series spills onto a page 2, which discover() used to
+# never fetch (Codex review, PR #42). Followed only when the link stays
+# under the listing's own path; never guessed, only linked pages.
+_PAGE_HREF_RE = re.compile(r'href="([^"]*/page/(\d+)/?)"', re.IGNORECASE)
+# Hard bound on listing pages followed per discover() call.
+MAX_LISTING_PAGES = 25
 
 
 def _now_iso() -> str:
@@ -313,6 +320,25 @@ _PARSERS = {
 }
 
 
+def _pagination_urls(html: str, listing_url: str) -> list[str]:
+    """Same-listing ``/page/<N>/`` links from a WordPress paginated listing.
+
+    Only links under *listing_url*'s own path are returned — a category
+    page's nav can also link to other sections' paginated listings, which
+    must not be wandered into. Page 1 is the listing itself and is never
+    re-requested. First-appearance order, duplicates removed.
+    """
+    urls: list[str] = []
+    base = listing_url.rstrip("/") + "/"
+    for m in _PAGE_HREF_RE.finditer(html):
+        if int(m.group(2)) < 2:
+            continue
+        url = urljoin(base, unescape(m.group(1)))
+        if url.startswith(base) and url not in urls:
+            urls.append(url)
+    return urls
+
+
 class MinistryDDGProbe:
     """Acquire one ministry's Detailed Demands for Grants series with provenance."""
 
@@ -337,9 +363,27 @@ class MinistryDDGProbe:
                 f"unknown template {self.portal.template!r} for portal {self.portal.ministry_code!r}; "
                 f"known: {sorted(_PARSERS)}"
             ) from exc
-        r = self.session.get(self.portal.listing_url, timeout=60)
-        r.raise_for_status()
-        return parser(r.text, self.portal.listing_url)
+        # Follow same-listing /page/<N>/ pagination (see _pagination_urls) —
+        # a single-page fetch silently drops older editions on paginated
+        # listings (dolr.gov.in, Codex review PR #42). Bounded by
+        # MAX_LISTING_PAGES; a no-op for single-page listings.
+        page_urls = [self.portal.listing_url]
+        documents: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        idx = 0
+        while idx < len(page_urls) and idx < MAX_LISTING_PAGES:
+            url = page_urls[idx]
+            idx += 1
+            r = self.session.get(url, timeout=60)
+            r.raise_for_status()
+            for doc in parser(r.text, url):
+                if doc["url"] not in seen:
+                    seen.add(doc["url"])
+                    documents.append(doc)
+            for next_url in _pagination_urls(r.text, self.portal.listing_url):
+                if next_url not in page_urls:
+                    page_urls.append(next_url)
+        return documents
 
     def _record(self, doc: dict[str, Any], *, status: str) -> dict[str, Any]:
         now = _now_iso()

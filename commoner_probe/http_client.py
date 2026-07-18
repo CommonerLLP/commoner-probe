@@ -8,8 +8,11 @@ Design (after academiaindia/scraper/fetch.py)
   resolving to private/loopback/link-local/reserved IP space.
 - robots.txt: checked per domain before the first request to that domain.
   Fail-open — if robots.txt cannot be fetched, the request proceeds. A URL
-  explicitly disallowed raises PermissionError. Cached per domain for the
-  lifetime of the session.
+  explicitly disallowed raises PermissionError. Cached per (domain,
+  User-Agent) for the lifetime of the session — two request identities
+  against one host get independent parsers, so the first UA's result
+  (e.g. a WAF 403 read as disallow-all) never leaks into another UA's
+  session (Codex review, PR #41).
 - Per-domain rate limiting: 1 req/s default, enforced globally across all
   sessions via a module-level last-request dict.
 - Exponential backoff on 5xx and network errors: up to MAX_RETRIES attempts,
@@ -69,7 +72,11 @@ MAX_RETRIES = 3
 ROBOTS_TIMEOUT_SEC = 10.0
 
 _last_request_by_domain: dict[str, float] = {}
-_robot_parsers: dict[str, urllib.robotparser.RobotFileParser] = {}
+# Keyed by (domain, user_agent): the robots.txt fetch is made with a specific
+# identity and the parsed rules are UA-specific, so keying by domain alone
+# let the first session's result stick for every later session with a
+# different UA against the same host (Codex review, PR #41).
+_robot_parsers: dict[tuple[str, str], urllib.robotparser.RobotFileParser] = {}
 
 
 def _get_robot_parser(url: str, *, user_agent: str = USER_AGENT) -> urllib.robotparser.RobotFileParser:
@@ -85,21 +92,21 @@ def _get_robot_parser(url: str, *, user_agent: str = USER_AGENT) -> urllib.robot
     to ``RobotFileParser.parse``. HTTP-status handling mirrors ``read()``:
     401/403 disallow everything, other failures fail open.
 
-    *user_agent* is used for the robots.txt fetch itself and is cached
-    alongside the parser — the fetch identity must match the identity that
-    will actually request pages, or the check is meaningless. One WAF-gated
-    government portal (mha.gov.in, verified 2026-07-09) returns 403 for
-    commoner-probe's default URL-bearing User-Agent specifically (the same
-    class of false-positive documented for indiabudget.gov.in in
-    ``budget/probe.py``'s ``BUDGET_USER_AGENT``), which this fail-open design
-    would otherwise turn into a real robots block via the 401/403 branch
-    below — even though the site has no robots.txt at all.
+    *user_agent* is used for the robots.txt fetch itself and is part of the
+    cache key — the fetch identity must match the identity that will actually
+    request pages, or the check is meaningless. One WAF-gated government
+    portal (mha.gov.in, verified 2026-07-09) returns 403 for commoner-probe's
+    default URL-bearing User-Agent specifically (the same class of
+    false-positive documented for indiabudget.gov.in in ``budget/probe.py``'s
+    ``BUDGET_USER_AGENT``), which this fail-open design would otherwise turn
+    into a real robots block via the 401/403 branch below — even though the
+    site has no robots.txt at all.
     """
     parsed = urlparse(url)
-    domain = parsed.netloc
-    if domain not in _robot_parsers:
+    key = (parsed.netloc, user_agent)
+    if key not in _robot_parsers:
         rp = urllib.robotparser.RobotFileParser()
-        robots_url = f"{parsed.scheme}://{domain}/robots.txt"
+        robots_url = f"{parsed.scheme}://{parsed.netloc}/robots.txt"
         rp.set_url(robots_url)
         try:
             req = urllib.request.Request(robots_url, headers={"User-Agent": user_agent})
@@ -116,8 +123,8 @@ def _get_robot_parser(url: str, *, user_agent: str = USER_AGENT) -> urllib.robot
         except Exception:
             # Network error, timeout, or malformed body — fail open.
             rp.allow_all = True
-        _robot_parsers[domain] = rp
-    return _robot_parsers[domain]
+        _robot_parsers[key] = rp
+    return _robot_parsers[key]
 
 
 def _cache_dir() -> Path:
@@ -137,7 +144,63 @@ def _rate_limit(domain: str, min_interval_sec: float) -> None:
 
 try:
     import requests  # type: ignore[import]
+except ModuleNotFoundError:
+    requests = None  # type: ignore[assignment]
 
+
+class StdlibResponse:
+    """Zero-dependency stand-in for ``requests.Response``.
+
+    Used when ``requests`` is not installed at all. Defined unconditionally
+    (not inside the fallback branch) so the fallback contract is importable
+    and testable in every environment. ``content`` is part of that contract:
+    PDF adapters (ddg, doe, dspace, debates) read ``r.content`` for binary
+    downloads — without it the stdlib fallback crashed with AttributeError
+    on every document fetch (Codex review, PR #41).
+    """
+
+    def __init__(self, url: str, status_code: int, body: bytes) -> None:
+        self.url = url
+        self.status_code = status_code
+        self._body = body
+        self.text = body.decode("utf-8", errors="replace")
+
+    @property
+    def content(self) -> bytes:
+        return self._body
+
+    def json(self) -> dict | list:
+        return json.loads(self.text)
+
+    def raise_for_status(self) -> None:
+        if self.status_code >= 400:
+            raise RuntimeError(f"HTTP {self.status_code} for {self.url}")
+
+    def iter_content(self, chunk_size: int = 16384):
+        for i in range(0, len(self._body), chunk_size):
+            yield self._body[i : i + chunk_size]
+
+
+class StdlibSession:
+    def __init__(self, *, user_agent: str | None = None) -> None:
+        self.headers: dict[str, str] = {"User-Agent": user_agent or USER_AGENT}
+
+    def get(self, url: str, **kwargs: Any) -> StdlibResponse:
+        params = kwargs.get("params")
+        if params:
+            sep = "&" if "?" in url else "?"
+            url = url + sep + urlencode(params)
+        headers = {**self.headers, **(kwargs.get("headers") or {})}
+        timeout = kwargs.get("timeout") or 60
+        req = urllib.request.Request(url, headers=headers)
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                return StdlibResponse(url, resp.status, resp.read())
+        except urllib.error.HTTPError as exc:
+            return StdlibResponse(url, exc.code, exc.read())
+
+
+if requests is not None:
     try:
         from requests_cache import CachedSession  # type: ignore[import]
 
@@ -203,46 +266,10 @@ try:
     def make_session(rate_limit_sec: float = DEFAULT_RATE_LIMIT_SEC, *, user_agent: str | None = None) -> RetrySession:
         return RetrySession(rate_limit_sec=rate_limit_sec, user_agent=user_agent)
 
-except ModuleNotFoundError:
+else:
     # Stdlib fallback — no SSRF guard, no retry, no cache, no rate-limit.
     # Sufficient for zero-dependency installs and test environments.
-
-    class StdlibResponse:  # type: ignore[no-redef]
-        def __init__(self, url: str, status_code: int, body: bytes) -> None:
-            self.url = url
-            self.status_code = status_code
-            self._body = body
-            self.text = body.decode("utf-8", errors="replace")
-
-        def json(self) -> dict | list:
-            return json.loads(self.text)
-
-        def raise_for_status(self) -> None:
-            if self.status_code >= 400:
-                raise RuntimeError(f"HTTP {self.status_code} for {self.url}")
-
-        def iter_content(self, chunk_size: int = 16384):
-            for i in range(0, len(self._body), chunk_size):
-                yield self._body[i : i + chunk_size]
-
-    class StdlibSession:  # type: ignore[no-redef]
-        def __init__(self, *, user_agent: str | None = None) -> None:
-            self.headers: dict[str, str] = {"User-Agent": user_agent or USER_AGENT}
-
-        def get(self, url: str, **kwargs: Any) -> StdlibResponse:
-            params = kwargs.get("params")
-            if params:
-                sep = "&" if "?" in url else "?"
-                url = url + sep + urlencode(params)
-            headers = {**self.headers, **(kwargs.get("headers") or {})}
-            timeout = kwargs.get("timeout") or 60
-            req = urllib.request.Request(url, headers=headers)
-            try:
-                with urllib.request.urlopen(req, timeout=timeout) as resp:
-                    return StdlibResponse(url, resp.status, resp.read())
-            except urllib.error.HTTPError as exc:
-                return StdlibResponse(url, exc.code, exc.read())
-
+    # StdlibResponse/StdlibSession are defined at module level above.
     requests = types.SimpleNamespace(Session=StdlibSession)  # type: ignore[assignment]
 
     def make_session(rate_limit_sec: float = DEFAULT_RATE_LIMIT_SEC, *, user_agent: str | None = None) -> StdlibSession:  # type: ignore[misc]

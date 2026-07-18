@@ -161,3 +161,55 @@ def test_make_session_applies_user_agent_override():
 def test_make_session_default_user_agent_unchanged():
     session = hc.make_session()
     assert session.headers["User-Agent"] == hc.USER_AGENT
+
+
+def test_robot_parser_is_cached_per_domain_and_user_agent(monkeypatch):
+    """Regression for the Codex PR#41 finding: the cache was keyed by domain
+    only, so the first UA's robots result stuck for every later session with
+    a different UA against the same host — e.g. a WAF 403 for the default UA
+    (read as disallow-all) would also block a scheme-free UA that the WAF
+    would have let through."""
+    _clear_cache()
+    calls: list[str] = []
+
+    def waf_sensitive_urlopen(req, timeout=None):
+        ua = req.headers.get("User-agent")
+        calls.append(ua)
+        if ua == hc.USER_AGENT:
+            raise urllib.error.HTTPError(req.full_url, 403, "Forbidden", hdrs=None, fp=None)
+        return _FakeResp(b"User-agent: *\nDisallow:\n")
+
+    monkeypatch.setattr(hc.urllib.request, "urlopen", waf_sensitive_urlopen)
+
+    rp_default = hc._get_robot_parser("https://multi-ua.example/page")
+    assert rp_default.can_fetch(hc.USER_AGENT, "https://multi-ua.example/page") is False
+
+    # Pre-fix this returned the cached disallow-all parser for the domain.
+    rp_override = hc._get_robot_parser("https://multi-ua.example/page", user_agent="scheme-free/1.0")
+    assert rp_override.can_fetch("scheme-free/1.0", "https://multi-ua.example/page") is True
+    assert len(calls) == 2  # robots.txt fetched per (domain, UA), not once per domain
+
+    # The first UA's cached parser is untouched by the second's.
+    rp_default_again = hc._get_robot_parser("https://multi-ua.example/page")
+    assert rp_default_again.can_fetch(hc.USER_AGENT, "https://multi-ua.example/page") is False
+    assert len(calls) == 2
+
+
+def test_stdlib_response_exposes_requests_compatible_content():
+    """Regression for the Codex PR#41 finding: ddg/doe/dspace/debates read
+    ``r.content`` for PDF bytes, but StdlibResponse exposed only .text and
+    .iter_content — the zero-dependency fallback crashed with AttributeError
+    on every document download."""
+    body = b"%PDF-1.7 binary \x00\x01\x02 bytes"
+    resp = hc.StdlibResponse("https://x.example/f.pdf", 200, body)
+    assert resp.content == body
+    assert b"".join(resp.iter_content()) == body
+    resp.raise_for_status()  # 200 — must not raise
+
+
+def test_stdlib_response_raise_for_status_on_error():
+    import pytest
+
+    resp = hc.StdlibResponse("https://x.example/missing", 404, b"nope")
+    with pytest.raises(RuntimeError):
+        resp.raise_for_status()
