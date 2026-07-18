@@ -4,7 +4,19 @@ import hashlib
 import json
 import urllib.parse
 
+import pytest
+
+from commoner_probe.csr import mca
 from commoner_probe.csr.mca import McaCsrProbe, parse_csrf_token
+
+
+@pytest.fixture(autouse=True)
+def _no_dns_ssrf_guard(monkeypatch):
+    """Keep unit tests DNS-free: the SSRF guard (Codex PR#11 fix) runs at
+    each network-open site and the default mcacdm.nic.in URL would otherwise
+    trigger a real DNS lookup. Guard behaviour itself is pinned with
+    monkeypatched-guard tests below, which need no DNS."""
+    monkeypatch.setattr(mca, "is_safe_url", lambda url: True)
 
 
 def test_parse_csrf_token_reads_hidden_input() -> None:
@@ -163,3 +175,72 @@ def test_corpus_streams_mca_csr_manifest_records(tmp_path) -> None:
     assert records[0].key == "MCA_CSR|FY 2022-23"
     assert records[0].financial_year == "FY 2022-23"
     assert records[0].sha256 == "a" * 64
+
+
+# SSRF-guard regression (Codex PR#11): the configurable source_page/export_url
+# constructor params are opened via raw urllib, bypassing RetrySession's
+# guard. The guard runs at each network-open site (not construction — Codex
+# PR#49). These use the REAL guard with IP literals — no DNS needed.
+
+
+class _NoNetworkOpener:
+    def open(self, req, timeout):
+        raise AssertionError("must not reach the network past the SSRF guard")
+
+
+def test_download_rejects_link_local_export_url(tmp_path, monkeypatch) -> None:
+    from commoner_probe.url_safety import is_safe_url as real_guard
+
+    monkeypatch.setattr(mca, "is_safe_url", real_guard)  # undo the autouse stub
+    probe = McaCsrProbe(tmp_path, sleep=0, export_url="http://169.254.169.254/latest/meta-data")
+    with pytest.raises(ValueError, match="SSRF"):
+        probe.download_year(_NoNetworkOpener(), "tok", "2022-23", dry_run=False)
+
+
+def test_init_session_rejects_loopback_source_page(tmp_path, monkeypatch) -> None:
+    from commoner_probe.url_safety import is_safe_url as real_guard
+
+    monkeypatch.setattr(mca, "is_safe_url", real_guard)  # undo the autouse stub
+    probe = McaCsrProbe(tmp_path, sleep=0, source_page="http://127.0.0.1:8080/internal")
+    with pytest.raises(ValueError, match="SSRF"):
+        probe.init_session()
+
+
+def test_init_session_rejects_private_base_url(tmp_path, monkeypatch) -> None:
+    from commoner_probe.url_safety import is_safe_url as real_guard
+
+    monkeypatch.setattr(mca, "is_safe_url", real_guard)  # undo the autouse stub
+    probe = McaCsrProbe(tmp_path, sleep=0, base_url="http://10.0.0.5")
+    with pytest.raises(ValueError, match="SSRF"):
+        probe.init_session()
+
+
+def test_dry_run_never_invokes_the_ssrf_guard(tmp_path, monkeypatch) -> None:
+    # Codex PR#49: guard-at-construction forced DNS resolution during
+    # --dry-run. The guard must only run at network-open sites.
+    def explode(url):
+        raise AssertionError("SSRF guard must not run on a dry run")
+
+    monkeypatch.setattr(mca, "is_safe_url", explode)
+    probe = McaCsrProbe(tmp_path, sleep=0)
+    records = probe.probe_years(["2022-23"], dry_run=True)
+    assert records[0]["status"] == "dry_run"
+
+
+def test_redirect_targets_are_validated(monkeypatch) -> None:
+    # Codex PR#49: the initial URL was validated but the default redirect
+    # handler followed any Location — including loopback/internal space.
+    import urllib.request
+
+    handler = mca._GuardedRedirectHandler()
+    req = urllib.request.Request("https://www.mcacdm.nic.in/csr-data")
+
+    monkeypatch.setattr(mca, "is_safe_url", lambda url: False)
+    with pytest.raises(ValueError, match="Redirect target rejected"):
+        handler.redirect_request(req, None, 302, "Found", {}, "http://127.0.0.1/loot")
+
+    monkeypatch.setattr(mca, "is_safe_url", lambda url: True)
+    followed = handler.redirect_request(
+        req, None, 302, "Found", {"Location": "https://www.mcacdm.nic.in/next"}, "https://www.mcacdm.nic.in/next"
+    )
+    assert followed.full_url == "https://www.mcacdm.nic.in/next"
