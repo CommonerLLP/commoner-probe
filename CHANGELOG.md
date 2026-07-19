@@ -1,5 +1,86 @@
 # Changelog
 
+## 0.8.0 (2026-07-19)
+
+Nine new acquisition adapters, five new extraction modules, and major new
+modes on existing adapters (PRs #28–#57).
+
+### Added
+
+- **`questions-list`** — pre-admission daily List of Questions and Bulletin
+  PDFs from sansad.in, both Houses. Section-aware parsing (LS carries starred
+  and written sections with overlapping question numbers in one PDF; RS
+  arrives pre-split), stated-total reconciliation onto the manifest
+  (`parse_status`/`question_rows_expected`/`corrigenda_present`), corrigenda
+  regions excluded from row parsing.
+- **`prs`** — PRS Legislative Research MP Track CSV acquisition
+  (internal-research-only licensing posture; `source: prs` segregation).
+- **`mospi`** — MoSPI eSankhyiki statistics API client
+  (PLFS/UDISE/AISHE/HCES/NAS/ASI). India egress or `socks5h` proxy required;
+  per-pull provenance manifest rows with CSV sha256.
+- **`ministry-ddg`** — ministries' own Detailed Demands for Grants series
+  from their listing pages (registry: dea, mha, doe, dolr, moefcc, mopng,
+  dst; three listing-page templates).
+- **`legacy-dspace`** — generic legacy-DSpace (XMLUI/JSPUI) adapter
+  parameterised by `--base-url`/`--handle-prefix`; first target Assam
+  Legislative Assembly Digital Library (2,922 items verified live).
+- **`doe-pay-allowances`** — DoE "Annual Report on Pay and Allowances"
+  series, 2014-15 onward, `text_layer` recorded for scanned editions.
+- **`attendance`** — Lok Sabha member-wise sitting attendance (sansad.in
+  native API).
+- **`myneta`** — ADR/MyNeta LS2024 candidate affidavits (assets,
+  liabilities, declared criminal cases, age, education, profession).
+- **`dpe-csr`** — DPE CPSE CSR document acquisition via the proven
+  `/cms/wp-json` contract.
+- **Extraction modules**: `extract_debates.py` (structured speeches from
+  debate PDFs), `neva_text.py` (Gujarati NeVA two-column Q/A split via
+  pdftotext -layout geometry, reference-calibrated glyph repair with honest
+  clean/repaired/low quality, district-table rows), `vacancy.py` (typed
+  sanctioned/filled/vacant annexure rows, evasive-answer marking),
+  `outsourcing.py` (typed headcount/spend/vacancy/mention signals over
+  committee-report text), `csr/compare.py` (MCA CSR aggregations).
+- **`sansad` modes**: `tabled` (generic eLibrary title-search with
+  all-bitstream sha256 provenance), `--all` (full-corpus enumeration with
+  per-window resume and suspect-marking; refuses to run unscoped),
+  `--mp-code` (identity-safe per-member retrieval; RS code-pinned, LS
+  roster-resolved with term-window guard, name mode warns identity-UNSAFE).
+- **`debates --house rs|both`** — RS `BusinessVerbatim` source contract.
+- **RS committee slug aliases** — `culture` → `transport`, `environment` →
+  `science` for the multi-mandate DRSCs (#33).
+
+### Fixed
+
+- **RS PDF downloads 406'd** on the JSON Accept header reused from the API
+  headers (`debates`, then the same latent class hardened in `committees`);
+  download failures are recorded, not swallowed.
+- **`split_qa` RS mis-split**: the page-header date marker could win over
+  the real reply marker, putting question bodies in the answer half of every
+  RS PDF.
+- **`debates` resume-staleness**: `load_seen` was status-blind and failed
+  downloads recorded a terminal-looking "ok"; statuses are now honest
+  (`metadata_only`/`downloaded`/`download_error`) with legacy back-compat.
+- **`questions-list` review sweep** (#57): RS ministry values no longer
+  carry the inline "be pleased to state:" suffix; `count_mismatch`
+  documents are retryable with rows replaced per `source_pdf` (never
+  duplicated, stale rows cleared on zero-row reparse); `--max-records`
+  brakes per document (RS returns starred+unstarred in one response);
+  dry-run is side-effect-free.
+- **`prs`**: pre-encoded `file_path` values no longer double-encode; the
+  page→CSV request pair honors the crawl delay on zero-dependency installs.
+- **`ddg`**: PDF bytes readable on zero-dependency installs
+  (`StdlibResponse.content`), paginated ministry listings followed, robots
+  cache keyed per user agent.
+- **`csr/mca` SSRF guard**: configurable `source_page`/`export_url` no
+  longer bypass `is_safe_url`.
+- **`ManifestQaRecord.mp_code`**: the identity-safe member code survives the
+  Corpus round-trip (appended after positional fields).
+- **Runs schema**: `floor_debate` kind added (every debates corpus had
+  failed `validate` since the kind shipped).
+
+### Docs
+
+- Canonical `SCOPE.md` / `ROADMAP.md` / `ARCHITECTURE.md` (#50).
+
 ## 0.7.0 (2026-07-03)
 
 ### Added
