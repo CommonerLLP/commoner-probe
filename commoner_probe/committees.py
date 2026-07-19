@@ -83,6 +83,18 @@ RS_COMMITTEES: dict[str, tuple[str, int]] = {
     "transport": ("Transport, Tourism and Culture", 20),
 }
 
+# Multi-mandate committees are discoverable under each coequal ministry name,
+# not just the first word of the committee title. Aliases resolve to the
+# canonical slug; the catalogs above stay duplicate-free so "all" probes each
+# committee once.
+COMMITTEE_ALIASES: dict[str, dict[str, str]] = {
+    "ls": {},
+    "rs": {
+        "culture": "transport",
+        "environment": "science",
+    },
+}
+
 
 def parse_ls_date(value: str | None) -> str:
     """LS dates look like '17-Mar-2026'. Return ISO `YYYY-MM-DD` or ''."""
@@ -600,11 +612,17 @@ class CommitteeProbe(BaseProbe):
 
 
 def resolve_committees(house: str, requested: Iterable[str] | None) -> list[str]:
-    """Validate and order committee slugs for `house`. None = all."""
+    """Validate and order committee slugs for `house`. None = all.
+
+    Aliases resolve to their canonical slug; duplicates (including an alias
+    requested alongside its canonical form) collapse to one probe.
+    """
     catalog = LS_COMMITTEES if house == "ls" else RS_COMMITTEES
     if not requested:
         return sorted(catalog)
-    unknown = [s for s in requested if s not in catalog]
+    aliases = COMMITTEE_ALIASES.get(house, {})
+    resolved = [aliases.get(s, s) for s in requested]
+    unknown = [s for s in resolved if s not in catalog]
     if unknown:
         raise ValueError(f"unknown {house.upper()} committee slug(s): {unknown}")
-    return list(requested)
+    return list(dict.fromkeys(resolved))
