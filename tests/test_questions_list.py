@@ -354,3 +354,18 @@ def test_count_mismatch_rerun_reparses_without_duplicates(tmp_path, monkeypatch)
 
     # once reconciled, the document is terminal again
     assert _probe(tmp_path, house="ls").probe(download=True) == []
+
+
+def test_replace_question_rows_clears_stale_rows_on_empty_reparse(tmp_path):
+    probe = _probe(tmp_path, house="ls")
+    stale = {"key": "QUESTION_ROW|Lok Sabha|2026-07-20|question_list|1", "source_pdf": "pdfs/a.pdf"}
+    (tmp_path / "questions_list.jsonl").write_text(json.dumps(stale) + "\n")
+
+    # a reparse yielding zero rows must clear the failed parse's rows, not keep them
+    probe.replace_question_rows("pdfs/a.pdf", [])
+    assert (tmp_path / "questions_list.jsonl").read_text() == ""
+
+    # no file and no rows stays a no-op
+    (tmp_path / "questions_list.jsonl").unlink()
+    probe.replace_question_rows("pdfs/a.pdf", [])
+    assert not (tmp_path / "questions_list.jsonl").exists()

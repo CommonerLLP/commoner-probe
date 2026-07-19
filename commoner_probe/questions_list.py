@@ -356,7 +356,8 @@ class QuestionsListProbe:
                     continue
                 if prior.get("source_pdf") != source_pdf:
                     kept.append(line)
-        if not kept and not rows:
+        elif not rows:
+            # nothing on disk and nothing parsed - avoid creating an empty file
             return
         self.out_dir.mkdir(parents=True, exist_ok=True)
         tmp = self.questions_path.with_suffix(".tmp")
