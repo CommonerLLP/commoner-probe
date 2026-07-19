@@ -165,3 +165,146 @@ def test_schema_bundled_and_validates(tmp_path):
     assert records
     assert validate_corpus(tmp_path, log=lambda _: None)
     assert len(list(Corpus(tmp_path).manifest_question_lists())) == 2
+
+
+# --- section-aware parsing regressions (validated against the real 20-24 Jul
+# --- 2026 lists; see REQ-0030) -----------------------------------------------
+
+LS_COMBINED_SAMPLE = """\
+                                             LOK SABHA
+                               List of Questions for ORAL ANSWERS
+                                     Total Number of Questions - 2
+
+                                       Manuscript Heritage
+†*1.      Shri Example Alpha:
+          Shri Example Beta:
+      Will the Minister of CULTURE
+be pleased to state:
+    (a) some starred limb?
+
+                                       Digital University
+*2.       Dr. Example Gamma:
+      Will the Minister of EDUCATION
+be pleased to state:
+    (a) another starred limb?
+                                        CORRIGENDUM 1
+                          to the List of Questions for ORAL ANSWERS
+            1                                Some correction text
+
+                             List of Questions for WRITTEN ANSWERS
+                                 Total Number of Questions - 3
+
+                                       Model Libraries
+1.        Smt. Example Delta:
+      Will the Minister of CULTURE
+be pleased to state:
+    (a) a written limb?
+
+                                       Petroleum Prices
+2.        Com. Example Epsilon:
+          Thiru Example Zeta:
+      Will the Minister of PETROLEUM AND NATURAL GAS
+be pleased to state:
+    (a) a second written limb?
+
+                                       Airport Works
+†3.       Mrs Example Eta:
+      Will the Minister of CIVIL AVIATION
+be pleased to state:
+    (a) a third written limb?
+                                           LOK SABHA
+                                          CORRIGENDA 1
+                          to the List of Questions for WRITTEN ANSWERS
+            2                                Insert Second name
+"""
+
+RS_UNSTARRED_SAMPLE = """\
+                                        Rajya Sabha
+                         List of Questions for WRITTEN ANSWERS
+                             Total number of questions -- 3
+
+                      Passport Ranking
+553 Dr. Example Theta:
+Will the Minister of EXTERNAL AFFAIRS be pleased to state:
+(a) an unstarred limb?
+
+                      Corruption in Federations
+635 # Shri Example Iota:
+Will the Minister of YOUTH AFFAIRS AND SPORTS be pleased to state:
+(a) another limb?
+
+                      Football Promotion
+636 Dr. Example Kappa:
+Will the Minister of YOUTH AFFAIRS AND SPORTS be pleased to state:
+(a) a third limb?
+"""
+
+
+def test_ls_combined_pdf_splits_sections_and_keeps_overlapping_qnos():
+    from commoner_probe.questions_list import stated_totals
+
+    rows = parse_question_rows(
+        LS_COMBINED_SAMPLE,
+        house="Lok Sabha", sitting_date="2026-07-20",
+        list_type="question_list", source_pdf="pdfs/q.pdf",
+    )
+    starred = [r for r in rows if r["list_type"] == "question_list_starred"]
+    unstarred = [r for r in rows if r["list_type"] == "question_list_unstarred"]
+    # qno 1 and 2 exist in BOTH numbering spaces and must both survive
+    assert [r["qno"] for r in starred] == ["1", "2"]
+    assert [r["qno"] for r in unstarred] == ["1", "2", "3"]
+    assert len(rows) == sum(stated_totals(LS_COMBINED_SAMPLE)) == 5
+    # corrigenda content must not be parsed as rows
+    assert all("correction" not in (r["subject"] or "").lower() for r in rows)
+    # clubbed askers and the † prefix survive
+    assert starred[0]["askers"] == ["Shri Example Alpha", "Shri Example Beta"]
+    assert unstarred[2]["askers"] == ["Mrs Example Eta"]
+    # the starred and unstarred qno-1 rows carry distinct keys
+    assert len({r["key"] for r in rows}) == 5
+
+
+def test_rs_dotless_heads_hash_marker_and_com_honorific():
+    rows = parse_question_rows(
+        RS_UNSTARRED_SAMPLE,
+        house="Rajya Sabha", sitting_date="2026-07-23",
+        list_type="question_list_unstarred", source_pdf="pdfs/q.pdf",
+    )
+    assert [r["qno"] for r in rows] == ["553", "635", "636"]
+    assert rows[0]["askers"] == ["Dr. Example Theta"]
+    assert rows[1]["askers"] == ["Shri Example Iota"]
+    assert rows[0]["ministry"].startswith("EXTERNAL AFFAIRS")
+
+
+def test_stated_totals_and_corrigenda_helpers():
+    from commoner_probe.questions_list import corrigenda_present, stated_totals
+
+    assert stated_totals(LS_COMBINED_SAMPLE) == [2, 3]
+    assert stated_totals(RS_UNSTARRED_SAMPLE) == [3]
+    assert corrigenda_present(LS_COMBINED_SAMPLE)
+    assert not corrigenda_present(RS_UNSTARRED_SAMPLE)
+
+
+def test_manifest_carries_reconciliation_verdict(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "commoner_probe.questions_list.extract_pdf_text",
+        lambda path: LS_COMBINED_SAMPLE,
+    )
+    records = _probe(tmp_path, house="ls").probe(download=True)
+    rec = next(r for r in records if r["document_kind"] == "question_list")
+    assert rec["question_rows_extracted"] == 5
+    assert rec["question_rows_expected"] == 5
+    assert rec["parse_status"] == "reconciled"
+    assert rec["corrigenda_present"] is True
+
+
+def test_count_mismatch_is_flagged_not_silent(tmp_path, monkeypatch):
+    truncated = LS_COMBINED_SAMPLE.replace("†3.       Mrs Example Eta:", "not a head")
+    monkeypatch.setattr(
+        "commoner_probe.questions_list.extract_pdf_text",
+        lambda path: truncated,
+    )
+    records = _probe(tmp_path, house="ls").probe(download=True)
+    rec = next(r for r in records if r["document_kind"] == "question_list")
+    assert rec["question_rows_extracted"] == 4
+    assert rec["question_rows_expected"] == 5
+    assert rec["parse_status"] == "count_mismatch"
