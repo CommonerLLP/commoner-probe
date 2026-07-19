@@ -119,7 +119,12 @@ _QUESTION_START_RE = re.compile(
     r"Sardar|Er\.?|Sant|Baba|Ch\.?|Com\.?)\b.+?):\s*$",
     re.IGNORECASE,
 )
-_MINISTER_RE = re.compile(r"^\s*Will the Minister of (?P<ministry>.+?)\s*$", re.IGNORECASE)
+_MINISTER_RE = re.compile(
+    # RS lists put "be pleased to state:" inline on the minister line; LS lists
+    # put it on its own line. The suffix is never part of the ministry name.
+    r"^\s*Will the Minister of (?P<ministry>.+?)(?:\s+be\s+pleased\s+to\s+state\s*:?)?\s*$",
+    re.IGNORECASE,
+)
 _NOISE_LINES = {
     "LOK SABHA",
     "RAJYA SABHA",
@@ -318,21 +323,50 @@ class QuestionsListProbe:
                 except json.JSONDecodeError:
                     continue
                 if rec.get("kind") == "question_list" and rec.get("key"):
-                    seen[str(rec["key"])] = str(rec.get("fetch_status") or "")
+                    seen[str(rec["key"])] = self._resume_status(rec)
         return seen
+
+    @staticmethod
+    def _resume_status(rec: dict[str, Any]) -> str:
+        # A downloaded PDF whose parsed rows failed to reconcile against the
+        # list's own stated total must stay retryable: a later parser fix has
+        # to be able to re-extract it.
+        if rec.get("parse_status") == "count_mismatch":
+            return "count_mismatch"
+        return str(rec.get("fetch_status") or "")
 
     def append_manifest(self, record: dict[str, Any]) -> None:
         self.out_dir.mkdir(parents=True, exist_ok=True)
         with self.manifest.open("a", encoding="utf-8") as f:
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
-    def append_question_rows(self, rows: list[dict[str, Any]]) -> None:
-        if not rows:
+    def replace_question_rows(self, source_pdf: str, rows: list[dict[str, Any]]) -> None:
+        """Drop any prior rows for ``source_pdf``, then write the fresh parse.
+
+        Reprocessing after a ``count_mismatch`` must not duplicate the rows the
+        failed parse already appended.
+        """
+        kept: list[str] = []
+        if self.questions_path.exists():
+            for line in self.questions_path.read_text(encoding="utf-8").splitlines():
+                try:
+                    prior = json.loads(line)
+                except json.JSONDecodeError:
+                    kept.append(line)
+                    continue
+                if prior.get("source_pdf") != source_pdf:
+                    kept.append(line)
+        elif not rows:
+            # nothing on disk and nothing parsed - avoid creating an empty file
             return
         self.out_dir.mkdir(parents=True, exist_ok=True)
-        with self.questions_path.open("a", encoding="utf-8") as f:
+        tmp = self.questions_path.with_suffix(".tmp")
+        with tmp.open("w", encoding="utf-8") as f:
+            for line in kept:
+                f.write(line + "\n")
             for row in rows:
                 f.write(json.dumps(row, ensure_ascii=False) + "\n")
+        tmp.replace(self.questions_path)
 
     def ls_session_catalog(self) -> list[dict[str, Any]]:
         r = self.session.get(LS_SESSION_DATES_API, headers=HEADERS, timeout=45)
@@ -468,6 +502,7 @@ class QuestionsListProbe:
         row: dict[str, Any],
         download: bool,
         loksabha: int | None = None,
+        dry_run: bool = False,
     ) -> dict[str, Any] | None:
         pdf_url = _doc_url(row)
         raw_type = str(row.get("type") or row.get("name") or document_kind)
@@ -498,7 +533,7 @@ class QuestionsListProbe:
             if rel and document_kind == "question_list":
                 text = extract_pdf_text(self.out_dir / rel)
                 rows = parse_question_rows(text, house=house, sitting_date=sitting_date, list_type=document_type, source_pdf=rel)
-                self.append_question_rows(rows)
+                self.replace_question_rows(rel, rows)
                 rec["question_rows_extracted"] = len(rows)
                 expected = stated_totals(text)
                 rec["question_rows_expected"] = sum(expected) if expected else None
@@ -518,8 +553,12 @@ class QuestionsListProbe:
                             f"{len(rows)} parsed rows"
                         ),
                     )
+        if dry_run:
+            # Preview only: nothing may land in the manifest or the seen-set,
+            # or a later real run would skip the document as already recorded.
+            return rec
         self.append_manifest(rec)
-        seen[key] = str(rec["fetch_status"])
+        seen[key] = self._resume_status(rec)
         return rec
 
     def probe(self, *, max_records: int | None = None, download: bool = True, dry_run: bool = False) -> list[dict[str, Any]]:
@@ -554,10 +593,16 @@ class QuestionsListProbe:
                             document_kind=kind,
                             row=row,
                             download=download and not dry_run,
+                            dry_run=dry_run,
                         )
                         if rec:
                             records.append(rec)
                             added += 1
+                            # one API response may carry several documents (RS
+                            # returns starred+unstarred together) - the brake
+                            # must bite per document, not per endpoint
+                            if max_records is not None and added >= max_records:
+                                break
                     if max_records is not None and added >= max_records:
                         break
                     if self.sleep:
@@ -587,10 +632,13 @@ class QuestionsListProbe:
                             document_kind=kind,
                             row=row,
                             download=download and not dry_run,
+                            dry_run=dry_run,
                         )
                         if rec:
                             records.append(rec)
                             added += 1
+                            if max_records is not None and added >= max_records:
+                                break
                     if max_records is not None and added >= max_records:
                         break
                     if self.sleep:

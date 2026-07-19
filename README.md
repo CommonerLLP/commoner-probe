@@ -480,7 +480,7 @@ commoner-probe committees \
 
 | Flag | Default | What it does |
 |---|---|---|
-| `--committees` | all | Comma-separated committee slugs |
+| `--committees` | all | Comma-separated committee slugs. RS aliases for multi-mandate committees: `culture` → `transport`, `environment` → `science` |
 | `--lok-sabha-no` | `18` | LS number for LS reports |
 | `--from-date` / `--to-date` | — | Date range filter |
 | `--no-download` | off | Skip PDF downloads |

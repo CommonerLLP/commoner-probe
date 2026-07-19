@@ -19,7 +19,7 @@ from html import unescape
 from io import StringIO
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote, urljoin
+from urllib.parse import quote, unquote, urljoin
 
 from .http_client import make_session
 
@@ -66,7 +66,9 @@ def parse_mptrack_download(page_html: str) -> tuple[str, str]:
         raise ValueError("PRS MP Track page did not expose a CSV download link")
     raw_path = unescape(match.group(1))
     file_path = unescape(match.group(2))
-    encoded_path = "/mptrack/download?file_path=" + quote(file_path, safe="/")
+    # The page sometimes exposes file_path already percent-encoded (%2F
+    # separators); decode first so quoting cannot double-encode to %252F.
+    encoded_path = "/mptrack/download?file_path=" + quote(unquote(file_path), safe="/")
     return raw_path, encoded_path
 
 
@@ -220,8 +222,15 @@ class PrsProbe:
                     "csv_url": source["csv_url"],
                     "status": "dry_run",
                 })
+                if self.sleep:
+                    time.sleep(self.sleep)
                 continue
 
+            # Pace the page->CSV request pair here: the stdlib-fallback session
+            # has no per-domain limiter, so the crawl delay must not depend on
+            # the optional requests stack being installed.
+            if self.sleep:
+                time.sleep(self.sleep)
             body = self.fetch_mptrack_csv(source["csv_url"])
             digest = hashlib.sha256(body).hexdigest()
             csv_rel: str | None = None

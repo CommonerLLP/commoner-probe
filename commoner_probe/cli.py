@@ -871,7 +871,12 @@ def build_parser() -> argparse.ArgumentParser:
     cc.add_argument("--topic", required=True, help="Path to topic profile JSON")
     cc.add_argument("--out", required=True, help="Output corpus directory")
     cc.add_argument("--house", choices=["both", "ls", "rs"], default="both")
-    cc.add_argument("--committees", help="Comma-separated committee slugs; default = all for the chosen house(s)")
+    cc.add_argument(
+        "--committees",
+        help="Comma-separated committee slugs; default = all for the chosen house(s). "
+        "RS aliases: culture -> transport (Transport, Tourism and Culture), "
+        "environment -> science (Science and Technology, Environment, Forests and Climate Change)",
+    )
     cc.add_argument("--lok-sabha-no", type=int, default=18, help="Lok Sabha number for LS reports (default 18)")
     cc.add_argument("--from-date")
     cc.add_argument("--to-date")

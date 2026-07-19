@@ -216,6 +216,23 @@ class ResolveCommitteesTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             resolve_committees("ls", ["does_not_exist"])
 
+    def test_rs_aliases_resolve_to_canonical_slug(self):
+        self.assertEqual(resolve_committees("rs", ["culture"]), ["transport"])
+        self.assertEqual(resolve_committees("rs", ["environment"]), ["science"])
+
+    def test_alias_plus_canonical_collapses_to_one_probe(self):
+        self.assertEqual(resolve_committees("rs", ["transport", "culture"]), ["transport"])
+
+    def test_default_all_has_no_alias_duplicates(self):
+        rs = resolve_committees("rs", None)
+        self.assertEqual(len(rs), len(set(rs)))
+        self.assertNotIn("culture", rs)
+        self.assertNotIn("environment", rs)
+
+    def test_aliases_are_house_scoped(self):
+        with self.assertRaises(ValueError):
+            resolve_committees("ls", ["culture"])
+
 
 # --------------------------------------------------------------------------- #
 # crawl_ls / crawl_rs end-to-end with a fake session                          #
