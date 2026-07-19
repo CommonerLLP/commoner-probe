@@ -47,6 +47,12 @@
       "enum": ["metadata_only", "downloaded", "download_error", "not_published"]
     },
     "question_rows_extracted": { "type": "integer", "minimum": 0 },
+    "question_rows_expected": { "type": ["integer", "null"], "minimum": 0 },
+    "parse_status": {
+      "type": "string",
+      "enum": ["no_stated_total", "reconciled", "count_mismatch"]
+    },
+    "corrigenda_present": { "type": "boolean" },
     "fetched_at": { "type": "string" },
     "probed_at": { "type": "string" }
   },

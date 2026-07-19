@@ -137,6 +137,23 @@ def test_metadata_only_rerun_skips_until_download_rerun(tmp_path):
     assert _probe(tmp_path, house="ls").probe(download=True) == []
 
 
+def test_max_records_brakes_inside_multi_row_response(tmp_path):
+    # the RS questionUrls endpoint returns starred+unstarred in one response;
+    # the brake must stop after the first document, not the first endpoint
+    records = _probe(tmp_path, house="rs").probe(download=False, max_records=1)
+    assert len(records) == 1
+
+
+def test_dry_run_persists_nothing(tmp_path):
+    preview = _probe(tmp_path, house="ls").probe(download=False, dry_run=True)
+    assert preview
+    assert not (tmp_path / "manifest.jsonl").exists()
+    # a real run after a dry run must not treat the documents as already seen
+    records = _probe(tmp_path, house="ls").probe(download=False)
+    assert len(records) == 1
+    assert records[0]["pdf_url"] is not None
+
+
 def test_parse_question_rows_is_conservative():
     rows = parse_question_rows(
         "noise\n"
@@ -272,7 +289,9 @@ def test_rs_dotless_heads_hash_marker_and_com_honorific():
     assert [r["qno"] for r in rows] == ["553", "635", "636"]
     assert rows[0]["askers"] == ["Dr. Example Theta"]
     assert rows[1]["askers"] == ["Shri Example Iota"]
-    assert rows[0]["ministry"].startswith("EXTERNAL AFFAIRS")
+    # the inline "be pleased to state:" suffix must not leak into the ministry
+    assert rows[0]["ministry"] == "EXTERNAL AFFAIRS"
+    assert rows[1]["ministry"] == "YOUTH AFFAIRS AND SPORTS"
 
 
 def test_stated_totals_and_corrigenda_helpers():
@@ -308,3 +327,30 @@ def test_count_mismatch_is_flagged_not_silent(tmp_path, monkeypatch):
     assert rec["question_rows_extracted"] == 4
     assert rec["question_rows_expected"] == 5
     assert rec["parse_status"] == "count_mismatch"
+
+
+def test_count_mismatch_rerun_reparses_without_duplicates(tmp_path, monkeypatch):
+    truncated = LS_COMBINED_SAMPLE.replace("†3.       Mrs Example Eta:", "not a head")
+    monkeypatch.setattr(
+        "commoner_probe.questions_list.extract_pdf_text",
+        lambda path: truncated,
+    )
+    first = _probe(tmp_path, house="ls").probe(download=True)
+    assert next(r for r in first if r["document_kind"] == "question_list")["parse_status"] == "count_mismatch"
+
+    # the mismatch is not terminal: a rerun with a fixed parser re-extracts
+    monkeypatch.setattr(
+        "commoner_probe.questions_list.extract_pdf_text",
+        lambda path: LS_COMBINED_SAMPLE,
+    )
+    second = _probe(tmp_path, house="ls").probe(download=True)
+    rec = next(r for r in second if r["document_kind"] == "question_list")
+    assert rec["parse_status"] == "reconciled"
+
+    # the failed parse's partial rows were replaced, not duplicated
+    rows = [json.loads(line) for line in (tmp_path / "questions_list.jsonl").read_text().splitlines()]
+    assert len(rows) == 5
+    assert len({r["key"] for r in rows}) == 5
+
+    # once reconciled, the document is terminal again
+    assert _probe(tmp_path, house="ls").probe(download=True) == []

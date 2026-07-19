@@ -49,6 +49,36 @@ def test_parse_mptrack_download_encodes_spaces():
     assert encoded_path.endswith("17%20LS%20MP%20Track.csv")
 
 
+def test_crawl_delay_paces_page_then_csv(tmp_path, monkeypatch):
+    events: list[str] = []
+    probe = PrsProbe(tmp_path, sleep=7)
+    session = FakeSession()
+    original_get = session.get
+
+    def logging_get(url, **kwargs):
+        events.append(f"get:{url}")
+        return original_get(url, **kwargs)
+
+    session.get = logging_get
+    probe.session = session
+    monkeypatch.setattr("commoner_probe.prs.time.sleep", lambda s: events.append(f"sleep:{s}"))
+
+    probe.probe_mptrack(houses=["ls"], loksabhas=[17], download=True)
+
+    page = next(i for i, e in enumerate(events) if "/mptrack/17-lok-sabha" in e)
+    csv_fetch = next(i for i, e in enumerate(events) if "/mptrack/download" in e)
+    # the crawl delay must sit between the page request and the CSV request,
+    # independent of the optional requests stack's session limiter
+    assert "sleep:7" in events[page + 1 : csv_fetch]
+
+
+def test_parse_mptrack_download_does_not_double_encode():
+    html = "window.open('/mptrack/download?file_path=sites%2Fdefault%2Ffiles%2F17%20LS%20MP%20Track.csv')"
+    _, encoded_path = parse_mptrack_download(html)
+    assert "%252F" not in encoded_path
+    assert encoded_path.endswith("file_path=sites/default/files/17%20LS%20MP%20Track.csv")
+
+
 def test_parse_mptrack_csv():
     rows = parse_mptrack_csv(CSV_TEXT)
     assert rows[0]["mp_name"] == "Jugal Kishore"
