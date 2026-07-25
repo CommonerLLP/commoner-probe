@@ -725,8 +725,23 @@ class SansadProbe(BaseProbe):
 
         Live-verified contract (2026-07-17): `sessionNumber` is the honored
         session param — `sessionNo` is silently ignored (endpoint falls back
-        to the latest session). Rows carry member NAMES, no mpCode.
+        to the latest session). It is LS-relative ("8" for Monsoon 2026),
+        never the continuous site number ("271"). Rows carry member NAMES,
+        no mpCode.
+
+        Rows carry no inline text at all: `questionText` and `answerText` are
+        both null on every row (verified 2026-07-23 across a full 1,000-row
+        session). Both live only in the linked `questionsFilePath` PDF, one
+        distinct PDF per question.
+
+        `page_no` is 1-indexed — the portal answers `pageNo=0` with HTTP 500,
+        not an empty list. Use `paginate_ls_question_list` to walk a whole
+        session without reimplementing the loop.
         """
+        if page_no < 1:
+            raise ValueError(
+                f"page_no is 1-indexed (the LS portal returns HTTP 500 for pageNo=0); got {page_no}"
+            )
         r = self.session.get(
             LS_PORTAL_QUESTION_LIST_API,
             params={"lkNo": loksabha, "sessionNumber": session_number, "pageNo": page_no, "pageSize": page_size, "locale": "en"},
@@ -739,6 +754,22 @@ class SansadProbe(BaseProbe):
         for block in data if isinstance(data, list) else []:
             rows.extend(block.get("listOfQuestions") or [])
         return rows
+
+    def paginate_ls_question_list(self, loksabha: int, session_number: int, page_size: int = 100) -> Iterator[dict]:
+        """Every question row for one LS session, in portal order.
+
+        Pages from 1 (the portal is 1-indexed) and stops on the first empty
+        page, pausing `self.sleep` between requests like every other crawl
+        loop here.
+        """
+        page_no = 1
+        while True:
+            rows = self.ls_question_list_page(loksabha, session_number, page_no, page_size)
+            if not rows:
+                return
+            yield from rows
+            page_no += 1
+            time.sleep(self.sleep)
 
     @staticmethod
     def _ls_portal_date(value: str | None) -> str:
