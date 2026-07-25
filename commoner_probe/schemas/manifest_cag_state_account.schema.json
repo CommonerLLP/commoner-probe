@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CommonerLLP/commoner-probe/schemas/v1/manifest_cag_state_account.json",
+  "title": "manifest.jsonl — CAG State Finance Accounts",
+  "description": "One CAG State-Accounts acquisition record (statutory Finance Accounts, Vol-I / Vol-II). Vol-II carries Statement 15 (revenue by minor head) and Statement 16 (capital by minor head), the source of heads like 2205-00-105 and 4202-04-105. text_layer: false marks a scan that needs OCR before head extraction.",
+  "type": "object",
+  "required": [
+    "key",
+    "kind",
+    "record_type",
+    "source_family",
+    "state_id",
+    "state",
+    "government",
+    "jurisdiction",
+    "publisher",
+    "document_type",
+    "volume",
+    "title",
+    "year",
+    "filename",
+    "dest",
+    "url",
+    "source_page",
+    "status",
+    "media_type",
+    "fetched_at",
+    "probed_at"
+  ],
+  "properties": {
+    "key": {
+      "type": "string",
+      "pattern": "^CAG_STATE_ACCOUNT\\|\\d+\\|20\\d{2}-\\d{2}\\|vol-(?:i|ii)$"
+    },
+    "kind": {
+      "type": "string",
+      "const": "cag_state_account"
+    },
+    "record_type": {
+      "type": "string",
+      "const": "cag_state_account"
+    },
+    "source_family": {
+      "type": "string",
+      "const": "cag-state-accounts"
+    },
+    "state_id": {
+      "type": "integer"
+    },
+    "state": {
+      "type": "string"
+    },
+    "government": {
+      "type": "string"
+    },
+    "jurisdiction": {
+      "type": "string"
+    },
+    "publisher": {
+      "type": "string",
+      "const": "Comptroller and Auditor General of India"
+    },
+    "document_type": {
+      "type": "string",
+      "const": "finance_accounts"
+    },
+    "volume": {
+      "type": "string",
+      "enum": ["I", "II"]
+    },
+    "title": {
+      "type": "string"
+    },
+    "year": {
+      "type": "string",
+      "pattern": "^20\\d{2}-\\d{2}$"
+    },
+    "filename": {
+      "type": "string"
+    },
+    "dest": {
+      "type": "string"
+    },
+    "url": {
+      "type": "string",
+      "format": "uri"
+    },
+    "source_page": {
+      "type": "string",
+      "format": "uri"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["dry_run", "pending", "downloaded", "skipped_exists", "error"]
+    },
+    "media_type": {
+      "type": "string"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "text_layer": {
+      "type": "boolean"
+    },
+    "error": {
+      "type": "string"
+    },
+    "fetched_at": {
+      "type": "string"
+    },
+    "probed_at": {
+      "type": "string"
+    }
+  }
+}

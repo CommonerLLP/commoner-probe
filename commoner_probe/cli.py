@@ -11,6 +11,7 @@ from .atr_linkage import extract_atr_linkages
 from .attendance import AttendanceProbe
 from .bills import BILLS_API, BillsProbe
 from .budget import RBI_STATE_FINANCES_URL, BudgetProbe
+from .cag import CAG_ACCOUNTS_STATES, CAGAccountsProbe, get_state
 from .committees import CommitteeProbe, resolve_committees
 from .csr.dpe import DpeCsrProbe
 from .csr.mca import McaCsrProbe
@@ -537,6 +538,24 @@ def ministry_ddg_cmd(args: argparse.Namespace) -> None:
     records = probe.probe(years=_split_csv(args.years), dry_run=args.dry_run)
     for record in records:
         print(json.dumps(record, ensure_ascii=False))
+
+
+def cag_cmd(args: argparse.Namespace) -> None:
+    out = Path(args.out)
+    if args.state and args.state.lower() != "all":
+        states = [get_state(args.state)]
+    else:
+        states = list(CAG_ACCOUNTS_STATES)
+    probe = CAGAccountsProbe(out, sleep=args.sleep)
+    for state in states:
+        records = probe.probe(
+            state,
+            years=_split_csv(args.years),
+            volumes=_split_csv(args.volumes),
+            dry_run=args.dry_run,
+        )
+        for record in records:
+            print(json.dumps(record, ensure_ascii=False))
 
 
 def attendance_cmd(args: argparse.Namespace) -> None:
@@ -1075,6 +1094,37 @@ def build_parser() -> argparse.ArgumentParser:
         help="Fetch the listing page and print manifest records without downloading PDFs.",
     )
     ddg.set_defaults(func=ministry_ddg_cmd)
+
+    cag = sub.add_parser(
+        "cag",
+        help=(
+            "Download CAG State Finance Accounts (Vol-II by default) from "
+            "cag.gov.in's State-Accounts portal. Registry: "
+            f"{len(CAG_ACCOUNTS_STATES)} States with a verified Vol-II."
+        ),
+    )
+    cag.add_argument("--out", required=True, help="Output directory")
+    cag.add_argument(
+        "--state",
+        default="all",
+        help="State name or defuat_state_id, or 'all' (default) for the whole registry",
+    )
+    cag.add_argument(
+        "--years",
+        help="Comma-separated fiscal years to keep, e.g. 2023-24,2024-25 (default: all on the tab)",
+    )
+    cag.add_argument(
+        "--volumes",
+        default="II",
+        help="Comma-separated volumes to keep: II (default), I, or I,II",
+    )
+    cag.add_argument("--sleep", type=float, default=2.0, help="Pause between requests (default: 2.0)")
+    cag.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Fetch the listing page(s) and print manifest records without downloading PDFs.",
+    )
+    cag.set_defaults(func=cag_cmd)
 
     attendance = sub.add_parser(
         "attendance",
