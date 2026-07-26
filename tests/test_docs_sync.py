@@ -48,6 +48,7 @@ class CliCommandSyncTests(unittest.TestCase):
                 "ministry-ddg",
                 "cag",
                 "mospi",
+                "courts",
                 "attendance",
                 "myneta",
                 "prs",

@@ -648,6 +648,42 @@ chain uses a government CA missing from Python's default `certifi`
 bundle; point `REQUESTS_CA_BUNDLE` at a system bundle that carries it
 (e.g. `/etc/ssl/cert.pem` on macOS).
 
+### `commoner-probe courts` — India court records
+
+```bash
+export INDIAN_KANOON_TOKEN=...
+commoner-probe courts --query "right to livelihood" \
+  --doctypes supremecourt --max-records 20 --out data/courts
+```
+
+Searches the Indian Kanoon API and writes one `manifest.jsonl` record per
+result (`kind = "court_record"`, `provider = "indiankanoon"`). Metadata-only
+by default; `--download` additionally fetches each judgment's original source
+file, which is a separate billed API call per document. Omitting `--out`
+prints a preview and writes nothing.
+
+The token is read **only** from `INDIAN_KANOON_TOKEN` — never a CLI flag, so
+it stays out of shell history and process listings. Indian Kanoon is a paid
+commercial index: the judgments are public record, the retrieval is what you
+pay for, and your queries do leave your machine.
+
+`--from-date`/`--to-date` take `DD-MM-YYYY`, the API's own format, and are
+passed through unmodified.
+
+**eCourts is reached across a process boundary, and never bundled:**
+
+```bash
+export COMMONER_PROBE_ECOURTS_CMD=/path/to/ecourts
+commoner-probe courts --ecourts --ecourts-arg --court --ecourts-arg delhi \
+  --out data/courts
+```
+
+`openjustice-in/ecourts` is GPL-3.0 and commoner-probe is MIT, so it is
+neither imported nor declared a dependency — install it yourself and point
+the environment variable at it. Its output is carried through verbatim under
+`raw`, with `raw_sha256` over the canonical JSON, because this repo has not
+verified that tool's field shape and will not invent a mapping for it.
+
 ### `commoner-probe doe-pay-allowances` — DoE Pay & Allowances annual reports
 
 ```bash

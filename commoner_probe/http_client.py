@@ -186,13 +186,22 @@ class StdlibSession:
         self.headers: dict[str, str] = {"User-Agent": user_agent or USER_AGENT}
 
     def get(self, url: str, **kwargs: Any) -> StdlibResponse:
+        return self._request("GET", url, **kwargs)
+
+    def post(self, url: str, **kwargs: Any) -> StdlibResponse:
+        return self._request("POST", url, **kwargs)
+
+    def _request(self, method: str, url: str, **kwargs: Any) -> StdlibResponse:
         params = kwargs.get("params")
         if params:
             sep = "&" if "?" in url else "?"
             url = url + sep + urlencode(params)
         headers = {**self.headers, **(kwargs.get("headers") or {})}
         timeout = kwargs.get("timeout") or 60
-        req = urllib.request.Request(url, headers=headers)
+        body = kwargs.get("data")
+        if isinstance(body, str):
+            body = body.encode("utf-8")
+        req = urllib.request.Request(url, data=body, headers=headers, method=method)
         try:
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 return StdlibResponse(url, resp.status, resp.read())
@@ -235,6 +244,16 @@ if requests is not None:
             self.headers = self._session.headers
 
         def get(self, url: str, *, respect_robots: bool = True, **kwargs: Any) -> Any:
+            return self._request("GET", url, respect_robots=respect_robots, **kwargs)
+
+        def post(self, url: str, *, respect_robots: bool = True, **kwargs: Any) -> Any:
+            # Explicit, so it shadows __getattr__'s passthrough to the bare
+            # requests.Session — which would silently skip the SSRF guard,
+            # rate limit, and 5xx backoff that every other request gets.
+            # Needed by API sources that take POST (api.indiankanoon.org).
+            return self._request("POST", url, respect_robots=respect_robots, **kwargs)
+
+        def _request(self, method: str, url: str, *, respect_robots: bool = True, **kwargs: Any) -> Any:
             if not is_safe_url(url):
                 raise ValueError(f"URL rejected by SSRF guard: {url}")
             # ``respect_robots=False`` is an explicit, per-call opt-out for
@@ -249,7 +268,7 @@ if requests is not None:
             last_exc: Exception | None = None
             for attempt in range(MAX_RETRIES):
                 try:
-                    resp = self._session.get(url, **kwargs)
+                    resp = self._session.request(method, url, **kwargs)
                     if 500 <= resp.status_code < 600:
                         last_exc = RuntimeError(f"HTTP {resp.status_code} {url}")
                         time.sleep(min(30, 2 ** attempt))

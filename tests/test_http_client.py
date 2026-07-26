@@ -12,6 +12,8 @@ from __future__ import annotations
 import socket
 import urllib.error
 
+import pytest
+
 import commoner_probe.http_client as hc
 
 
@@ -213,3 +215,48 @@ def test_stdlib_response_raise_for_status_on_error():
     resp = hc.StdlibResponse("https://x.example/missing", 404, b"nope")
     with pytest.raises(RuntimeError):
         resp.raise_for_status()
+
+
+def test_post_is_guarded_like_get():
+    """POST used to fall through __getattr__ to the bare requests.Session.
+
+    That path skips the SSRF guard, the per-domain rate limit and the 5xx
+    backoff — every discipline this wrapper exists to apply. api.indiankanoon.org
+    is POST-only, so the gap became reachable.
+    """
+    session = hc.make_session()
+    if not hasattr(session, "_session"):
+        pytest.skip("stdlib fallback session has no SSRF guard by contract")
+    with pytest.raises(ValueError, match="SSRF"):
+        session.post("http://169.254.169.254/latest/meta-data/")
+
+
+def test_stdlib_session_supports_post(monkeypatch):
+    """The zero-dependency fallback must not AttributeError on POST."""
+    session = hc.StdlibSession()
+    assert callable(getattr(session, "post", None))
+    captured = {}
+
+    class FakeResp:
+        status = 200
+
+        def read(self):
+            return b"{}"
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    def fake_urlopen(req, timeout=None):
+        captured["method"] = req.get_method()
+        captured["url"] = req.full_url
+        captured["auth"] = req.get_header("Authorization")
+        return FakeResp()
+
+    monkeypatch.setattr(hc.urllib.request, "urlopen", fake_urlopen)
+    r = session.post("https://api.example.org/search/", headers={"Authorization": "Token x"})
+    assert captured["method"] == "POST"
+    assert captured["auth"] == "Token x"
+    assert r.status_code == 200

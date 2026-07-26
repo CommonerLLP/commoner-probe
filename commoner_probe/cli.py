@@ -558,6 +558,59 @@ def cag_cmd(args: argparse.Namespace) -> None:
             print(json.dumps(record, ensure_ascii=False))
 
 
+def courts_cmd(args: argparse.Namespace) -> None:
+    from .courts import (
+        CourtProbe,
+        ECourtsUnavailable,
+        IndianKanoonError,
+        build_query,
+        ecourts_command,
+        ecourts_record,
+        run_ecourts,
+    )
+
+    if args.ecourts:
+        if not args.out:
+            raise SystemExit("--out is required for --ecourts")
+        ecourts_args = args.ecourts_arg or []
+        try:
+            rows = run_ecourts(ecourts_args, command=args.ecourts_cmd)
+        except ECourtsUnavailable as exc:
+            raise SystemExit(str(exc)) from exc
+        out = Path(args.out)
+        out.mkdir(parents=True, exist_ok=True)
+        cmd = ecourts_command(args.ecourts_cmd)
+        with (out / "manifest.jsonl").open("a", encoding="utf-8") as f:
+            for raw in rows:
+                record = ecourts_record(raw, args=ecourts_args, command=cmd)
+                f.write(json.dumps(record, ensure_ascii=False) + "\n")
+                print(json.dumps(record, ensure_ascii=False))
+        return
+
+    if not args.query:
+        raise SystemExit("--query is required (or use --ecourts)")
+    query = build_query(
+        args.query,
+        doctypes=args.doctypes,
+        from_date=args.from_date,
+        to_date=args.to_date,
+        sort_by=args.sort_by,
+    )
+    try:
+        probe = CourtProbe(Path(args.out or "."), sleep=args.sleep)
+        records = probe.probe(
+            query,
+            max_records=args.max_records,
+            max_pages=args.max_pages,
+            download=args.download,
+            dry_run=args.dry_run or not args.out,
+        )
+    except IndianKanoonError as exc:
+        raise SystemExit(str(exc)) from exc
+    for record in records:
+        print(json.dumps(record, ensure_ascii=False))
+
+
 def attendance_cmd(args: argparse.Namespace) -> None:
     out = Path(args.out)
     loksabhas = [int(x) for x in (_split_csv(args.loksabhas) or ["18"])]
@@ -1125,6 +1178,43 @@ def build_parser() -> argparse.ArgumentParser:
         help="Fetch the listing page(s) and print manifest records without downloading PDFs.",
     )
     cag.set_defaults(func=cag_cmd)
+
+    courts = sub.add_parser(
+        "courts",
+        help=(
+            "Search India court records. Default provider is the Indian Kanoon API "
+            "(needs INDIAN_KANOON_TOKEN in the environment — paid, third-party). "
+            "--ecourts instead runs a separately installed GPL-3.0 eCourts tool "
+            "out-of-process; it is deliberately not a dependency of this MIT package."
+        ),
+    )
+    courts.add_argument("--query", help="Indian Kanoon query text")
+    courts.add_argument("--out", help="Output corpus directory; omit for a metadata preview with no writes")
+    courts.add_argument("--doctypes", help="Court filter, e.g. supremecourt, delhi (API 'doctypes:' token)")
+    courts.add_argument("--from-date", dest="from_date", help="DD-MM-YYYY (API format, not normalised)")
+    courts.add_argument("--to-date", dest="to_date", help="DD-MM-YYYY (API format, not normalised)")
+    courts.add_argument("--sort-by", dest="sort_by", choices=["mostrecent", "leastrecent"])
+    courts.add_argument("--max-records", type=int, help="Stop after N results")
+    courts.add_argument("--max-pages", type=int, default=1, help="Result pages per API call (API caps at 100)")
+    courts.add_argument(
+        "--download",
+        action="store_true",
+        help="Also fetch each result's original source file (a separate billed API call per document)",
+    )
+    courts.add_argument("--sleep", type=float, default=1.0)
+    courts.add_argument("--dry-run", action="store_true", help="Print manifest records without writing them")
+    courts.add_argument(
+        "--ecourts",
+        action="store_true",
+        help="Run the external eCourts tool instead, and stamp its output with provenance",
+    )
+    courts.add_argument("--ecourts-cmd", dest="ecourts_cmd", help=f"Override ${'COMMONER_PROBE_ECOURTS_CMD'}")
+    courts.add_argument(
+        "--ecourts-arg",
+        action="append",
+        help="Argument passed through to the eCourts tool, repeatable",
+    )
+    courts.set_defaults(func=courts_cmd)
 
     attendance = sub.add_parser(
         "attendance",

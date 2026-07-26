@@ -636,6 +636,55 @@ class ManifestMospiRecord:
 
 
 # ---------------------------------------------------------------------------
+# manifest.jsonl record (court judgment / case record)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class ManifestCourtRecord:
+    """One court record from manifest.jsonl.
+
+    Covers both providers. ``provider`` says which, and the optional fields
+    below split cleanly along it: ``docid``/``court``/``judgment_date`` are
+    Indian Kanoon's, while ``raw``/``raw_sha256``/``tool_args`` carry an
+    external eCourts tool's own output verbatim (see courts.py's licence note).
+    """
+
+    key: str
+    kind: str
+    record_type: str
+    source_family: str
+    provider: str
+    source: str
+    status: str
+    fetched_at: str
+    probed_at: str
+    docid: int | None = None
+    title: str | None = None
+    court: str | None = None
+    judgment_date: str | None = None
+    num_cites: int | None = None
+    num_cited_by: int | None = None
+    headline: str | None = None
+    position: int | None = None
+    query: str | None = None
+    url: str | None = None
+    filename: str | None = None
+    dest: str | None = None
+    sha256: str | None = None
+    bytes: int | None = None
+    error: str | None = None
+    acquired_via: str | None = None
+    tool_command: str | None = None
+    tool_args: list = field(default_factory=list)
+    raw: dict = field(default_factory=dict)
+    raw_sha256: str | None = None
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "ManifestCourtRecord":
+        return _from_dict(cls, d)
+
+
+# ---------------------------------------------------------------------------
 # manifest.jsonl record (tabled paper / title-search item)
 # ---------------------------------------------------------------------------
 
@@ -960,6 +1009,7 @@ __all__ = [
     "ManifestPrsMpTrackRecord",
     "ManifestLegacyDspaceRecord",
     "ManifestMospiRecord",
+    "ManifestCourtRecord",
     "ManifestTabledPaperRecord",
     "ManifestBudgetRecord",
     "ManifestAcademicJobRecord",
