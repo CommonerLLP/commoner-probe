@@ -63,6 +63,8 @@ def _pick_schema_name(rec: dict) -> str | None:
         return "manifest_attendance"
     if kind == "myneta_candidate":
         return "manifest_myneta"
+    if kind == "cag_state_account":
+        return "manifest_cag_state_account"
     if kind == "prs_mp_track":
         return "manifest_prs_mp_track"
     if kind == "prs_bill_track":
