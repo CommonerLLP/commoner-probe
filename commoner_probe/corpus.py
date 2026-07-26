@@ -51,6 +51,7 @@ from .records import (
     ManifestAttendanceRecord,
     ManifestBillRecord,
     ManifestBudgetRecord,
+    ManifestCagStateAccountRecord,
     ManifestCommitteeReportRecord,
     ManifestDoePayAllowancesRecord,
     ManifestDpeCsrRecord,
@@ -209,6 +210,12 @@ class Corpus:
         for d in _iter_jsonl(self.out_dir / "manifest.jsonl"):
             if d.get("kind") == "myneta_candidate":
                 yield ManifestMynetaRecord.from_dict(d)
+
+    def manifest_cag_state_accounts(self) -> Iterator[ManifestCagStateAccountRecord]:
+        """Stream CAG State Finance Accounts document records from manifest.jsonl."""
+        for d in _iter_jsonl(self.out_dir / "manifest.jsonl"):
+            if d.get("kind") == "cag_state_account":
+                yield ManifestCagStateAccountRecord.from_dict(d)
 
     def manifest_prs_mp_track(self) -> Iterator[ManifestPrsMpTrackRecord]:
         """Stream PRS Legislative Research MP Track records from manifest.jsonl."""
@@ -405,6 +412,7 @@ class Corpus:
         "manifest_indiacode": "manifest_indiacode",
         "manifest_attendance": "manifest_attendance",
         "manifest_myneta": "manifest_myneta",
+        "manifest_cag_state_accounts": "manifest_cag_state_accounts",
         "manifest_prs_mp_track": "manifest_prs_mp_track",
         "manifest_legacy_dspace": "manifest_legacy_dspace",
         "manifest_mospi": "manifest_mospi",

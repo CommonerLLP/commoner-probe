@@ -253,3 +253,43 @@ def test_records_validate_against_schema(tmp_path, monkeypatch):
     probe = _probe(tmp_path, pdf_for_url={VOL2_2425: PDF_WITH_TEXT, VOL2_2324: PDF_WITH_TEXT})
     for record in probe.probe(GJ, volumes=["II"]):
         Draft202012Validator(schema).validate(record)
+
+
+def test_schema_registered_for_validation_and_corpus(tmp_path):
+    """The kind must be wired end to end, not just have a schema file.
+
+    A schema that `validate` never selects is worse than no schema: the corpus
+    silently passes validation while nothing has actually been checked.
+    """
+    import pytest
+
+    pytest.importorskip("jsonschema")
+    from commoner_probe import schemas
+    from commoner_probe.cag import CAGAccountsProbe
+    from commoner_probe.corpus import Corpus
+    from commoner_probe.validate import _pick_schema_name, validate_corpus
+
+    assert "manifest_cag_state_account" in schemas.list_all()
+    assert _pick_schema_name({"kind": "cag_state_account"}) == "manifest_cag_state_account"
+
+    probe = CAGAccountsProbe(tmp_path, sleep=0)
+    record = probe._record(
+        {
+            "state_id": 71,
+            "state": "Gujarat",
+            "year": "2023-24",
+            "volume": "II",
+            "title": "Finance Accounts 2023-24 Volume II",
+            "url": "https://cag.gov.in/uploads/gujarat-vol-2.pdf",
+        },
+        status="downloaded",
+    )
+    probe.append_manifest(record)
+
+    assert validate_corpus(tmp_path, log=lambda _: None)
+
+    rows = list(Corpus(tmp_path).manifest_cag_state_accounts())
+    assert len(rows) == 1
+    assert rows[0].state == "Gujarat"
+    assert rows[0].volume == "II"
+    assert rows[0].year == "2023-24"

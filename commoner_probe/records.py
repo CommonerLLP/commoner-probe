@@ -235,6 +235,40 @@ class ManifestMinesDmftRecord:
 
 
 @dataclass
+class ManifestCagStateAccountRecord:
+    """One CAG State Finance Accounts document record from manifest.jsonl."""
+
+    key: str
+    kind: str
+    record_type: str
+    source_family: str
+    state_id: int
+    state: str
+    government: str
+    jurisdiction: str
+    publisher: str
+    document_type: str
+    volume: str
+    title: str
+    year: str
+    filename: str
+    dest: str
+    url: str
+    source_page: str
+    status: str
+    media_type: str
+    fetched_at: str
+    probed_at: str
+    sha256: str | None = None
+    text_layer: bool | None = None
+    error: str | None = None
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "ManifestCagStateAccountRecord":
+        return _from_dict(cls, d)
+
+
+@dataclass
 class ManifestDoePayAllowancesRecord:
     """One DoE Pay & Allowances annual-report record from manifest.jsonl."""
 
