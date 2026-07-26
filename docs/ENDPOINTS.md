@@ -258,3 +258,42 @@ commoner-probe cag --out data/cag --years 2023-24 --volumes II
 # One State, dry-run (list without downloading)
 commoner-probe cag --out data/cag --state Gujarat --years 2023-24 --dry-run
 ```
+
+## India court records (Indian Kanoon + external eCourts)
+
+`commoner-probe courts` acquires court documents for litigation-adjacent
+research. Two providers, and **their licences decide the architecture**:
+
+**Indian Kanoon** — `api.indiankanoon.org`, HTTPS. The wire contract was read
+from `sushant354/IKAPI` (MIT) and reimplemented here; no code is vendored.
+
+| endpoint | notes |
+|---|---|
+| `/search/?formInput=<q>&pagenum=<n>&maxpages=<m>` | `pagenum` is 0-indexed and advances by `maxpages`; the API caps `maxpages` at 100 |
+| `/doc/<tid>/`, `/docmeta/<tid>/` | both accept `maxcites` / `maxcitedby` |
+| `/docfragment/<tid>/?formInput=<q>` | query-matched fragment |
+| `/origdoc/<tid>/` | source file, base64 under a `doc` key |
+
+- **Every endpoint is POST**, with parameters in the query string and no
+  request body. A GET returns nothing useful.
+- Headers: `Authorization: Token <token>`, `Accept: application/json`.
+- Search filters are query *text*, not parameters: `doctypes: <court>`,
+  `fromdate: DD-MM-YYYY`, `todate: DD-MM-YYYY`, `sortby: mostrecent`.
+- **Errors do not reliably arrive as HTTP status codes.** The body may be JSON
+  carrying `errmsg`, or a bare string beginning `error code:`. Both are
+  checked — assert on the response shape, never the status code.
+- Token comes from `INDIAN_KANOON_TOKEN` only. It is paid and personal.
+
+**eCourts** — `openjustice-in/ecourts` is GPL-3.0; this package is MIT and
+published to PyPI, so importing or vendoring it would relicense commoner-probe
+for every installer. It is therefore invoked **out-of-process only**: a
+separately installed executable named by `COMMONER_PROBE_ECOURTS_CMD`, its
+JSON read from stdout. There is no `import ecourts` anywhere in this repo and
+no entry for it in `pyproject.toml` — a test enforces both.
+
+Outputs:
+
+- `manifest.jsonl` records with `kind = "court_record"`, discriminated by
+  `provider` (`indiankanoon` | `ecourts`)
+- downloaded source files under `courts/` (only with `--download`)
+

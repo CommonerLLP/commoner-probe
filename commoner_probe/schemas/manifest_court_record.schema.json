@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CommonerLLP/commoner-probe/schemas/v1/manifest_court_record.json",
+  "title": "manifest.jsonl — court record (Indian Kanoon / external eCourts)",
+  "description": "One court document acquired for litigation-adjacent research. `provider` discriminates the two sources, and they are NOT interchangeable. `indiankanoon` rows come from api.indiankanoon.org, a paid commercial index (queries leave the org) reimplemented from the MIT-licensed IKAPI wire contract; `docid` is Indian Kanoon's own id and `url` its public permalink. `ecourts` rows come from a separately installed GPL-3.0 executable invoked across a process boundary — never imported or bundled, because commoner-probe ships MIT — and its fields are carried verbatim under `raw` with `raw_sha256` over the canonical JSON, because this repo has not verified that tool's output shape and will not invent a mapping for it. A court record is retrieval, not legal advice: nothing here interprets the judgment.",
+  "type": "object",
+  "required": [
+    "key",
+    "kind",
+    "record_type",
+    "source_family",
+    "provider",
+    "source",
+    "status",
+    "fetched_at",
+    "probed_at"
+  ],
+  "properties": {
+    "key": { "type": "string", "pattern": "^COURT\\|(indiankanoon|ecourts)\\|.+$" },
+    "kind": { "type": "string", "const": "court_record" },
+    "record_type": { "type": "string", "const": "court_record" },
+    "source_family": { "type": "string", "const": "court" },
+    "provider": { "type": "string", "enum": ["indiankanoon", "ecourts"] },
+    "source": { "type": "string" },
+    "status": {
+      "type": "string",
+      "enum": ["metadata_only", "downloaded", "skipped_exists", "dry_run", "error"]
+    },
+    "error": { "type": "string" },
+    "docid": { "type": "integer" },
+    "title": { "type": "string" },
+    "court": { "type": "string" },
+    "judgment_date": { "type": ["string", "null"] },
+    "num_cites": { "type": ["integer", "null"] },
+    "num_cited_by": { "type": ["integer", "null"] },
+    "headline": { "type": ["string", "null"] },
+    "position": { "type": "integer", "minimum": 0 },
+    "query": { "type": "string" },
+    "url": { "type": "string" },
+    "filename": { "type": "string" },
+    "dest": { "type": "string" },
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "bytes": { "type": "integer", "minimum": 0 },
+    "acquired_via": { "type": "string", "const": "external-tool-subprocess" },
+    "tool_command": { "type": "string" },
+    "tool_args": { "type": "array", "items": { "type": "string" } },
+    "raw": { "type": "object" },
+    "raw_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "fetched_at": { "type": "string" },
+    "probed_at": { "type": "string" }
+  }
+}
