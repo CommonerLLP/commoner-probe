@@ -602,19 +602,23 @@ def myneta_cmd(args: argparse.Namespace) -> None:
 
 
 def prs_cmd(args: argparse.Namespace) -> None:
-    if args.surface != "mp-track":
-        raise SystemExit("only --surface mp-track is implemented for REQ-0029 in this slice")
     out = Path(args.out)
-    houses = ["ls", "rs"] if args.house == "both" else [args.house]
-    loksabhas = [int(x) for x in (_split_csv(args.loksabhas) or ["18"])]
     probe = PrsProbe(out, sleep=args.sleep)
-    records = probe.probe_mptrack(
-        houses=houses,
-        loksabhas=loksabhas,
-        max_records=args.max_records,
-        download=args.download,
-        dry_run=args.dry_run,
-    )
+    if args.surface == "bill-track":
+        records = probe.probe_billtrack(
+            max_records=args.max_records,
+            dry_run=args.dry_run,
+        )
+    else:
+        houses = ["ls", "rs"] if args.house == "both" else [args.house]
+        loksabhas = [int(x) for x in (_split_csv(args.loksabhas) or ["18"])]
+        records = probe.probe_mptrack(
+            houses=houses,
+            loksabhas=loksabhas,
+            max_records=args.max_records,
+            download=args.download,
+            dry_run=args.dry_run,
+        )
     for record in records:
         print(json.dumps(record, ensure_ascii=False))
 
@@ -1170,9 +1174,13 @@ def build_parser() -> argparse.ArgumentParser:
     prs.add_argument("--out", required=True, help="Output corpus directory")
     prs.add_argument(
         "--surface",
-        choices=["mp-track"],
+        choices=["mp-track", "bill-track"],
         default="mp-track",
-        help="PRS surface to acquire; current slice implements mp-track.",
+        help=(
+            "PRS surface to acquire. mp-track: per-MP participation CSV "
+            "(--house/--loksabhas apply). bill-track: the full Bills listing, "
+            "one row per bill, single request, metadata only."
+        ),
     )
     prs.add_argument("--house", choices=["ls", "rs", "both"], default="ls")
     prs.add_argument("--loksabhas", default="18", help="Comma-separated Lok Sabha numbers, e.g. 17,18")
