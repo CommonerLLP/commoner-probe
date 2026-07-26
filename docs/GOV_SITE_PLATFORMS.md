@@ -27,6 +27,8 @@ few months old.
 | `moefcc` | Environment, Forest and Climate Change | moef.gov.in/detailed-demand-for-grants | table | 16 (2008-09→2023-24, Hindi-only titles) | 2026-07-09 |
 | `mopng` | Petroleum and Natural Gas | mopng.gov.in/en/accounts/demands-grants | table | 18 (2008-09→2026-27) | 2026-07-09 |
 | `dst` | Department of Science and Technology | dst.gov.in/documents/budget | list | 10 (2017-18→2026-27) | 2026-07-09 |
+| `mopsw` | Ports, Shipping and Waterways | shipmin.gov.in/en/division/budgets | table | 17 (2010-11→2026-27, unbroken) | 2026-07-26 |
+| `dae` | Department of Atomic Energy | dae.gov.in/detailed-demand-for-grants/ | list | 9 (2012-13→2021-22, no 2019-20; series stops at 2021-22) | 2026-07-26 |
 
 **Three site templates** are supported (`commoner_probe/ddg.py` docstring has
 the full markup detail): `card` (Bootstrap grid), `table` (`<tr>/<td>`,
@@ -40,6 +42,7 @@ server-rendered HTML — no browser needed.
 |---|---|---|---|---|---|
 | `steel` | Ministry of Steel | steel.gov.in/detailed-demands-for-grants | table | 4 | Server presents a **self-signed TLS certificate**. `curl` accepts it (different trust store); Python `requests`/certifi correctly rejects it. Disabling cert verification is a security decision, not a default an adapter should make silently. |
 | `tribal` | Ministry of Tribal Affairs | tribal.nic.in/Finance.aspx | list | 8 of 11 (3 older editions are `.xls`, not `.pdf`, and correctly excluded) | Server sends an **incomplete certificate chain** ("unable to get local issuer certificate"). Same TLS-verification objection as Steel. |
+| `moca` | Ministry of Civil Aviation | civilaviation.gov.in/Publication/demand-grants | table | 5 (2022-23→2026-27) | Serves **HTTP 403 for `/robots.txt` itself**. `http_client._get_robot_parser` reads a 403 as disallow-all, so every fetch raises `PermissionError`. The `SCHEME_FREE_USER_AGENT` fix that cleared MHA's WAF was tried and does **not** clear this one. Note for whoever decides: RFC 9309 §2.3.1.4 treats a 4xx robots.txt as "no restrictions", so this repo's reading is stricter than the standard — but relaxing it changes fetch policy for every source at once. Titles parse cleanly; the content is not the problem. |
 | `wcd` | Women and Child Development | wcd.gov.in/documents/budget (+ /documents/budget-archives) | card-ish (`div.list_det_bx`, not the `dea` card shape — would need a 4th parser) | 13 across 2 pages | robots.txt is **`Disallow: /`** — a full-site crawl block. `http_client.py` has an explicit `respect_robots=False` opt-out for exactly this case, gated per registry entry, but overriding a blanket disallow is a policy call, not something to wire in unilaterally. |
 
 ## Blocked — JS-rendered SPA or WAF+AJAX (not scrapeable by plain HTTP GET)
@@ -160,3 +163,39 @@ there's a specific data need that justifies the per-site research cost.
    Agriculture)** is the hardest tier — fingerprint-evasion is a real
    technique with real dual-use weight to it, not something to reach for by
    default. Leave it out of scope until there's a specific reason to revisit.
+
+## Sweep of 42 further departments (2026-07-26) — mostly negative, deliberately recorded
+
+A second pass checked 42 Union departments not covered above, favouring the
+smaller bare-NIC/Apache departments rather than the large Akamai-fronted
+ministries (that tier is documented as out of scope above). Method: fetch the
+homepage, follow same-domain links whose text or href mentions
+demand/grant/budget, run all three parsers, and keep only pages that yielded
+**parsed document rows** — an HTTP 200 was never treated as a result.
+
+**Two registered** (`mopsw`, `dae` — see the table at the top). **One held back**
+(`moca`, robots.txt 403). The other 39 are negative, and the negatives are the
+point of writing this down:
+
+| outcome | count | departments |
+|---|---|---|
+| No DDG link discoverable from the homepage | 17 | dfpd, dof, tourism, ayush, msme, jalshakti-dowr, doj, legislative, lawmin, doppw, isro/dos, moes, mea, dfs, dpe, dsir, mdoner, indiapost |
+| Connection timeout / reset from this egress | 8 | consumeraffairs.nic.in, fert, dare, indiaculture, desw, minorityaffairs, dopt (conn reset) |
+| Broken TLS | 2 | yas.gov.in, cooperation.gov.in |
+| robots.txt disallows the path | 4 | chemicals, dahd, mib, heavyindustries |
+| SPA shell homepage | 2 | mospi, dot |
+| Rejected by the SSRF guard | 2 | pharmaceuticals.gov.in, dbtindia.gov.in |
+| Links found, nothing parsed as a DDG | 2 | dor, dipam |
+
+Two cautions for the next person who automates this:
+
+1. **`demand|grant` matches a lot of things that are not Demands for Grants.**
+   Two candidates looked like strong hits and were rejected on reading the
+   parsed titles: Coal's "Demand of Coal forecasting" page and its GFR Rule
+   230(2) *grant-in-aid* disclosures, and Panchayati Raj's
+   `संस्वीकृति आदेश – अबद्ध अनुदान` (untied-grant sanction orders to States,
+   12 rows). Both parse cleanly into well-formed rows of the wrong documents.
+   Row counts are not evidence; titles are.
+2. **The "SSRF guard" and "connection timeout" rows are about this network
+   path, not about the sites.** Re-run them from an India egress before
+   concluding anything, same as the unreachable group above.

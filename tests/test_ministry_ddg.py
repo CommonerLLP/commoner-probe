@@ -111,10 +111,27 @@ def test_get_portal_known_code():
     assert get_portal("dea").ministry_name == "Department of Economic Affairs (Ministry of Finance)"
 
 
-def test_registry_has_seven_verified_ministries():
+def test_registry_holds_only_live_verified_ministries():
+    """Every code here was verified by a real fetch that parsed real rows.
+
+    Grown one entry at a time, never a guessed batch — a listing that returns
+    HTTP 200 is not evidence, parsed document rows are. `mopsw` and `dae` were
+    added 2026-07-26 (17 docs 2010-11..2026-27, and 9 docs 2012-13..2021-22).
+    """
     assert {p.ministry_code for p in MINISTRY_DDG_PORTALS} == {
-        "dea", "mha", "doe", "dolr", "moefcc", "mopng", "dst",
+        "dea", "mha", "doe", "dolr", "moefcc", "mopng", "dst", "mopsw", "dae",
     }
+
+
+def test_registry_codes_are_unique():
+    codes = [p.ministry_code for p in MINISTRY_DDG_PORTALS]
+    assert len(codes) == len(set(codes))
+
+
+def test_every_registry_template_has_a_parser():
+    from commoner_probe.ddg import _PARSERS
+
+    assert {p.template for p in MINISTRY_DDG_PORTALS} <= set(_PARSERS)
 
 
 def test_get_portal_unknown_code_raises():
@@ -450,3 +467,34 @@ def test_discover_single_page_listing_unchanged(tmp_path):
     docs = probe.discover()
     assert [d["year"] for d in docs] == ["2024-25"]
     assert probe.session.calls == [portal.listing_url]
+
+
+def test_four_digit_end_year_title_normalises_to_short_form():
+    """MoPSW's 2026 edition titles the year in full: "2026-2027".
+
+    Observed live 2026-07-26 alongside sibling rows using the short "2025-26"
+    form on the same page, so both must land on the same key.
+    """
+    html = (
+        "<table><tr><td>Detailed Demand for Grants 2026-2027</td>"
+        '<td><a href="/sites/default/files/Final%20DDG%202026-27.pdf">PDF</a></td></tr>'
+        "<tr><td>Detailed Demands for Grants 2025-26</td>"
+        '<td><a href="/sites/default/files/DDG%202025-26.pdf">PDF</a></td></tr></table>'
+    )
+    docs = parse_ddg_listing_table(html, "https://shipmin.gov.in/en/division/budgets")
+    assert [d["year"] for d in docs] == ["2026-27", "2025-26"]
+
+
+def test_year_comes_from_the_filename_when_the_anchor_text_is_just_a_size():
+    """DAE's listing labels every link "View (24.1MB)" — no year, no wording.
+
+    The year and the DDG signal both have to come from the URL. Observed live
+    2026-07-26.
+    """
+    html = (
+        '<li class="views-row"><a href="https://data.dae.gov.in/Accounts/'
+        'Detailed_Demand_for_Grants/DDG2021-22.pdf">View (24.1MB)</a></li>'
+    )
+    docs = parse_ddg_listing_list(html, "https://dae.gov.in/detailed-demand-for-grants/")
+    assert len(docs) == 1
+    assert docs[0]["year"] == "2021-22"
