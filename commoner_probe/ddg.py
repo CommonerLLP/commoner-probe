@@ -150,6 +150,18 @@ MINISTRY_DDG_PORTALS: tuple[MinistryDDGPortal, ...] = (
         listing_url="https://dst.gov.in/documents/budget",
         template="list",
     ),
+    MinistryDDGPortal(
+        ministry_code="mopsw",
+        ministry_name="Ministry of Ports, Shipping and Waterways",
+        listing_url="https://shipmin.gov.in/en/division/budgets",
+        template="table",
+    ),
+    MinistryDDGPortal(
+        ministry_code="dae",
+        ministry_name="Department of Atomic Energy",
+        listing_url="https://dae.gov.in/detailed-demand-for-grants/",
+        template="list",
+    ),
 )
 
 # Verified live 2026-07-09 but deliberately NOT in the registry above —
@@ -162,6 +174,16 @@ MINISTRY_DDG_PORTALS: tuple[MinistryDDGPortal, ...] = (
 #   both (different trust store); Python's `requests`/certifi correctly
 #   rejects them. Disabling certificate verification is a security-relevant
 #   change, not a default an adapter should make silently.
+# * Ministry of Civil Aviation (civilaviation.gov.in/Publication/demand-grants,
+#   5 docs 2022-23→2026-27, "table" template, titles read cleanly) serves
+#   HTTP 403 for /robots.txt itself. `_get_robot_parser` treats that as a
+#   disallow-all, so every fetch raises PermissionError. The
+#   SCHEME_FREE_USER_AGENT trick that cleared mha.gov.in's WAF was tried and
+#   does NOT clear this one (verified 2026-07-26). Worth noting for whoever
+#   decides: RFC 9309 §2.3.1.4 says a 4xx robots.txt means "no restrictions",
+#   so this repo's 403-means-disallow reading is stricter than the standard —
+#   but relaxing it would change fetch policy for every source at once, which
+#   is not a call to make from inside one ministry's registry entry.
 # * Ministry of Women and Child Development (wcd.gov.in/documents/budget +
 #   /documents/budget-archives, 13 docs, "card"-shaped but not the same
 #   markup as dea.gov.in's card template) is technically scrapeable but its
