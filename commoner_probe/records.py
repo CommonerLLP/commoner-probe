@@ -636,6 +636,46 @@ class ManifestMospiRecord:
 
 
 # ---------------------------------------------------------------------------
+# manifest.jsonl record (headless-browser page capture)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class ManifestRenderedPageRecord:
+    """One headless-browser page capture from manifest.jsonl.
+
+    ``status`` and ``rendered`` are the fields that matter: ``shell_only``
+    means the browser got a well-formed document with none of the data in it.
+    """
+
+    key: str
+    kind: str
+    record_type: str
+    source_family: str
+    source: str
+    url: str
+    acquired_via: str
+    render_engine: str
+    status: str
+    fetched_at: str
+    probed_at: str
+    rendered: bool | None = None
+    reason: str | None = None
+    text_chars: int | None = None
+    html_bytes: int | None = None
+    frameworks: list = field(default_factory=list)
+    missing_text: list = field(default_factory=list)
+    http_status: int | None = None
+    wait_for: str | None = None
+    dest: str | None = None
+    sha256: str | None = None
+    error: str | None = None
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "ManifestRenderedPageRecord":
+        return _from_dict(cls, d)
+
+
+# ---------------------------------------------------------------------------
 # manifest.jsonl record (court judgment / case record)
 # ---------------------------------------------------------------------------
 
@@ -1010,6 +1050,7 @@ __all__ = [
     "ManifestLegacyDspaceRecord",
     "ManifestMospiRecord",
     "ManifestCourtRecord",
+    "ManifestRenderedPageRecord",
     "ManifestTabledPaperRecord",
     "ManifestBudgetRecord",
     "ManifestAcademicJobRecord",
