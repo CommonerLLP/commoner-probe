@@ -224,3 +224,37 @@ site checked so far, including which ones are JS-rendered SPAs (a large and
 growing share, sharing a common platform), WAF-blocked, or unreachable from
 a given network egress, and why. It exists specifically so this research
 doesn't get silently redone every session.
+
+## CAG State Finance Accounts
+
+`commoner-probe cag` downloads a State's statutory **Finance Accounts** from
+cag.gov.in's State-Accounts portal. Volume II carries the detailed statements
+(Statement 15 revenue by minor head, Statement 16 capital by minor head) from
+which minor-head figures such as `2205-00-105` (Public Libraries, revenue) and
+`4202-04-105` (Public Libraries, capital) are read downstream in public-finance.
+
+Unlike the audit-report side of cag.gov.in, State Accounts have no central
+index and no per-document detail page: one server-rendered page per State
+(`state-accounts-report?defuat_state_id=<id>`) lists the PDFs directly under
+its "Finance Accounts" tab. The adapter works off a small, live-verified
+registry (`commoner_probe.cag.CAG_ACCOUNTS_STATES`, 25 States with a confirmed
+Vol-II); seven States/UTs have no obtainable Vol-II and are documented in
+`commoner_probe.cag._UNAVAILABLE`, not crawled.
+
+The fiscal year is read from the page's accordion header, never the filename
+(several States ship year-less or misspelled filenames). Acquisition only —
+parsing Statement 15/16 out of the PDFs is a public-finance concern (REQ-0003).
+
+Outputs:
+
+- `manifest.jsonl` records with `kind = "cag_state_account"`
+- downloaded PDFs under `<state-slug>/`
+
+Example:
+
+```bash
+# All 25 States, FY2023-24 Vol-II
+commoner-probe cag --out data/cag --years 2023-24 --volumes II
+# One State, dry-run (list without downloading)
+commoner-probe cag --out data/cag --state Gujarat --years 2023-24 --dry-run
+```
