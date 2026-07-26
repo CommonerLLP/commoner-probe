@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CommonerLLP/commoner-probe/schemas/v1/manifest_rendered_page.json",
+  "title": "manifest.jsonl — headless-browser page capture",
+  "description": "One page acquired through the headless-browser fallback (REQ-0035), for JS-rendered portals a plain GET cannot read. `status` is the load-bearing field: `downloaded` means the capture passed the shell-vs-content assertion, `shell_only` means the browser returned a well-formed HTML document containing none of the data. Those are NOT interchangeable, and HTTP 200 does not distinguish them — data.gov.in answers 200 with a 1 MB Nuxt shell carrying 1,850 characters of visible text, larger than a fully-rendered 407 KB page carrying 67,372. `text_chars` is measured after script/style removal, which is why it separates the two when byte size does not. Shell captures are written to a separate directory from real ones so a directory glob cannot mistake one for the other.",
+  "type": "object",
+  "required": [
+    "key",
+    "kind",
+    "record_type",
+    "source_family",
+    "source",
+    "url",
+    "acquired_via",
+    "render_engine",
+    "status",
+    "fetched_at",
+    "probed_at"
+  ],
+  "properties": {
+    "key": { "type": "string", "pattern": "^RENDERED\\|.+$" },
+    "kind": { "type": "string", "const": "rendered_page" },
+    "record_type": { "type": "string", "const": "rendered_page" },
+    "source_family": { "type": "string", "const": "browser" },
+    "source": { "type": "string" },
+    "url": { "type": "string" },
+    "acquired_via": { "type": "string", "const": "headless-browser" },
+    "render_engine": { "type": "string" },
+    "wait_for": { "type": ["string", "null"] },
+    "status": {
+      "type": "string",
+      "enum": ["downloaded", "shell_only", "dry_run", "error"]
+    },
+    "rendered": { "type": "boolean" },
+    "reason": { "type": "string" },
+    "text_chars": { "type": "integer", "minimum": 0 },
+    "html_bytes": { "type": "integer", "minimum": 0 },
+    "frameworks": { "type": "array", "items": { "type": "string" } },
+    "missing_text": { "type": "array", "items": { "type": "string" } },
+    "http_status": { "type": ["integer", "null"] },
+    "dest": { "type": "string" },
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "error": { "type": "string" },
+    "fetched_at": { "type": "string" },
+    "probed_at": { "type": "string" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "status": { "const": "downloaded" } }, "required": ["status"] },
+      "then": { "properties": { "rendered": { "const": true } }, "required": ["rendered", "sha256"] }
+    },
+    {
+      "if": { "properties": { "status": { "const": "shell_only" } }, "required": ["status"] },
+      "then": { "properties": { "rendered": { "const": false } }, "required": ["rendered", "reason"] }
+    }
+  ]
+}

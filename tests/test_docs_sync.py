@@ -49,6 +49,7 @@ class CliCommandSyncTests(unittest.TestCase):
                 "cag",
                 "mospi",
                 "courts",
+                "render",
                 "attendance",
                 "myneta",
                 "prs",

@@ -684,6 +684,37 @@ the environment variable at it. Its output is carried through verbatim under
 `raw`, with `raw_sha256` over the canonical JSON, because this repo has not
 verified that tool's field shape and will not invent a mapping for it.
 
+### `commoner-probe render` — headless-browser fallback
+
+```bash
+commoner-probe render --url https://www.data.gov.in/catalogs \
+  --require-text "Ministry of" --wait-for ".catalog-list" \
+  --out data/rendered
+```
+
+A **fallback**, not the default path: a real browser costs orders of magnitude
+more than a GET, so use it only where the fetch layer genuinely cannot read the
+page. Needs `pip install playwright && playwright install chromium`, which is
+deliberately not a dependency of the default install.
+
+The point is the assertion, not the browser. JS-heavy portals do not fail
+loudly — `data.gov.in`, `lokdhaba.ashoka.edu.in` and `myneta.info` all answer
+HTTP 200 with a well-formed document for every path, including invented ones,
+so a status-code check records a clean acquisition of a page containing none of
+the data. This command refuses to record success when it only captured a shell:
+the record gets `status: "shell_only"`, the snapshot is written to a *separate*
+`rendered_shells/` directory so a directory glob can't mistake it for content,
+and the exit code is 1.
+
+**Byte size cannot make that distinction.** Measured 2026-07-26:
+`data.gov.in/catalogs` returns 1,000,989 bytes of HTML carrying 1,850
+characters of visible text, while a fully-rendered `prsindia.org/billtrack`
+returns 407,356 bytes carrying 67,372. The empty page is two and a half times
+*larger*, because a ~1 MB inline `window.__NUXT__` payload is script, not
+content. So the check counts visible text after script/style removal, and
+`--require-text` — a string you know the real page contains — is the strong
+form of it.
+
 ### `commoner-probe doe-pay-allowances` — DoE Pay & Allowances annual reports
 
 ```bash

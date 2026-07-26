@@ -297,3 +297,39 @@ Outputs:
   `provider` (`indiankanoon` | `ecourts`)
 - downloaded source files under `courts/` (only with `--download`)
 
+## Headless-browser fallback (JS-rendered portals)
+
+`commoner-probe render` has no endpoint contract — it takes any URL. What it
+does have is an **acceptance contract**: a capture may not claim success unless
+the page actually contains content.
+
+The failure mode it exists for is silent success. These portals answer HTTP 200
+with a well-formed HTML document for *every* path, including invented ones:
+
+| portal | stack | what a plain GET returns |
+|---|---|---|
+| `data.gov.in` | Nuxt | 200 + a ~1 MB shell, catalogue absent |
+| `lokdhaba.ashoka.edu.in` | React SPA | 200 + a 486-byte shell (its own API also 502s) |
+| `myneta.info` | — | 200 for invented paths |
+
+**A size floor does not separate shell from content.** Measured 2026-07-26 with
+a plain GET:
+
+| page | HTML bytes | visible text (script/style removed) |
+|---|---|---|
+| `data.gov.in/catalogs` | 1,000,989 | 1,850 chars |
+| `prsindia.org/billtrack` | 407,356 | 67,372 chars |
+
+The shell is 2.5x larger than the rendered page, because the inline
+`window.__NUXT__` payload counts as bytes but is script. So the check measures
+visible text, and `--require-text` (a string the real page is known to contain)
+is the strong form. Framework markers (`__NUXT__`, `__NEXT_DATA__`,
+`<app-root>`) are reported to explain a failure but never define one — a
+correctly-rendered Next.js page still carries them.
+
+Outputs:
+
+- `manifest.jsonl` records with `kind = "rendered_page"`; `status` is
+  `downloaded` only when the assertion passed, `shell_only` otherwise
+- snapshots under `rendered/`, and failed captures under `rendered_shells/` —
+  separate directories, because downstream tools glob directories

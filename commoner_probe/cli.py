@@ -611,6 +611,31 @@ def courts_cmd(args: argparse.Namespace) -> None:
         print(json.dumps(record, ensure_ascii=False))
 
 
+def render_cmd(args: argparse.Namespace) -> None:
+    from .browser import DEFAULT_MIN_TEXT_CHARS, BrowserProbe, BrowserUnavailable
+
+    probe = BrowserProbe(
+        Path(args.out or "."),
+        engine=args.engine,
+        timeout_ms=int(args.timeout * 1000),
+    )
+    try:
+        record = probe.capture(
+            args.url,
+            wait_for=args.wait_for,
+            require_text=args.require_text or (),
+            min_text_chars=args.min_text_chars or DEFAULT_MIN_TEXT_CHARS,
+            dry_run=args.dry_run or not args.out,
+        )
+    except BrowserUnavailable as exc:
+        raise SystemExit(str(exc)) from exc
+    print(json.dumps(record, ensure_ascii=False))
+    # A shell capture is a failed acquisition, and the exit code has to say so
+    # — otherwise a shell scrolls past in a pipeline as a clean run.
+    if record["status"] in ("shell_only", "error"):
+        raise SystemExit(1)
+
+
 def attendance_cmd(args: argparse.Namespace) -> None:
     out = Path(args.out)
     loksabhas = [int(x) for x in (_split_csv(args.loksabhas) or ["18"])]
@@ -1219,6 +1244,35 @@ def build_parser() -> argparse.ArgumentParser:
         help="Argument passed through to the eCourts tool, repeatable",
     )
     courts.set_defaults(func=courts_cmd)
+
+    render = sub.add_parser(
+        "render",
+        help=(
+            "Fallback acquisition for JS-rendered portals a plain GET cannot read. "
+            "Captures via headless browser and refuses to record success when it "
+            "only got an empty app shell. Costly — not the default path."
+        ),
+    )
+    render.add_argument("--url", required=True, help="Page to capture")
+    render.add_argument("--out", help="Output corpus directory; omit for a dry run with no writes")
+    render.add_argument("--wait-for", dest="wait_for", help="CSS selector to await before snapshotting")
+    render.add_argument(
+        "--require-text",
+        action="append",
+        help=(
+            "Text the real page must contain, repeatable. The strong check — "
+            "a length floor is a heuristic, a known string is a fact."
+        ),
+    )
+    render.add_argument(
+        "--min-text-chars",
+        type=int,
+        help="Visible-text floor after script/style removal (default 4000)",
+    )
+    render.add_argument("--engine", default="chromium", choices=["chromium", "firefox", "webkit"])
+    render.add_argument("--timeout", type=float, default=45.0, help="Seconds per navigation step")
+    render.add_argument("--dry-run", action="store_true", help="Print the record without writing anything")
+    render.set_defaults(func=render_cmd)
 
     attendance = sub.add_parser(
         "attendance",

@@ -81,6 +81,8 @@ def _pick_schema_name(rec: dict) -> str | None:
         return "manifest_mospi"
     if kind == "court_record":
         return "manifest_court_record"
+    if kind == "rendered_page":
+        return "manifest_rendered_page"
     return None
 
 
