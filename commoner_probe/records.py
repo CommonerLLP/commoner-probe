@@ -780,6 +780,36 @@ class ManifestPrsMpTrackRecord:
 
 
 # ---------------------------------------------------------------------------
+# manifest.jsonl record (PRS Bill Track)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class ManifestPrsBillTrackRecord:
+    """One PRS Legislative Research Bill Track record from manifest.jsonl.
+
+    Bill Track is a tracker, not an archive: a bill moves between statuses over
+    time, so a corpus may hold more than one row per ``key`` and the newest row
+    is the current one.
+    """
+
+    key: str
+    kind: str
+    record_type: str
+    source: str
+    source_page_url: str
+    title: str
+    url: str
+    slug: str
+    bill_status: str
+    status: str
+    probed_at: str
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "ManifestPrsBillTrackRecord":
+        return _from_dict(cls, d)
+
+
+# ---------------------------------------------------------------------------
 # manifest.jsonl record (pre-admission question lists / Bulletins)
 # ---------------------------------------------------------------------------
 

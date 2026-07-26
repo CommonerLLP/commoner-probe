@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CommonerLLP/commoner-probe/schemas/v1/manifest_prs_bill_track.json",
+  "title": "manifest.jsonl — PRS Bill Track",
+  "description": "One bill from the PRS Legislative Research Bill Track listing. PRS-derived records are internal-research-only and stamped source=prsindia.org for downstream segregation. Bill Track is a tracker, not an archive: a bill moves between statuses over time, so more than one row may exist per bill and the newest row is current.",
+  "type": "object",
+  "required": [
+    "key",
+    "kind",
+    "record_type",
+    "source",
+    "source_page_url",
+    "title",
+    "url",
+    "slug",
+    "bill_status",
+    "status",
+    "probed_at"
+  ],
+  "properties": {
+    "key": {
+      "type": "string",
+      "pattern": "^PRS_BILL_TRACK\\|.+$"
+    },
+    "kind": {
+      "type": "string",
+      "const": "prs_bill_track"
+    },
+    "record_type": {
+      "type": "string",
+      "const": "prs_bill_track"
+    },
+    "source": {
+      "type": "string",
+      "const": "prsindia.org"
+    },
+    "source_page_url": {
+      "type": "string",
+      "format": "uri"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "url": {
+      "type": "string",
+      "format": "uri"
+    },
+    "slug": {
+      "type": "string",
+      "minLength": 1
+    },
+    "bill_status": {
+      "type": "string",
+      "description": "The bill's legislative status as PRS renders it (Passed, Lapsed, Withdrawn, Draft, Pending, In Committee, …). Read from the status span's TEXT: PRS emits class=\"status-pending\" on every row regardless of the real status, so the class is decoration, not data. May be an empty string when PRS publishes no status for a bill."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["metadata_only", "dry_run"],
+      "description": "Acquisition status. Bill Track is a listing surface; no document is downloaded, so records are metadata_only."
+    },
+    "probed_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

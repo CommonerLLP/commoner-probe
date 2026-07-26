@@ -696,23 +696,38 @@ age, education, self/spouse profession, and the per-candidate source URL.
 `--constituency-ids` defaults to all 543 constituencies. Use `--dry-run` to
 list candidate IDs per constituency without fetching affidavit pages.
 
-### `commoner-probe prs` — PRS Legislative Research MP Track
+### `commoner-probe prs` — PRS Legislative Research
 
 ```bash
+# per-MP participation
 commoner-probe prs \
   --out data/prs \
   --surface mp-track \
   --house both \
   --loksabhas 17,18
+
+# every bill PRS tracks, with its legislative status
+commoner-probe prs \
+  --out data/prs \
+  --surface bill-track
 ```
 
-Acquires PRS Legislative Research MP Track CSV rows for internal research only.
-Rows are stamped `source: prsindia.org` so downstream consumers can segregate
-PRS-derived data and avoid republication of PRS text. The current slice
-implements `--surface mp-track` for 17th/18th Lok Sabha and Rajya Sabha.
-Metadata-only is the default; pass `--download` to retain the source CSV under
-`csv/prs-mp-track/` with a sha256. PRS `robots.txt` declares `Crawl-delay: 10`,
-so the default `--sleep` is 10 seconds.
+Acquires PRS Legislative Research surfaces for internal research only. Rows are
+stamped `source: prsindia.org` so downstream consumers can segregate PRS-derived
+data and avoid republication of PRS text. PRS `robots.txt` declares
+`Crawl-delay: 10`, so the default `--sleep` is 10 seconds.
+
+**`--surface mp-track`** — per-MP participation rows for the 17th/18th Lok Sabha
+and Rajya Sabha. Metadata-only by default; pass `--download` to retain the source
+CSV under `csv/prs-mp-track/` with a sha256.
+
+**`--surface bill-track`** — one record per bill (title, URL, slug, and
+legislative status such as Passed / Lapsed / Withdrawn / Pending). The whole
+listing renders in a single page with no pagination, so this is one request;
+`--house` and `--loksabhas` do not apply. Metadata only — per-bill detail pages
+are a separate surface. Bill Track is a *tracker*, so re-running appends a new
+row only for bills whose status has actually changed, giving the corpus a
+status history per bill rather than duplicates.
 
 ### `commoner-probe bills` — bills & legislation catalog
 

@@ -28,6 +28,20 @@ PRS_CRAWL_DELAY_SEC = 10.0
 
 _CSV_DOWNLOAD_RE = re.compile(r"window\.open\('(/mptrack/download\?file_path=([^']+\.csv))'")
 
+BILL_TRACK_PATH = "/billtrack"
+
+_TAG_RE = re.compile(r"<[^>]+>")
+
+# Bill Track is a Drupal Views listing: every bill is one `views-row` carrying a
+# title anchor and a status span, with no pagination — the whole corpus (964
+# bills, live 2026-07-25) renders in a single ~400KB page.
+_BILL_ROW_RE = re.compile(r'<div class="views-row">(.*?)</div>\s*</div>', re.DOTALL)
+_BILL_LINK_RE = re.compile(r'<a\s+href="([^"]+)"\s*>(.*?)</a>', re.DOTALL)
+# The status CSS class is ALWAYS "status-pending" regardless of the real status
+# (verified live: 964/964 rows carry it while the text spans Passed/Lapsed/
+# Withdrawn/…). The class is decoration; only the text is data.
+_BILL_STATUS_RE = re.compile(r'<span\s+class="status-[a-z-]*"\s*>(.*?)</span>', re.DOTALL)
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
@@ -58,6 +72,41 @@ def _int(value: str | None) -> int | None:
 
 def parse_mptrack_csv(text: str) -> list[dict[str, str]]:
     return list(csv.DictReader(StringIO(text)))
+
+
+def parse_bill_track(page_html: str, *, base_url: str = BASE_URL) -> list[dict[str, str]]:
+    """Parse the Bill Track listing into one dict per bill.
+
+    Returns ``{title, url, slug, status}``. The status comes from the span's
+    TEXT, never its class: PRS renders ``class="status-pending"`` on every row
+    regardless of the real status, so a class-driven parser would label all 964
+    bills "Pending". Rows with no title anchor are skipped; a row with an empty
+    status keeps ``status: ""`` rather than being dropped, since the bill is
+    still real.
+    """
+    bills: list[dict[str, str]] = []
+    seen_urls: set[str] = set()
+    for block in _BILL_ROW_RE.findall(page_html):
+        link = _BILL_LINK_RE.search(block)
+        if not link:
+            continue
+        href = unescape(link.group(1).strip())
+        title = _clean(_TAG_RE.sub(" ", link.group(2)))
+        if not title:
+            continue
+        url = urljoin(base_url + "/", href)
+        if url in seen_urls:
+            continue
+        seen_urls.add(url)
+        status_m = _BILL_STATUS_RE.search(block)
+        status = _clean(_TAG_RE.sub(" ", status_m.group(1))) if status_m else ""
+        bills.append({
+            "title": title,
+            "url": url,
+            "slug": href.rsplit("/", 1)[-1],
+            "status": status or "",
+        })
+    return bills
 
 
 def parse_mptrack_download(page_html: str) -> tuple[str, str]:
@@ -193,6 +242,72 @@ class PrsProbe:
             "status": status,
             "probed_at": _now(),
         }
+
+    def seen_bill_status(self) -> dict[str, str]:
+        """Prior ``bill_status`` per bill key, last row wins.
+
+        Bill Track is a tracker, not an archive: a bill moves Pending → Passed.
+        Resume therefore keys on the recorded STATUS, not mere presence, so a
+        re-run appends exactly when a bill has actually moved.
+        """
+        seen: dict[str, str] = {}
+        if not self.manifest.exists():
+            return seen
+        for line in self.manifest.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if row.get("kind") == "prs_bill_track" and row.get("key"):
+                seen[row["key"]] = row.get("bill_status") or ""
+        return seen
+
+    def _bill_record(self, bill: dict[str, str], *, page_url: str) -> dict[str, Any]:
+        return {
+            "key": f"PRS_BILL_TRACK|{bill['slug']}",
+            "kind": "prs_bill_track",
+            "record_type": "prs_bill_track",
+            "source": "prsindia.org",
+            "source_page_url": page_url,
+            "title": bill["title"],
+            "url": bill["url"],
+            "slug": bill["slug"],
+            "bill_status": bill["status"],
+            "status": "metadata_only",
+            "probed_at": _now(),
+        }
+
+    def probe_billtrack(
+        self,
+        *,
+        max_records: int | None = None,
+        dry_run: bool = False,
+    ) -> list[dict[str, Any]]:
+        """Acquire the Bill Track listing (one row per bill).
+
+        The whole corpus renders in a single page with no pagination, so this
+        is one request. Metadata only — the per-bill detail pages and their
+        attached PDFs are a separate surface, not this slice.
+        """
+        page_url = f"{self.base_url}{BILL_TRACK_PATH}"
+        bills = parse_bill_track(self._get_text(page_url), base_url=self.base_url)
+        seen = self.seen_bill_status()
+        records: list[dict[str, Any]] = []
+        for bill in bills:
+            record = self._bill_record(bill, page_url=page_url)
+            if dry_run:
+                records.append({**record, "status": "dry_run"})
+            else:
+                if seen.get(record["key"]) == record["bill_status"]:
+                    continue
+                self.append_manifest(record)
+                records.append(record)
+                seen[record["key"]] = record["bill_status"]
+            if max_records is not None and len(records) >= max_records:
+                break
+        return records
 
     def probe_mptrack(
         self,

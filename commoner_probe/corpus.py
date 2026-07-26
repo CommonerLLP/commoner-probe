@@ -61,6 +61,7 @@ from .records import (
     ManifestMinesDmftRecord,
     ManifestMospiRecord,
     ManifestMynetaRecord,
+    ManifestPrsBillTrackRecord,
     ManifestPrsMpTrackRecord,
     ManifestQaRecord,
     ManifestQuestionListRecord,
@@ -215,6 +216,16 @@ class Corpus:
         for d in _iter_jsonl(self.out_dir / "manifest.jsonl"):
             if d.get("kind") == "prs_mp_track":
                 yield ManifestPrsMpTrackRecord.from_dict(d)
+
+    def manifest_prs_bill_track(self) -> Iterator[ManifestPrsBillTrackRecord]:
+        """Stream PRS Legislative Research Bill Track records from manifest.jsonl.
+
+        A bill may appear more than once — Bill Track records status changes over
+        time, so later rows supersede earlier ones for the same key.
+        """
+        for d in _iter_jsonl(self.out_dir / "manifest.jsonl"):
+            if d.get("kind") == "prs_bill_track":
+                yield ManifestPrsBillTrackRecord.from_dict(d)
 
     def manifest_question_lists(self) -> Iterator[ManifestQuestionListRecord]:
         """Stream pre-admission question-list/Bulletin records from manifest.jsonl."""
@@ -406,6 +417,7 @@ class Corpus:
         "manifest_attendance": "manifest_attendance",
         "manifest_myneta": "manifest_myneta",
         "manifest_prs_mp_track": "manifest_prs_mp_track",
+        "manifest_prs_bill_track": "manifest_prs_bill_track",
         "manifest_legacy_dspace": "manifest_legacy_dspace",
         "manifest_mospi": "manifest_mospi",
         "manifest_tabled_papers": "manifest_tabled_papers",
