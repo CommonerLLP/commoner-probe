@@ -28,7 +28,6 @@ few months old.
 | `mopng` | Petroleum and Natural Gas | mopng.gov.in/en/accounts/demands-grants | table | 18 (2008-09→2026-27) | 2026-07-09 |
 | `dst` | Department of Science and Technology | dst.gov.in/documents/budget | list | 10 (2017-18→2026-27) | 2026-07-09 |
 | `mopsw` | Ports, Shipping and Waterways | shipmin.gov.in/en/division/budgets | table | 17 (2010-11→2026-27, unbroken) | 2026-07-26 |
-| `dae` | Department of Atomic Energy | dae.gov.in/detailed-demand-for-grants/ | list | 9 (2012-13→2021-22, no 2019-20; series stops at 2021-22) | 2026-07-26 |
 
 **Three site templates** are supported (`commoner_probe/ddg.py` docstring has
 the full markup detail): `card` (Bootstrap grid), `table` (`<tr>/<td>`,
@@ -42,6 +41,7 @@ server-rendered HTML — no browser needed.
 |---|---|---|---|---|---|
 | `steel` | Ministry of Steel | steel.gov.in/detailed-demands-for-grants | table | 4 | Server presents a **self-signed TLS certificate**. `curl` accepts it (different trust store); Python `requests`/certifi correctly rejects it. Disabling cert verification is a security decision, not a default an adapter should make silently. |
 | `tribal` | Ministry of Tribal Affairs | tribal.nic.in/Finance.aspx | list | 8 of 11 (3 older editions are `.xls`, not `.pdf`, and correctly excluded) | Server sends an **incomplete certificate chain** ("unable to get local issuer certificate"). Same TLS-verification objection as Steel. |
+| `dae` | Department of Atomic Energy | dae.gov.in/detailed-demand-for-grants/ | list | 9 (2012-13→2021-22, no 2019-20) | Listing parses perfectly, but the PDFs live on a **separate host, `data.dae.gov.in`, with an incomplete certificate chain** — a raw handshake against the macOS system store succeeds while Python `requests`/certifi correctly rejects it. Same signature as `tribal` above. Briefly registered 2026-07-26 on a `discover()` check alone and withdrawn the same day once `download_document()` was actually exercised. |
 | `moca` | Ministry of Civil Aviation | civilaviation.gov.in/Publication/demand-grants | table | 5 (2022-23→2026-27) | Serves **HTTP 403 for `/robots.txt` itself**. `http_client._get_robot_parser` reads a 403 as disallow-all, so every fetch raises `PermissionError`. The `SCHEME_FREE_USER_AGENT` fix that cleared MHA's WAF was tried and does **not** clear this one. Note for whoever decides: RFC 9309 §2.3.1.4 treats a 4xx robots.txt as "no restrictions", so this repo's reading is stricter than the standard — but relaxing it changes fetch policy for every source at once. Titles parse cleanly; the content is not the problem. |
 | `wcd` | Women and Child Development | wcd.gov.in/documents/budget (+ /documents/budget-archives) | card-ish (`div.list_det_bx`, not the `dea` card shape — would need a 4th parser) | 13 across 2 pages | robots.txt is **`Disallow: /`** — a full-site crawl block. `http_client.py` has an explicit `respect_robots=False` opt-out for exactly this case, gated per registry entry, but overriding a blanket disallow is a policy call, not something to wire in unilaterally. |
 
@@ -173,9 +173,9 @@ homepage, follow same-domain links whose text or href mentions
 demand/grant/budget, run all three parsers, and keep only pages that yielded
 **parsed document rows** — an HTTP 200 was never treated as a result.
 
-**Two registered** (`mopsw`, `dae` — see the table at the top). **One held back**
-(`moca`, robots.txt 403). The other 39 are negative, and the negatives are the
-point of writing this down:
+**One registered** (`mopsw` — see the table at the top). **Two held back**
+(`dae`, broken TLS on its document host; `moca`, robots.txt 403). The other 39
+are negative, and the negatives are the point of writing this down:
 
 | outcome | count | departments |
 |---|---|---|
@@ -199,3 +199,9 @@ Two cautions for the next person who automates this:
 2. **The "SSRF guard" and "connection timeout" rows are about this network
    path, not about the sites.** Re-run them from an India egress before
    concluding anything, same as the unreachable group above.
+3. **A parsed listing is not a working portal.** `dae` was registered on the
+   strength of `discover()` returning 9 clean rows, and its documents turned
+   out to be undownloadable — they sit on a different host with a broken
+   certificate chain. For an acquisition adapter the listing is the easy half.
+   Run `download_document()` against at least one real document before adding
+   a registry entry.

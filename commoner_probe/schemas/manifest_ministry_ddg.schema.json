@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/CommonerLLP/commoner-probe/schemas/v1/manifest_ministry_ddg.json",
   "title": "manifest.jsonl — ministry Detailed Demands for Grants (DDG)",
-  "description": "One ministry-hosted 'Detailed Demands for Grants' acquisition record. text_layer: false marks flattened-scan editions that need OCR before object-head parsing.",
+  "description": "One ministry-hosted 'Detailed Demands for Grants' acquisition record. text_layer: false marks flattened-scan editions that need OCR before object-head parsing. The wayback_* fields are present only when acquisition was run with Wayback provenance enabled: wayback_url is the citable capture of the source URL as acquired, and wayback_digest is the CDX content digest, which lets a later re-check detect that the source changed without downloading either version. wayback_status distinguishes a capture this run requested (captured) from one that already existed (existing) from no capture at all (unarchived) from the Internet Archive being unreachable (unavailable) — the last two are different facts and must not be collapsed.",
   "type": "object",
   "required": [
     "key",
@@ -72,7 +72,13 @@
     },
     "status": {
       "type": "string",
-      "enum": ["pending", "dry_run", "downloaded", "skipped_exists", "error"]
+      "enum": [
+        "pending",
+        "dry_run",
+        "downloaded",
+        "skipped_exists",
+        "error"
+      ]
     },
     "media_type": {
       "type": "string"
@@ -92,6 +98,34 @@
     "sha256": {
       "type": "string",
       "pattern": "^[a-f0-9]{64}$"
+    },
+    "wayback_url": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "wayback_timestamp": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^[0-9]{14}$"
+    },
+    "wayback_digest": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "wayback_status": {
+      "type": "string",
+      "enum": [
+        "captured",
+        "existing",
+        "unarchived",
+        "unavailable"
+      ]
     }
   }
 }

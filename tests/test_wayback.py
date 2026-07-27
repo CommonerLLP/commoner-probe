@@ -13,6 +13,7 @@ No network.
 from __future__ import annotations
 
 from commoner_probe import wayback
+from commoner_probe import wayback as wb
 
 URL = "https://cag.gov.in/state-accounts-report"
 DIGEST = "YWJDEFG3HIJKLMNOPQRSTUVWXYZ23456"
@@ -143,3 +144,116 @@ class TestChangedSince:
 
     def test_no_recorded_digest_is_none(self):
         assert wayback.changed_since(URL, "", session=FakeSession()) is None
+
+
+# --- attach_snapshot: the probe wiring point (REQ-0036 acceptance 2) ---
+
+def test_attach_snapshot_merges_provenance_into_a_record(monkeypatch):
+    monkeypatch.setattr(
+        wb,
+        "snapshot_fields",
+        lambda url, **kw: {
+            "wayback_url": f"https://web.archive.org/web/20260101000000/{url}",
+            "wayback_timestamp": "20260101000000",
+            "wayback_digest": "ABC",
+            "wayback_status": "existing",
+        },
+    )
+    record = {"key": "K", "url": "https://dae.gov.in/x.pdf", "status": "downloaded"}
+    out = wb.attach_snapshot(record)
+    assert out is record  # merged in place, not a copy
+    assert record["wayback_digest"] == "ABC"
+    assert record["status"] == "downloaded"  # nothing pre-existing is disturbed
+
+
+def test_attach_snapshot_defaults_to_read_only():
+    """save=False by default: acquiring a file must not write to a public archive."""
+    seen = {}
+
+    def fake_snapshot_fields(url, *, save=True, session=None, timeout=None):
+        seen["save"] = save
+        return dict.fromkeys(wb.WAYBACK_FIELDS)
+
+    original = wb.snapshot_fields
+    wb.snapshot_fields = fake_snapshot_fields
+    try:
+        wb.attach_snapshot({"url": "https://example.gov.in/a.pdf"})
+    finally:
+        wb.snapshot_fields = original
+    assert seen["save"] is False
+
+
+def test_attach_snapshot_leaves_a_urlless_record_untouched():
+    """No URL means 'not checked', which must not look like 'checked and absent'."""
+    record = {"key": "K", "status": "error"}
+    assert wb.attach_snapshot(record) == {"key": "K", "status": "error"}
+    assert not any(f in record for f in wb.WAYBACK_FIELDS)
+
+
+# --- recheck: an unreachable index is not "nothing to compare" ---
+
+class _CdxResponse:
+    def __init__(self, rows=None, *, boom=False):
+        self._rows = rows
+        self._boom = boom
+
+    def raise_for_status(self):
+        if self._boom:
+            raise RuntimeError("HTTP 503 Service Unavailable")
+
+    def json(self):
+        return self._rows
+
+
+def _session_returning(resp):
+    class S:
+        def get(self, *a, **k):
+            return resp
+    return S()
+
+
+_HEADER = ["timestamp", "original", "statuscode", "digest"]
+_ROW = ["20260723223948", "http://www.rbi.org.in/", "200", "D5TMUA5FXKSPISRTQSHATWON3YG47K2Q"]
+
+
+def test_recheck_same_digest_is_unchanged():
+    s = _session_returning(_CdxResponse([_HEADER, _ROW]))
+    assert wb.recheck("https://www.rbi.org.in/", _ROW[3], session=s) == {
+        "changed": False, "reason": "unchanged",
+    }
+
+
+def test_recheck_older_digest_is_changed():
+    """The live 2026-07-26 case: a 2020 capture's digest vs the newest one."""
+    s = _session_returning(_CdxResponse([_HEADER, _ROW]))
+    out = wb.recheck("https://www.rbi.org.in/", "QAGC3DECGYDNCJRSQFGEOWBBCYSTEDWG", session=s)
+    assert out == {"changed": True, "reason": "changed"}
+
+
+def test_recheck_distinguishes_a_503_from_an_unarchived_url():
+    """The defect this function exists for.
+
+    IA returned 503 to back-to-back CDX calls on 2026-07-26, and the boolean
+    form reports that identically to "never archived" — so a re-check pipeline
+    reads an outage as "no change to see" and quietly stops detecting change.
+    """
+    down = _session_returning(_CdxResponse(boom=True))
+    never = _session_returning(_CdxResponse([_HEADER]))  # header only, no captures
+
+    assert wb.recheck("https://x.gov.in/", "ABC", session=down)["reason"] == "index-unavailable"
+    assert wb.recheck("https://x.gov.in/", "ABC", session=never)["reason"] == "never-archived"
+    # Both collapse to the same answer in the boolean form — hence recheck().
+    assert wb.changed_since("https://x.gov.in/", "ABC", session=down) is None
+    assert wb.changed_since("https://x.gov.in/", "ABC", session=never) is None
+
+
+def test_recheck_no_recorded_digest_is_its_own_reason():
+    s = _session_returning(_CdxResponse([_HEADER, _ROW]))
+    assert wb.recheck("https://x.gov.in/", "", session=s) == {
+        "changed": None, "reason": "no-recorded-digest",
+    }
+
+
+def test_every_recheck_reason_is_declared():
+    s = _session_returning(_CdxResponse([_HEADER, _ROW]))
+    assert wb.recheck("https://x.gov.in/", "ABC", session=s)["reason"] in wb.RECHECK_REASONS

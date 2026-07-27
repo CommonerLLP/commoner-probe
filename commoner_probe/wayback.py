@@ -54,12 +54,14 @@ def replay_url(timestamp: str, url: str) -> str:
     return f"{REPLAY_BASE}{timestamp}/{url}"
 
 
-def latest_capture(url: str, *, session: Any = None, timeout: float = DEFAULT_TIMEOUT) -> dict | None:
-    """Most recent Wayback capture of `url`, or None if it has never been archived.
+def _latest_capture(url: str, *, session: Any, timeout: float) -> tuple[dict | None, str]:
+    """``(capture, reason)`` — separates "no capture" from "could not ask".
 
-    Returns `timestamp`, `statuscode`, `digest` and a ready-to-cite `snapshot_url`.
-    Returns None on any failure — an unreachable index is indistinguishable from
-    an unarchived URL for our purposes, and neither is worth an exception.
+    The two look identical to a caller that only gets ``None`` back, but they
+    are opposite facts: one says the URL was never archived, the other says the
+    Internet Archive was unreachable (it rate-limits, and returns 503 under
+    load — observed live 2026-07-26 on back-to-back CDX calls). A re-check that
+    treats a 503 as "nothing to compare" silently stops detecting change.
     """
     session = session or make_session()
     params = {"url": url, "output": "json", "limit": -1, "fl": _CDX_FIELDS}
@@ -68,21 +70,32 @@ def latest_capture(url: str, *, session: Any = None, timeout: float = DEFAULT_TI
         r.raise_for_status()
         rows = r.json()
     except Exception:
-        return None
+        return None, "index-unavailable"
     if not isinstance(rows, list) or len(rows) < 2:
         # Row 0 is the header; a lone header means no captures.
-        return None
+        return None, "never-archived"
     header, last = rows[0], rows[-1]
     record = dict(zip(header, last))
     timestamp = str(record.get("timestamp") or "")
     if not timestamp:
-        return None
+        return None, "never-archived"
     return {
         "timestamp": timestamp,
         "statuscode": str(record.get("statuscode") or ""),
         "digest": str(record.get("digest") or ""),
         "snapshot_url": replay_url(timestamp, str(record.get("original") or url)),
-    }
+    }, ""
+
+
+def latest_capture(url: str, *, session: Any = None, timeout: float = DEFAULT_TIMEOUT) -> dict | None:
+    """Most recent Wayback capture of `url`, or None if there isn't one to hand.
+
+    Returns `timestamp`, `statuscode`, `digest` and a ready-to-cite `snapshot_url`.
+    None covers both "never archived" and "index unreachable"; call
+    :func:`recheck` when that difference matters.
+    """
+    capture, _ = _latest_capture(url, session=session, timeout=timeout)
+    return capture
 
 
 def request_save(url: str, *, session: Any = None, timeout: float = SAVE_TIMEOUT) -> bool:
@@ -133,6 +146,79 @@ def snapshot_fields(
     }
 
 
+def attach_snapshot(
+    record: dict,
+    *,
+    url_key: str = "url",
+    save: bool = False,
+    session: Any = None,
+    timeout: float = DEFAULT_TIMEOUT,
+) -> dict:
+    """Merge Wayback provenance fields into a manifest record, in place.
+
+    The wiring point between this module and a probe's write path: a probe
+    calls this on each record it is about to append, and the record gains the
+    four ``WAYBACK_FIELDS``.
+
+    ``save`` defaults to **False** here even though ``snapshot_fields``
+    defaults to True. Firing Save Page Now is an outward-facing write to a
+    public, effectively permanent archive, and a probe should not make that
+    request as a side effect of acquiring a file — the caller has to ask for
+    it. With ``save=False`` this is CDX reads only: it records whether a
+    capture already exists and never creates one.
+
+    Never raises, and never removes fields: a record with no usable URL comes
+    back untouched rather than carrying null provenance that reads as "checked
+    and absent".
+    """
+    url = record.get(url_key)
+    if not url:
+        return record
+    record.update(snapshot_fields(url, save=save, session=session, timeout=timeout))
+    return record
+
+
+#: Every outcome ``recheck`` can report. ``index-unavailable`` is an error and
+#: the others are not — the distinction is the point of the function.
+RECHECK_REASONS = (
+    "changed",
+    "unchanged",
+    "no-recorded-digest",
+    "never-archived",
+    "index-unavailable",
+)
+
+
+def recheck(
+    url: str,
+    digest: str,
+    *,
+    session: Any = None,
+    timeout: float = DEFAULT_TIMEOUT,
+) -> dict:
+    """Has `url` changed since the capture with content `digest`? With the reason.
+
+    Returns ``{"changed": bool | None, "reason": str}``, where ``reason`` is one
+    of :data:`RECHECK_REASONS`. Compares CDX content digests, so neither version
+    is downloaded.
+
+    ``changed`` is None for three different situations, and a caller that acts
+    on the answer needs to tell them apart: the caller recorded no digest, the
+    URL was never archived, or **the index could not be reached**. Only the last
+    is an error, and only the last should be retried — reading a 503 as "nothing
+    to compare" is how change detection silently stops working.
+    """
+    if not digest:
+        return {"changed": None, "reason": "no-recorded-digest"}
+    capture, failure = _latest_capture(url, session=session, timeout=timeout)
+    if capture is None:
+        return {"changed": None, "reason": failure}
+    if not capture["digest"]:
+        return {"changed": None, "reason": "never-archived"}
+    changed = capture["digest"] != digest
+    return {"changed": changed, "reason": "changed" if changed else "unchanged"}
+
+
 def changed_since(
     url: str,
     digest: str,
@@ -140,19 +226,13 @@ def changed_since(
     session: Any = None,
     timeout: float = DEFAULT_TIMEOUT,
 ) -> bool | None:
-    """Has `url` changed since the capture with content `digest`?
+    """Boolean form of :func:`recheck`; None when there is no usable comparison.
 
-    Compares against the newest indexed capture's digest, so neither version is
-    downloaded. Returns None when there is nothing to compare — no captures, or
-    no recorded digest — which is not the same answer as False and should not be
-    collapsed into one.
+    Convenient, but it cannot distinguish an unreachable index from an
+    unarchived URL. Prefer :func:`recheck` anywhere the difference decides what
+    happens next.
     """
-    if not digest:
-        return None
-    capture = latest_capture(url, session=session, timeout=timeout)
-    if capture is None or not capture["digest"]:
-        return None
-    return capture["digest"] != digest
+    return recheck(url, digest, session=session, timeout=timeout)["changed"]
 
 
 def _main(argv: list[str]) -> int:  # pragma: no cover - thin CLI shim
