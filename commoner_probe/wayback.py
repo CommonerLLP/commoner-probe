@@ -125,24 +125,40 @@ def snapshot_fields(
 
     `wayback_status` is one of:
 
-    * `captured`   — a save was requested and a capture is now indexed
+    * `captured`   — a save was requested and a NEW capture is now indexed
+    * `save-pending` — a save was requested, but the newest indexed capture is
+      the one that was already there. SPN2 queues work, so this is the ordinary
+      outcome of saving a URL that has been archived before; the recorded
+      capture is somebody else's, not this acquisition's.
     * `existing`   — no save requested (save=False), but a prior capture exists
     * `unarchived` — the index has no capture, and any save has not landed yet
-    * `unavailable` — the save request itself failed (throttled, or IA is down)
+    * `unavailable` — the index could not be reached, or the save request itself
+      failed (throttled, or IA is down)
+
+    `unarchived` and `unavailable` are opposite claims and the CDX call is the
+    only thing that can tell them apart: "no capture exists" is a fact about the
+    URL, "the check failed" is a fact about the Internet Archive.
 
     Merge the result into the record; never gate acquisition on it.
     """
     session = session or make_session()
+    before, _ = _latest_capture(url, session=session, timeout=timeout) if save else (None, "")
     saved = request_save(url, session=session) if save else True
-    capture = latest_capture(url, session=session, timeout=timeout)
+    capture, failure = _latest_capture(url, session=session, timeout=timeout)
     if capture is None:
-        status = "unarchived" if saved else "unavailable"
+        status = "unavailable" if (failure == "index-unavailable" or not saved) else "unarchived"
         return {"wayback_url": None, "wayback_timestamp": None, "wayback_digest": None, "wayback_status": status}
+    if not save:
+        status = "existing"
+    elif before is not None and before["timestamp"] == capture["timestamp"]:
+        status = "save-pending"
+    else:
+        status = "captured"
     return {
         "wayback_url": capture["snapshot_url"],
         "wayback_timestamp": capture["timestamp"],
         "wayback_digest": capture["digest"],
-        "wayback_status": "captured" if save else "existing",
+        "wayback_status": status,
     }
 
 

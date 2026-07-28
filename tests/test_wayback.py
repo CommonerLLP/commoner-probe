@@ -51,6 +51,21 @@ class FakeSession:
         return FakeResponse(self.cdx, status=self.cdx_status)
 
 
+class SequencedCdxSession(FakeSession):
+    """Serves a different CDX payload per call, so a save can land mid-run."""
+
+    def __init__(self, *payloads, save_status=200):
+        super().__init__(cdx=payloads[0], save_status=save_status)
+        self._payloads = list(payloads)
+        self._n = 0
+
+    def get(self, url, params=None, timeout=None, **kwargs):
+        if url == wayback.CDX_API:
+            self.cdx = self._payloads[min(self._n, len(self._payloads) - 1)]
+            self._n += 1
+        return super().get(url, params=params, timeout=timeout, **kwargs)
+
+
 class ExplodingSession:
     """Every call raises — the Internet Archive being unreachable."""
 
@@ -99,13 +114,27 @@ class TestRequestSave:
 
 class TestSnapshotFields:
     def test_captured_when_save_lands(self):
-        s = FakeSession(cdx=_cdx(["20260720035455", URL, "200", DIGEST]))
+        s = SequencedCdxSession(
+            _cdx(["20240101000000", URL, "200", "OLDDIGEST"]),
+            _cdx(["20240101000000", URL, "200", "OLDDIGEST"], ["20260720035455", URL, "200", DIGEST]),
+        )
         f = wayback.snapshot_fields(URL, session=s)
         assert f["wayback_status"] == "captured"
         assert f["wayback_timestamp"] == "20260720035455"
         assert f["wayback_digest"] == DIGEST
         assert f["wayback_url"].endswith(URL)
         assert set(f) == set(wayback.WAYBACK_FIELDS)
+
+    def test_captured_when_the_url_had_never_been_archived(self):
+        s = SequencedCdxSession(_cdx(), _cdx(["20260720035455", URL, "200", DIGEST]))
+        assert wayback.snapshot_fields(URL, session=s)["wayback_status"] == "captured"
+
+    def test_save_pending_does_not_claim_a_pre_existing_capture(self):
+        """SPN2 queues. The capture still on the index is not this run's."""
+        s = FakeSession(cdx=_cdx(["20240101000000", URL, "200", "OLDDIGEST"]))
+        f = wayback.snapshot_fields(URL, session=s)
+        assert f["wayback_status"] == "save-pending"
+        assert f["wayback_timestamp"] == "20240101000000"
 
     def test_existing_when_save_not_requested(self):
         s = FakeSession(cdx=_cdx(["20260720035455", URL, "200", DIGEST]))
@@ -121,6 +150,12 @@ class TestSnapshotFields:
     def test_unavailable_when_save_itself_failed(self):
         s = FakeSession(cdx=_cdx(), save_status=429)
         assert wayback.snapshot_fields(URL, session=s)["wayback_status"] == "unavailable"
+
+    def test_cdx_outage_is_unavailable_not_unarchived(self):
+        """A read-only check during a CDX 503 must not assert "never archived"."""
+        s = FakeSession(cdx=None, cdx_status=503)
+        assert wayback.snapshot_fields(URL, session=s, save=False)["wayback_status"] == "unavailable"
+        assert not any(c.startswith(wayback.SAVE_BASE) for c in s.calls)
 
     def test_total_outage_still_returns_usable_fields(self):
         """The whole point: IA being down must not break an acquisition."""
