@@ -932,6 +932,36 @@ class ManifestPrsBillTrackRecord:
         return _from_dict(cls, d)
 
 
+@dataclass
+class ManifestPrsPublicationRecord:
+    """One PRS policy publication (Report Summary or Vital Stats) record.
+
+    Both listings render from the same template, so one record shape covers
+    them; ``surface`` and ``kind`` say which. ``pdf_url`` is None when PRS
+    offers no download for the item.
+    """
+
+    key: str
+    kind: str
+    record_type: str
+    source: str
+    surface: str
+    source_page_url: str
+    title: str
+    url: str
+    slug: str
+    status: str
+    probed_at: str
+    pdf_url: str | None = None
+    pdf_path: str | None = None
+    pdf_sha256: str | None = None
+    error: str | None = None
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "ManifestPrsPublicationRecord":
+        return _from_dict(cls, d)
+
+
 # ---------------------------------------------------------------------------
 # manifest.jsonl record (pre-admission question lists / Bulletins)
 # ---------------------------------------------------------------------------

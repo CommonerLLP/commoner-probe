@@ -69,6 +69,8 @@ def _pick_schema_name(rec: dict) -> str | None:
         return "manifest_prs_mp_track"
     if kind == "prs_bill_track":
         return "manifest_prs_bill_track"
+    if kind in ("prs_report_summary", "prs_vital_stats"):
+        return "manifest_prs_publication"
     if kind == "question_list":
         return "manifest_question_list"
     if kind == "legacy_dspace_item":

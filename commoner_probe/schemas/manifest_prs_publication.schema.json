@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CommonerLLP/commoner-probe/schemas/v1/manifest_prs_publication.json",
+  "title": "manifest.jsonl — PRS policy publication (Report Summaries, Vital Stats)",
+  "description": "One item from a PRS Legislative Research policy publication listing. Report Summaries and Vital Stats are the same Drupal Views template, so they share one record shape and are told apart by `kind` and `surface`. PRS-derived records are internal-research-only and stamped source=prsindia.org for downstream segregation. `pdf_url` is null when PRS publishes the item with no download; that is a real state of the listing, not a parse failure, and the item is kept rather than dropped. A row whose PDF fetch failed carries status=error with the reason — a missing item and an undownloadable one are different facts, and only one of them is about PRS.",
+  "type": "object",
+  "required": [
+    "key",
+    "kind",
+    "record_type",
+    "source",
+    "surface",
+    "source_page_url",
+    "title",
+    "url",
+    "slug",
+    "status",
+    "probed_at"
+  ],
+  "properties": {
+    "key": {
+      "type": "string",
+      "pattern": "^PRS_(REPORT_SUMMARIES|VITAL_STATS)\\|.+$"
+    },
+    "kind": {
+      "type": "string",
+      "enum": ["prs_report_summary", "prs_vital_stats"]
+    },
+    "record_type": {
+      "type": "string",
+      "enum": ["prs_report_summary", "prs_vital_stats"]
+    },
+    "source": {
+      "type": "string",
+      "const": "prsindia.org"
+    },
+    "surface": {
+      "type": "string",
+      "enum": ["report-summaries", "vital-stats"]
+    },
+    "source_page_url": {
+      "type": "string",
+      "format": "uri"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "url": {
+      "type": "string",
+      "format": "uri"
+    },
+    "slug": {
+      "type": "string",
+      "minLength": 1
+    },
+    "pdf_url": {
+      "type": ["string", "null"],
+      "description": "Absolute URL of the item's PDF, or null when the listing offers no download for it."
+    },
+    "pdf_path": {
+      "type": ["string", "null"],
+      "description": "Corpus-relative path of the retained PDF; null unless --download was used."
+    },
+    "pdf_sha256": {
+      "type": ["string", "null"],
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["metadata_only", "downloaded", "error", "dry_run"]
+    },
+    "error": {
+      "type": "string"
+    },
+    "probed_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "status": { "const": "downloaded" } }, "required": ["status"] },
+      "then": { "required": ["pdf_path", "pdf_sha256"] }
+    },
+    {
+      "if": { "properties": { "status": { "const": "error" } }, "required": ["status"] },
+      "then": { "required": ["error"] }
+    }
+  ]
+}

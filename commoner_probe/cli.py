@@ -699,6 +699,13 @@ def prs_cmd(args: argparse.Namespace) -> None:
             max_records=args.max_records,
             dry_run=args.dry_run,
         )
+    elif args.surface in ("report-summaries", "vital-stats"):
+        records = probe.probe_publications(
+            surface=args.surface,
+            max_records=args.max_records,
+            download=args.download,
+            dry_run=args.dry_run,
+        )
     else:
         houses = ["ls", "rs"] if args.house == "both" else [args.house]
         loksabhas = [int(x) for x in (_split_csv(args.loksabhas) or ["18"])]
@@ -1347,12 +1354,14 @@ def build_parser() -> argparse.ArgumentParser:
     prs.add_argument("--out", required=True, help="Output corpus directory")
     prs.add_argument(
         "--surface",
-        choices=["mp-track", "bill-track"],
+        choices=["mp-track", "bill-track", "report-summaries", "vital-stats"],
         default="mp-track",
         help=(
             "PRS surface to acquire. mp-track: per-MP participation CSV "
             "(--house/--loksabhas apply). bill-track: the full Bills listing, "
-            "one row per bill, single request, metadata only."
+            "one row per bill, single request, metadata only. "
+            "report-summaries / vital-stats: the policy publication listings, "
+            "one row per item; --download also fetches each PDF."
         ),
     )
     prs.add_argument("--house", choices=["ls", "rs", "both"], default="ls")

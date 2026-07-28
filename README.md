@@ -781,6 +781,12 @@ commoner-probe prs \
 commoner-probe prs \
   --out data/prs \
   --surface bill-track
+
+# committee/CAG report summaries, with the PDFs
+commoner-probe prs \
+  --out data/prs \
+  --surface report-summaries \
+  --download
 ```
 
 Acquires PRS Legislative Research surfaces for internal research only. Rows are
@@ -799,6 +805,16 @@ listing renders in a single page with no pagination, so this is one request;
 are a separate surface. Bill Track is a *tracker*, so re-running appends a new
 row only for bills whose status has actually changed, giving the corpus a
 status history per bill rather than duplicates.
+
+**`--surface report-summaries`** and **`--surface vital-stats`** — the two
+policy publication listings (442 report summaries and 24 vital stats, live
+2026-07-28). They render from the same template, so one parser serves both;
+records differ by `kind` (`prs_report_summary` / `prs_vital_stats`) and
+`surface`. Neither paginates — `?page=1` returns the identical first row — so
+each is one request. Metadata only by default; `--download` also fetches each
+item's PDF into `pdf/prs-<surface>/` with a sha256, and a response that is not
+a PDF (a WAF interstitial answers 200 with HTML) is recorded as `status:
+"error"` rather than counted as an acquisition.
 
 ### `commoner-probe bills` — bills & legislation catalog
 
