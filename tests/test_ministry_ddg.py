@@ -115,11 +115,15 @@ def test_registry_holds_only_live_verified_ministries():
     """Every code here was verified by a real fetch that parsed real rows.
 
     Grown one entry at a time, never a guessed batch — a listing that returns
-    HTTP 200 is not evidence, parsed document rows are. `mopsw` and `dae` were
-    added 2026-07-26 (17 docs 2010-11..2026-27, and 9 docs 2012-13..2021-22).
+    HTTP 200 is not evidence, parsed document rows are, and even those are not
+    enough on their own. `mopsw` (17 docs, 2010-11..2026-27) is here because a
+    document actually downloaded. `dae` parsed just as cleanly, was registered
+    on 2026-07-26 on a discover() check alone, and was withdrawn hours later
+    once download_document() turned out to fail against its separate,
+    broken-TLS document host. Verify the whole path, not the half that is easy.
     """
     assert {p.ministry_code for p in MINISTRY_DDG_PORTALS} == {
-        "dea", "mha", "doe", "dolr", "moefcc", "mopng", "dst", "mopsw", "dae",
+        "dea", "mha", "doe", "dolr", "moefcc", "mopng", "dst", "mopsw",
     }
 
 
@@ -498,3 +502,92 @@ def test_year_comes_from_the_filename_when_the_anchor_text_is_just_a_size():
     docs = parse_ddg_listing_list(html, "https://dae.gov.in/detailed-demand-for-grants/")
     assert len(docs) == 1
     assert docs[0]["year"] == "2021-22"
+
+
+# --- Wayback provenance wiring (REQ-0036 acceptance 2) ---
+
+def _wayback_probe(tmp_path, monkeypatch, **kwargs):
+    from commoner_probe import ddg as ddg_mod
+
+    calls = []
+
+    def fake_attach(record, *, save=False, **kw):
+        calls.append({"url": record.get("url"), "save": save})
+        record.update(
+            wayback_url="https://web.archive.org/web/20260101000000/" + record["url"],
+            wayback_timestamp="20260101000000",
+            wayback_digest="DIGEST",
+            wayback_status="captured" if save else "existing",
+        )
+        return record
+
+    monkeypatch.setattr(ddg_mod, "attach_snapshot", fake_attach)
+    portal = MinistryDDGPortal(
+        ministry_code="dae",
+        ministry_name="Department of Atomic Energy",
+        listing_url="https://dae.gov.in/detailed-demand-for-grants/",
+        template="list",
+    )
+    probe = MinistryDDGProbe(tmp_path, portal=portal, sleep=0, **kwargs)
+    monkeypatch.setattr(probe, "discover", lambda: [
+        {"title": "View (24.1MB)", "year": "2021-22",
+         "url": "https://data.dae.gov.in/Accounts/Detailed_Demand_for_Grants/DDG2021-22.pdf"}
+    ])
+    monkeypatch.setattr(probe.session, "get", lambda *a, **k: _PdfResponse(b"%PDF-1.4 body"))
+    monkeypatch.setattr(ddg_mod, "extract_pdf_text", lambda p: "x" * 500)
+    return probe, calls
+
+
+class _PdfResponse:
+    def __init__(self, body):
+        self.content = body
+        self.headers = {"Content-Type": "application/pdf"}
+
+    def raise_for_status(self):
+        return None
+
+
+def test_wayback_is_off_by_default(tmp_path, monkeypatch):
+    probe, calls = _wayback_probe(tmp_path, monkeypatch)
+    record = probe.probe()[0]
+    assert calls == []
+    assert "wayback_status" not in record
+
+
+def test_wayback_flag_records_provenance_without_saving(tmp_path, monkeypatch):
+    probe, calls = _wayback_probe(tmp_path, monkeypatch, wayback=True)
+    record = probe.probe()[0]
+    assert len(calls) == 1
+    # --wayback alone must never write to the public archive.
+    assert calls[0]["save"] is False
+    assert record["wayback_status"] == "existing"
+    assert record["wayback_digest"] == "DIGEST"
+
+
+def test_wayback_save_is_a_separate_explicit_opt_in(tmp_path, monkeypatch):
+    probe, calls = _wayback_probe(tmp_path, monkeypatch, wayback_save=True)
+    record = probe.probe()[0]
+    assert calls[0]["save"] is True
+    assert record["wayback_status"] == "captured"
+
+
+def test_dry_run_never_contacts_the_internet_archive(tmp_path, monkeypatch):
+    """A dry run makes no requests of its own and must not make one of IA."""
+    probe, calls = _wayback_probe(tmp_path, monkeypatch, wayback_save=True)
+    records = probe.probe(dry_run=True)
+    assert records[0]["status"] == "dry_run"
+    assert calls == []
+
+
+def test_wayback_fields_validate_against_the_ddg_schema(tmp_path, monkeypatch):
+    import pytest
+
+    jsonschema = pytest.importorskip("jsonschema")
+    from commoner_probe import schemas as sc
+
+    probe, _ = _wayback_probe(tmp_path, monkeypatch, wayback=True)
+    record = probe.probe()[0]
+    validator = jsonschema.Draft202012Validator(sc.load("manifest_ministry_ddg"))
+    assert list(validator.iter_errors(record)) == []
+    bad = dict(record, wayback_status="maybe")
+    assert list(validator.iter_errors(bad)) != []

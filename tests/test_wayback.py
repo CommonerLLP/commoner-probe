@@ -13,6 +13,7 @@ No network.
 from __future__ import annotations
 
 from commoner_probe import wayback
+from commoner_probe import wayback as wb
 
 URL = "https://cag.gov.in/state-accounts-report"
 DIGEST = "YWJDEFG3HIJKLMNOPQRSTUVWXYZ23456"
@@ -48,6 +49,21 @@ class FakeSession:
             return FakeResponse(b"", status=self.save_status)
         assert url == wayback.CDX_API, f"unrouted url: {url}"
         return FakeResponse(self.cdx, status=self.cdx_status)
+
+
+class SequencedCdxSession(FakeSession):
+    """Serves a different CDX payload per call, so a save can land mid-run."""
+
+    def __init__(self, *payloads, save_status=200):
+        super().__init__(cdx=payloads[0], save_status=save_status)
+        self._payloads = list(payloads)
+        self._n = 0
+
+    def get(self, url, params=None, timeout=None, **kwargs):
+        if url == wayback.CDX_API:
+            self.cdx = self._payloads[min(self._n, len(self._payloads) - 1)]
+            self._n += 1
+        return super().get(url, params=params, timeout=timeout, **kwargs)
 
 
 class ExplodingSession:
@@ -98,13 +114,27 @@ class TestRequestSave:
 
 class TestSnapshotFields:
     def test_captured_when_save_lands(self):
-        s = FakeSession(cdx=_cdx(["20260720035455", URL, "200", DIGEST]))
+        s = SequencedCdxSession(
+            _cdx(["20240101000000", URL, "200", "OLDDIGEST"]),
+            _cdx(["20240101000000", URL, "200", "OLDDIGEST"], ["20260720035455", URL, "200", DIGEST]),
+        )
         f = wayback.snapshot_fields(URL, session=s)
         assert f["wayback_status"] == "captured"
         assert f["wayback_timestamp"] == "20260720035455"
         assert f["wayback_digest"] == DIGEST
         assert f["wayback_url"].endswith(URL)
         assert set(f) == set(wayback.WAYBACK_FIELDS)
+
+    def test_captured_when_the_url_had_never_been_archived(self):
+        s = SequencedCdxSession(_cdx(), _cdx(["20260720035455", URL, "200", DIGEST]))
+        assert wayback.snapshot_fields(URL, session=s)["wayback_status"] == "captured"
+
+    def test_save_pending_does_not_claim_a_pre_existing_capture(self):
+        """SPN2 queues. The capture still on the index is not this run's."""
+        s = FakeSession(cdx=_cdx(["20240101000000", URL, "200", "OLDDIGEST"]))
+        f = wayback.snapshot_fields(URL, session=s)
+        assert f["wayback_status"] == "save-pending"
+        assert f["wayback_timestamp"] == "20240101000000"
 
     def test_existing_when_save_not_requested(self):
         s = FakeSession(cdx=_cdx(["20260720035455", URL, "200", DIGEST]))
@@ -120,6 +150,12 @@ class TestSnapshotFields:
     def test_unavailable_when_save_itself_failed(self):
         s = FakeSession(cdx=_cdx(), save_status=429)
         assert wayback.snapshot_fields(URL, session=s)["wayback_status"] == "unavailable"
+
+    def test_cdx_outage_is_unavailable_not_unarchived(self):
+        """A read-only check during a CDX 503 must not assert "never archived"."""
+        s = FakeSession(cdx=None, cdx_status=503)
+        assert wayback.snapshot_fields(URL, session=s, save=False)["wayback_status"] == "unavailable"
+        assert not any(c.startswith(wayback.SAVE_BASE) for c in s.calls)
 
     def test_total_outage_still_returns_usable_fields(self):
         """The whole point: IA being down must not break an acquisition."""
@@ -143,3 +179,116 @@ class TestChangedSince:
 
     def test_no_recorded_digest_is_none(self):
         assert wayback.changed_since(URL, "", session=FakeSession()) is None
+
+
+# --- attach_snapshot: the probe wiring point (REQ-0036 acceptance 2) ---
+
+def test_attach_snapshot_merges_provenance_into_a_record(monkeypatch):
+    monkeypatch.setattr(
+        wb,
+        "snapshot_fields",
+        lambda url, **kw: {
+            "wayback_url": f"https://web.archive.org/web/20260101000000/{url}",
+            "wayback_timestamp": "20260101000000",
+            "wayback_digest": "ABC",
+            "wayback_status": "existing",
+        },
+    )
+    record = {"key": "K", "url": "https://dae.gov.in/x.pdf", "status": "downloaded"}
+    out = wb.attach_snapshot(record)
+    assert out is record  # merged in place, not a copy
+    assert record["wayback_digest"] == "ABC"
+    assert record["status"] == "downloaded"  # nothing pre-existing is disturbed
+
+
+def test_attach_snapshot_defaults_to_read_only():
+    """save=False by default: acquiring a file must not write to a public archive."""
+    seen = {}
+
+    def fake_snapshot_fields(url, *, save=True, session=None, timeout=None):
+        seen["save"] = save
+        return dict.fromkeys(wb.WAYBACK_FIELDS)
+
+    original = wb.snapshot_fields
+    wb.snapshot_fields = fake_snapshot_fields
+    try:
+        wb.attach_snapshot({"url": "https://example.gov.in/a.pdf"})
+    finally:
+        wb.snapshot_fields = original
+    assert seen["save"] is False
+
+
+def test_attach_snapshot_leaves_a_urlless_record_untouched():
+    """No URL means 'not checked', which must not look like 'checked and absent'."""
+    record = {"key": "K", "status": "error"}
+    assert wb.attach_snapshot(record) == {"key": "K", "status": "error"}
+    assert not any(f in record for f in wb.WAYBACK_FIELDS)
+
+
+# --- recheck: an unreachable index is not "nothing to compare" ---
+
+class _CdxResponse:
+    def __init__(self, rows=None, *, boom=False):
+        self._rows = rows
+        self._boom = boom
+
+    def raise_for_status(self):
+        if self._boom:
+            raise RuntimeError("HTTP 503 Service Unavailable")
+
+    def json(self):
+        return self._rows
+
+
+def _session_returning(resp):
+    class S:
+        def get(self, *a, **k):
+            return resp
+    return S()
+
+
+_HEADER = ["timestamp", "original", "statuscode", "digest"]
+_ROW = ["20260723223948", "http://www.rbi.org.in/", "200", "D5TMUA5FXKSPISRTQSHATWON3YG47K2Q"]
+
+
+def test_recheck_same_digest_is_unchanged():
+    s = _session_returning(_CdxResponse([_HEADER, _ROW]))
+    assert wb.recheck("https://www.rbi.org.in/", _ROW[3], session=s) == {
+        "changed": False, "reason": "unchanged",
+    }
+
+
+def test_recheck_older_digest_is_changed():
+    """The live 2026-07-26 case: a 2020 capture's digest vs the newest one."""
+    s = _session_returning(_CdxResponse([_HEADER, _ROW]))
+    out = wb.recheck("https://www.rbi.org.in/", "QAGC3DECGYDNCJRSQFGEOWBBCYSTEDWG", session=s)
+    assert out == {"changed": True, "reason": "changed"}
+
+
+def test_recheck_distinguishes_a_503_from_an_unarchived_url():
+    """The defect this function exists for.
+
+    IA returned 503 to back-to-back CDX calls on 2026-07-26, and the boolean
+    form reports that identically to "never archived" — so a re-check pipeline
+    reads an outage as "no change to see" and quietly stops detecting change.
+    """
+    down = _session_returning(_CdxResponse(boom=True))
+    never = _session_returning(_CdxResponse([_HEADER]))  # header only, no captures
+
+    assert wb.recheck("https://x.gov.in/", "ABC", session=down)["reason"] == "index-unavailable"
+    assert wb.recheck("https://x.gov.in/", "ABC", session=never)["reason"] == "never-archived"
+    # Both collapse to the same answer in the boolean form — hence recheck().
+    assert wb.changed_since("https://x.gov.in/", "ABC", session=down) is None
+    assert wb.changed_since("https://x.gov.in/", "ABC", session=never) is None
+
+
+def test_recheck_no_recorded_digest_is_its_own_reason():
+    s = _session_returning(_CdxResponse([_HEADER, _ROW]))
+    assert wb.recheck("https://x.gov.in/", "", session=s) == {
+        "changed": None, "reason": "no-recorded-digest",
+    }
+
+
+def test_every_recheck_reason_is_declared():
+    s = _session_returning(_CdxResponse([_HEADER, _ROW]))
+    assert wb.recheck("https://x.gov.in/", "ABC", session=s)["reason"] in wb.RECHECK_REASONS

@@ -534,7 +534,13 @@ def ministry_ddg_cmd(args: argparse.Namespace) -> None:
         )
     else:
         portal = get_portal(args.ministry_code)
-    probe = MinistryDDGProbe(out, portal=portal, sleep=args.sleep)
+    probe = MinistryDDGProbe(
+        out,
+        portal=portal,
+        sleep=args.sleep,
+        wayback=args.wayback,
+        wayback_save=args.wayback_save,
+    )
     records = probe.probe(years=_split_csv(args.years), dry_run=args.dry_run)
     for record in records:
         print(json.dumps(record, ensure_ascii=False))
@@ -1174,6 +1180,23 @@ def build_parser() -> argparse.ArgumentParser:
         "--dry-run",
         action="store_true",
         help="Fetch the listing page and print manifest records without downloading PDFs.",
+    )
+    ddg.add_argument(
+        "--wayback",
+        action="store_true",
+        help=(
+            "Record each document's Internet Archive state in its manifest row "
+            "(read-only: checks the capture index, never creates a capture)."
+        ),
+    )
+    ddg.add_argument(
+        "--wayback-save",
+        dest="wayback_save",
+        action="store_true",
+        help=(
+            "Also fire Save Page Now for each document URL. This WRITES to a public, "
+            "effectively permanent archive — a separate opt-in, never implied by --wayback."
+        ),
     )
     ddg.set_defaults(func=ministry_ddg_cmd)
 

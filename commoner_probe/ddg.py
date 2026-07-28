@@ -62,6 +62,7 @@ from urllib.parse import unquote, urljoin, urlparse
 
 from .http_client import TOOL_VERSION, make_session
 from .textparse import extract_pdf_text
+from .wayback import attach_snapshot
 
 # dea.gov.in returned a plain HTTP listing page (no WAF interstitial
 # observed) but is a live government CMS — keep a polite gap between
@@ -156,12 +157,6 @@ MINISTRY_DDG_PORTALS: tuple[MinistryDDGPortal, ...] = (
         listing_url="https://shipmin.gov.in/en/division/budgets",
         template="table",
     ),
-    MinistryDDGPortal(
-        ministry_code="dae",
-        ministry_name="Department of Atomic Energy",
-        listing_url="https://dae.gov.in/detailed-demand-for-grants/",
-        template="list",
-    ),
 )
 
 # Verified live 2026-07-09 but deliberately NOT in the registry above —
@@ -174,6 +169,15 @@ MINISTRY_DDG_PORTALS: tuple[MinistryDDGPortal, ...] = (
 #   both (different trust store); Python's `requests`/certifi correctly
 #   rejects them. Disabling certificate verification is a security-relevant
 #   change, not a default an adapter should make silently.
+# * Department of Atomic Energy (dae.gov.in/detailed-demand-for-grants/,
+#   9 docs 2012-13..2021-22, "list" template) parses its listing perfectly,
+#   but the PDFs themselves live on a SEPARATE host, data.dae.gov.in, which
+#   serves an incomplete certificate chain — a raw handshake against the macOS
+#   system store succeeds while `requests`/certifi correctly rejects it. Same
+#   signature as tribal.nic.in above. It was briefly registered on 2026-07-26
+#   on the strength of a discover() check alone; download_document() was never
+#   exercised against it, which is the check that actually matters for an
+#   acquisition adapter. Verify the whole path, not the half that is easy to run.
 # * Ministry of Civil Aviation (civilaviation.gov.in/Publication/demand-grants,
 #   5 docs 2022-23→2026-27, "table" template, titles read cleanly) serves
 #   HTTP 403 for /robots.txt itself. `_get_robot_parser` treats that as a
@@ -370,10 +374,18 @@ class MinistryDDGProbe:
         *,
         portal: MinistryDDGPortal,
         sleep: float = DEFAULT_SLEEP,
+        wayback: bool = False,
+        wayback_save: bool = False,
     ) -> None:
         self.out_dir = out_dir
         self.portal = portal
         self.sleep = sleep
+        # Wayback provenance is opt-in: it costs an extra request per document.
+        # `wayback_save` is a second, separate opt-in because firing Save Page
+        # Now writes to a public, effectively permanent archive — that must be
+        # an explicit choice, never a side effect of downloading a PDF.
+        self.wayback = wayback or wayback_save
+        self.wayback_save = wayback_save
         self.manifest = out_dir / "manifest.jsonl"
         self.session = make_session(rate_limit_sec=sleep, user_agent=portal.user_agent)
 
@@ -441,15 +453,23 @@ class MinistryDDGProbe:
         text = extract_pdf_text(dest)
         record["text_layer"] = len(text.strip()) >= TEXT_LAYER_MIN_CHARS
 
+    def _attach_wayback(self, record: dict[str, Any]) -> dict[str, Any]:
+        """Record the document URL's Wayback state, when asked to."""
+        if not self.wayback:
+            return record
+        return attach_snapshot(record, save=self.wayback_save)
+
     def download_document(self, doc: dict[str, Any], *, dry_run: bool) -> dict[str, Any]:
         record = self._record(doc, status="dry_run" if dry_run else "pending")
         if dry_run:
+            # A dry run makes no requests of its own and must not make one of
+            # the Internet Archive either.
             return record
         dest = Path(record["dest"])
         if dest.exists() and dest.stat().st_size > 1000:
             record["status"] = "skipped_exists"
             self._finalize(record, dest, dest.read_bytes())
-            return record
+            return self._attach_wayback(record)
         r = self.session.get(doc["url"], timeout=180)
         r.raise_for_status()
         body = r.content
@@ -464,6 +484,7 @@ class MinistryDDGProbe:
         if content_type:
             record["media_type"] = content_type.split(";", 1)[0].strip()
         self._finalize(record, dest, body)
+        self._attach_wayback(record)
         if self.sleep:
             time.sleep(self.sleep)
         return record
