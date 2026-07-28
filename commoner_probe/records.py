@@ -1190,6 +1190,11 @@ class ManifestNaiCatalogueRecord:
     status: str
     fetched_at: str
     probed_at: str
+    #: Required by the schema and by the adapter: the site's WAF challenges every
+    #: commoner-probe identity, so which one was presented IS the provenance.
+    #: Declared here because `_from_dict` filters to declared fields — omitting
+    #: it silently dropped the audit trail for every typed-API consumer.
+    user_agent: str = ""
     identifier: str | None = None
     year: int | None = None
     page_count: int | None = None

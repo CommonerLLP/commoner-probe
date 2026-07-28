@@ -111,6 +111,16 @@ class CliCommandSyncTests(unittest.TestCase):
                 except SystemExit as exc:
                     self.fail(f"README example does not parse (exit {exc.code}): {raw}")
 
+    def test_explicit_zero_sleep_is_not_replaced_by_the_default(self):
+        """`or` treated an explicit --sleep 0 as absent and restored 2.0s,
+        silently adding hours to a thousands-page run."""
+        parser = build_parser()
+        args = parser.parse_args(["abhilekh-patal", "--out", "x", "--query", "q", "--sleep", "0"])
+        self.assertEqual(args.sleep, 0.0)
+        self.assertIsNotNone(args.sleep, "None and 0.0 must stay distinguishable")
+        default = parser.parse_args(["abhilekh-patal", "--out", "x", "--query", "q"])
+        self.assertIsNone(default.sleep, "unset must be None so the default can apply")
+
     def test_indiacode_legacy_list_states_invocation_still_works(self):
         out = StringIO()
         with patch("sys.argv", ["commoner-probe", "indiacode", "--list-states"]):

@@ -239,6 +239,20 @@ class TestProbe:
         record = next(probe.probe(query="police"))
         assert record["user_agent"] == "some-explicit-agent/1.0"
 
+    def test_the_typed_record_keeps_the_identity_too(self, tmp_path):
+        """`_from_dict` filters to declared fields — an undeclared one vanishes.
+
+        The schema marks user_agent required and it is the audit trail for which
+        identity was presented to the WAF. A provenance field that survives into
+        the manifest but not into the typed API is not provenance.
+        """
+        from commoner_probe.corpus import Corpus
+
+        probe = _probe(tmp_path, user_agent="some-explicit-agent/1.0")
+        list(probe.probe(query="police"))
+        rows = list(Corpus(tmp_path).manifest_nai_catalogue())
+        assert rows[0].user_agent == "some-explicit-agent/1.0"
+
     def test_rerun_appends_nothing(self, tmp_path):
         list(_probe(tmp_path).probe(query="police"))
         again = list(_probe(tmp_path).probe(query="police"))

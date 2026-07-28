@@ -43,6 +43,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from html import unescape
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any, Sequence
 from urllib.parse import urlparse
@@ -88,13 +89,12 @@ DEFAULT_SETTLE_MS = 8_000
 _STRIPPED_ELEMENTS_RE = re.compile(
     r"(?is)<(script|style|noscript|template|svg|head)\b[^>]*>.*?</\1>"
 )
-#: Elements the page itself declares invisible, in the markup. A preloaded
-#: panel or a duplicated responsive nav can carry thousands of characters no
-#: reader ever sees, which lifts a shell over the text floor.
-_HIDDEN_ELEMENTS_RE = re.compile(
-    r"(?is)<(div|section|nav|ul|ol|li|span|table|aside|header|footer|p|form)\b"
-    r"[^>]*?(?:\shidden(?=[\s/>])|style\s*=\s*[\"'][^\"']*(?:display\s*:\s*none|visibility\s*:\s*hidden))"
-    r"[^>]*>.*?</\1>"
+#: Inline styles (and the bare `hidden` attribute) that declare an element
+#: invisible. A preloaded panel or a duplicated responsive nav can carry
+#: thousands of characters no reader ever sees, which lifts a shell over the
+#: text floor.
+_HIDDEN_STYLE_RE = re.compile(
+    r"(?i)(?:display\s*:\s*none|visibility\s*:\s*hidden)"
 )
 _TAG_RE = re.compile(r"<[^>]+>")
 _WS_RE = re.compile(r"\s+")
@@ -109,6 +109,65 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
+class _VisibleTextParser(HTMLParser):
+    """Collect text, skipping subtrees the markup declares invisible.
+
+    Depth-tracking, not pattern-matching. A regex cannot do this: with a
+    non-greedy body it stops at the FIRST matching close tag, so a hidden
+    ``<div>`` containing a nested ``<div>`` ends early and the parent's
+    remaining text survives into the output. Hidden SPA panels nest divs as a
+    matter of course, so that leak is the common case rather than the exotic
+    one — and enough surviving text lifts a shell over the floor and records it
+    as a real capture.
+    """
+
+    #: Content-free by definition; their text is markup, not reading matter.
+    SKIP_TAGS = frozenset({"script", "style", "noscript", "template", "svg", "head"})
+    #: Void elements never close, so they must not push onto the depth stack.
+    VOID_TAGS = frozenset({
+        "area", "base", "br", "col", "embed", "hr", "img", "input",
+        "link", "meta", "param", "source", "track", "wbr",
+    })
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.parts: list[str] = []
+        #: Open tags whose subtree is being suppressed, innermost last.
+        self._suppressed: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag in self.VOID_TAGS:
+            return
+        if self._suppressed:
+            self._suppressed.append(tag)
+            return
+        if tag in self.SKIP_TAGS or self._is_hidden(attrs):
+            self._suppressed.append(tag)
+
+    def handle_endtag(self, tag: str) -> None:
+        if not self._suppressed:
+            return
+        # Close the innermost matching open tag. Unbalanced markup is normal on
+        # the web, so an end tag with no match is ignored rather than trusted.
+        for i in range(len(self._suppressed) - 1, -1, -1):
+            if self._suppressed[i] == tag:
+                del self._suppressed[i:]
+                return
+
+    def handle_data(self, data: str) -> None:
+        if not self._suppressed:
+            self.parts.append(data)
+
+    @staticmethod
+    def _is_hidden(attrs: list[tuple[str, str | None]]) -> bool:
+        for name, value in attrs:
+            if name == "hidden":
+                return True
+            if name == "style" and value and _HIDDEN_STYLE_RE.search(value):
+                return True
+        return False
+
+
 def visible_text(html: str) -> str:
     """Text a reader would actually see: script, style and markup removed.
 
@@ -118,6 +177,10 @@ def visible_text(html: str) -> str:
     preloaded panel or a duplicated responsive nav is bytes a reader never sees
     and would lift a shell over the floor just as an inline payload would.
 
+    Hidden subtrees are excluded by depth-tracking parse, not by regex, because
+    a non-greedy pattern ends at the first matching close tag and leaks the rest
+    of a nested hidden parent back into the count.
+
     It reads markup, so it catches ``hidden`` and inline ``display:none`` and
     **not** hiding done from a stylesheet class. Asking the browser for
     ``body.innerText`` would catch every case, and would move the measurement
@@ -126,9 +189,16 @@ def visible_text(html: str) -> str:
     ``require_text`` is the answer when a page's real content must be proven,
     and it does not depend on this heuristic at all.
     """
-    body = _STRIPPED_ELEMENTS_RE.sub(" ", html or "")
-    body = _HIDDEN_ELEMENTS_RE.sub(" ", body)
-    return _WS_RE.sub(" ", unescape(_TAG_RE.sub(" ", body))).strip()
+    parser = _VisibleTextParser()
+    try:
+        parser.feed(html or "")
+        parser.close()
+    except Exception:
+        # Never let malformed markup crash the measurement — fall back to the
+        # blunt strip, which under-counts rather than over-counts.
+        body = _STRIPPED_ELEMENTS_RE.sub(" ", html or "")
+        return _WS_RE.sub(" ", unescape(_TAG_RE.sub(" ", body))).strip()
+    return _WS_RE.sub(" ", "".join(parser.parts)).strip()
 
 
 def detect_frameworks(html: str) -> tuple[str, ...]:

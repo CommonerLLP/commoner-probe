@@ -168,8 +168,32 @@ class TestIndexUnavailable:
 
     def test_an_unparseable_body_is_an_index_problem_not_an_empty_result(self):
         session = FakeSession("<html>503 Service Unavailable</html>")
-        with pytest.raises(IndexUnavailable, match="unparseable"):
+        with pytest.raises(IndexUnavailable, match="NOT evidence"):
             list(iter_captures("x", session=session, retries=1))
+
+    def test_a_transient_html_body_on_a_200_is_retried(self, monkeypatch):
+        """An interstitial arrives as 200; it is as transient as a 503."""
+        monkeypatch.setattr(wayback.time, "sleep", lambda _: None)
+
+        class Interstitial(FakeSession):
+            def get(self, url, params=None, timeout=None, **kwargs):
+                self.calls.append(dict(params or {}))
+                if len(self.calls) == 1:
+                    return FakeResponse("<html>Just a moment...</html>")
+                return FakeResponse([HEADER, _row("20200701205014", "BBB")])
+
+        caps = list(iter_captures("x", session=Interstitial(), retries=3, backoff=0))
+        assert [c["digest"] for c in caps] == ["BBB"], "the retry must be spent, not skipped"
+
+    def test_a_non_list_payload_raises_rather_than_reading_as_empty(self):
+        """`null` or an error object is an outage dressed as data."""
+        for payload in ("null", '{"error": "no server available"}'):
+            with pytest.raises(IndexUnavailable, match="NOT evidence"):
+                list(iter_captures("x", session=FakeSession(payload), retries=1))
+
+    def test_a_genuinely_empty_list_still_terminates_quietly(self):
+        """The real 'no captures' signal must survive the shape check."""
+        assert list(iter_captures("x", session=FakeSession([]))) == []
 
 
 class TestProbe:
@@ -205,6 +229,46 @@ class TestProbe:
         records = list(self._probe(tmp_path, session).probe(url="u", dry_run=True))
         assert [r["status"] for r in records] == ["dry_run"]
         assert not (tmp_path / "manifest.jsonl").exists()
+
+    def test_a_failed_walk_leaves_no_partial_manifest(self, tmp_path, monkeypatch):
+        """A truncated history is indistinguishable from a complete one."""
+        monkeypatch.setattr(wayback.time, "sleep", lambda _: None)
+
+        class DiesOnPageTwo(FakeSession):
+            def get(self, url, params=None, timeout=None, **kwargs):
+                self.calls.append(dict(params or {}))
+                if "resumeKey" in (params or {}):
+                    raise RuntimeError("HTTP 503")
+                return FakeResponse([HEADER, _row("20060413232357", "AAA"), [], ["RESUME1"]])
+
+        probe = WaybackCaptureProbe(tmp_path, sleep=0, session=DiesOnPageTwo())
+        with pytest.raises(IndexUnavailable):
+            list(probe.probe(url="mospi.gov.in"))
+        assert not (tmp_path / "manifest.jsonl").exists(), "page one must not survive the failure"
+
+    def test_a_failed_walk_preserves_rows_from_earlier_runs(self, tmp_path, monkeypatch):
+        """Rollback undoes THIS invocation only, never a prior corpus."""
+        monkeypatch.setattr(wayback.time, "sleep", lambda _: None)
+        first = FakeSession([HEADER, _row("20060413232357", "AAA")])
+        list(WaybackCaptureProbe(tmp_path, sleep=0, session=first).probe(url="u"))
+        before = (tmp_path / "manifest.jsonl").read_text()
+
+        class DiesImmediately(FakeSession):
+            def get(self, url, params=None, timeout=None, **kwargs):
+                self.calls.append(dict(params or {}))
+                raise RuntimeError("HTTP 503")
+
+        probe = WaybackCaptureProbe(tmp_path, sleep=0, session=DiesImmediately())
+        with pytest.raises(IndexUnavailable):
+            list(probe.probe(url="u"))
+        assert (tmp_path / "manifest.jsonl").read_text() == before
+
+    def test_max_records_keeps_its_rows(self, tmp_path):
+        """A deliberate stop is not a failure and must not roll back."""
+        session = FakeSession([HEADER] + [_row(f"2020070120501{i}", f"D{i}") for i in range(5)])
+        records = list(WaybackCaptureProbe(tmp_path, sleep=0, session=session).probe(url="u", max_records=2))
+        assert len(records) == 2
+        assert len((tmp_path / "manifest.jsonl").read_text().strip().splitlines()) == 2
 
     def test_a_malformed_length_becomes_null_not_a_crash(self, tmp_path):
         session = FakeSession([HEADER, _row("20060413232357", "AAA", length="-")])

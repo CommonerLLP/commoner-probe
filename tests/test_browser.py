@@ -116,6 +116,42 @@ def test_hidden_dom_does_not_count_towards_visible_text():
     assert check_rendered(shell).rendered is False
 
 
+def test_nested_hidden_elements_do_not_leak_text():
+    """A regex stops at the FIRST close tag; SPA panels nest divs routinely."""
+    padding = "Preloaded row nobody can see. " * 200
+    shell = (
+        '<html><body><div hidden>'
+        f'<div class="inner">{padding}</div>{padding}'
+        "</div>Menu</body></html>"
+    )
+    assert visible_text(shell) == "Menu"
+    assert check_rendered(shell).rendered is False
+
+
+def test_deeply_nested_hidden_subtree_is_fully_excluded():
+    inner = "<div><div><div>buried and invisible</div></div></div>"
+    html = f'<html><body><section style="display:none">{inner}</section>Real</body></html>'
+    assert visible_text(html) == "Real"
+
+
+def test_a_void_element_inside_a_hidden_block_does_not_end_it():
+    """<img> never closes; treating it as an open tag would corrupt the stack."""
+    html = '<html><body><div hidden>hidden<img src="x">still hidden</div>Shown</body></html>'
+    assert visible_text(html) == "Shown"
+
+
+def test_visible_siblings_after_a_hidden_block_survive():
+    html = '<html><body><div hidden><div>gone</div></div><p>kept</p></body></html>'
+    assert "kept" in visible_text(html)
+    assert "gone" not in visible_text(html)
+
+
+def test_unbalanced_markup_does_not_swallow_the_page():
+    """Real-world HTML is unbalanced; a stray </div> must not crash or over-strip."""
+    html = "<html><body></div><p>content survives</p></body></html>"
+    assert "content survives" in visible_text(html)
+
+
 def test_detect_frameworks_deduplicates():
     assert detect_frameworks('<html data-n-head-ssr><script>window.__NUXT__=1</script>') == ("Nuxt",)
     assert detect_frameworks("<html><body>plain</body></html>") == ()

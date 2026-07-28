@@ -404,35 +404,46 @@ def iter_captures(
             limit=batch,
             resume_key=resume,
         )
-        body = None
+        # Parsing and shape validation live INSIDE the retry, not after it. An
+        # interstitial or an error page can arrive as HTTP 200 with an HTML
+        # body; parsed outside the loop it raised on the first attempt and the
+        # configured retries were never spent, even though the next response
+        # would have been fine. A transient 200 is as transient as a 503.
+        payload: Any = None
         last_exc: Exception | None = None
+        empty_body = False
         for attempt in range(retries):
             try:
                 r = session.get(CDX_API, params=params, timeout=timeout)
                 r.raise_for_status()
                 body = r.text
+                if not body.strip():
+                    empty_body = True
+                    break
+                parsed = json.loads(body)
+                # A parseable body of the wrong SHAPE (null, an error object) is
+                # an outage dressed as data. Treating it as an empty row set is
+                # how an outage gets recorded as "this URL has no captures".
+                if not isinstance(parsed, list):
+                    raise ValueError(
+                        f"expected a JSON array of CDX rows, got {type(parsed).__name__}"
+                    )
+                payload = parsed
                 break
             except Exception as exc:  # noqa: PERF203 - retry is the point
                 last_exc = exc
                 if attempt < retries - 1:
                     time.sleep(backoff * (attempt + 1))
-        if body is None:
+        if empty_body:
+            return
+        if payload is None:
             raise IndexUnavailable(
                 f"the Wayback CDX index could not be read for {url!r} after "
                 f"{retries} attempts: {type(last_exc).__name__}: {last_exc}. "
                 "This is NOT evidence that the URL has no captures — a 5xx, a "
-                "reset connection and a read timeout are all facts about the "
-                "index, not about the source."
+                "reset connection, a read timeout and a 200 carrying an error "
+                "page are all facts about the index, not about the source."
             ) from last_exc
-
-        if not body.strip():
-            return
-        try:
-            payload = json.loads(body)
-        except json.JSONDecodeError as exc:
-            raise IndexUnavailable(
-                f"the Wayback CDX index returned an unparseable body for {url!r}: {exc}"
-            ) from exc
 
         rows = _cdx_rows(payload)
         seen_batches += 1
@@ -552,27 +563,58 @@ class WaybackCaptureProbe:
         Resume is by ``key`` (url + timestamp): a capture already recorded is
         never appended twice, so re-running extends the history rather than
         duplicating it.
+
+        **A walk that fails part-way writes nothing.** Pages are appended as
+        they arrive, so an index outage on page six would otherwise leave the
+        first five pages on disk — a schema-valid manifest that no reader can
+        distinguish from a complete history. That is this module's own failure
+        (an outage recorded as a fact about the source) reappearing one level
+        up, at the file instead of the row. So the manifest's size is taken
+        before the walk and restored if the walk raises: either the whole
+        history lands, or none of this invocation's rows do and the error says
+        why. Records already yielded are the caller's to discard.
+
+        Abandoning the generator early (a ``break`` in the caller, or
+        ``max_records``) is a deliberate stop, not a failure, and keeps its rows.
         """
         seen = self.load_seen()
-        for capture in iter_captures(
-            url,
-            from_date=from_date,
-            to_date=to_date,
-            match_prefix=match_prefix,
-            collapse_digest=collapse_digest,
-            only_ok=only_ok,
-            max_records=max_records,
-            session=self.session,
-        ):
-            record = self._record(capture, query_url=url)
-            if dry_run:
-                yield {**record, "status": "dry_run"}
-                continue
-            if record["key"] in seen:
-                continue
-            self.append_manifest(record)
-            seen.add(record["key"])
-            yield record
+        rollback_to = self.manifest.stat().st_size if self.manifest.exists() else None
+        try:
+            for capture in iter_captures(
+                url,
+                from_date=from_date,
+                to_date=to_date,
+                match_prefix=match_prefix,
+                collapse_digest=collapse_digest,
+                only_ok=only_ok,
+                max_records=max_records,
+                session=self.session,
+            ):
+                record = self._record(capture, query_url=url)
+                if dry_run:
+                    yield {**record, "status": "dry_run"}
+                    continue
+                if record["key"] in seen:
+                    continue
+                self.append_manifest(record)
+                seen.add(record["key"])
+                yield record
+        except Exception:
+            # GeneratorExit is a BaseException and deliberately not caught here:
+            # a caller that stops reading meant to stop, and keeps its rows.
+            if not dry_run:
+                self._rollback_manifest(rollback_to)
+            raise
+
+    def _rollback_manifest(self, size: int | None) -> None:
+        """Undo this invocation's appends. ``None`` means the file is ours to remove."""
+        if not self.manifest.exists():
+            return
+        if size is None:
+            self.manifest.unlink()
+            return
+        with self.manifest.open("r+b") as f:
+            f.truncate(size)
 
 
 def _iso_from_cdx(timestamp: str) -> str | None:
