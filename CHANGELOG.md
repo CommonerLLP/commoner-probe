@@ -1,5 +1,99 @@
 # Changelog
 
+## 0.9.0 (2026-07-28)
+
+Five new acquisition surfaces, a headless-browser fallback, and a fix wave that
+closed three silent-success paths in the module written to prevent silent
+success (PRs #59–#70).
+
+### Changed — read this before upgrading
+
+These are behaviour changes, not additions. A pinned consumer will see them.
+
+- **`render` now exits 1 where it exited 0.** A shell capture in the default
+  preview mode (`--out` omitted, which forces a dry run) previously reported
+  success, because `dry_run` overwrote the computed verdict. `dry_run` is now a
+  separate boolean field and the verdict survives. Anything gating on this
+  command's exit code changes behaviour.
+- **An HTTP 4xx/5xx page is recorded as `error`, not `downloaded`.** Playwright
+  returns a response for error pages rather than raising, so a verbose 403 that
+  cleared the visible-text floor used to record as a successful capture.
+- **`rendered_page` manifest keys and destination filenames changed for URLs
+  carrying a query string.** The slug was host+path only, so `/search?q=alpha`
+  and `/search?q=beta` shared one key and one file and the second write
+  silently replaced the first. A digest of the query and fragment is now folded
+  into the identity. An existing rendered corpus will not line up with a re-run.
+- **`manifest_rendered_page.status` no longer accepts `dry_run`** (a mode is not
+  a verdict). No released version ever wrote that value into a manifest — dry
+  runs do not append — so no existing corpus is invalidated.
+- **`manifest_ministry_ddg.wayback_status` gains `save-pending`.** With
+  `--wayback-save`, a capture already on the index is no longer labelled
+  `captured`, which credited this acquisition with a snapshot it did not make.
+- **`DEFAULT_SETTLE_MS` raised 2,500 → 8,000.** Measured on mospi.gov.in, the
+  old value captured the empty React root in 4 of 5 cold trials and the full
+  page in 1. A value that passes occasionally is worse than one that fails
+  consistently, because the occasional pass is what gets recorded as proof.
+
+### Added
+
+- **`wayback`** — Internet Archive capture history from the CDX index
+  (`kind: wayback_capture`). `--prefix` matches everything under a host or path,
+  `--from-date`/`--to-date` take a year, year-month, or full 14-digit stamp,
+  `--collapse-digest` reports when a page *changed* rather than when it was
+  *crawled*, and `--only-ok` drops redirects and error pages. Pagination follows
+  the API's opaque `resumeKey`. A URL with no captures yields nothing; an
+  unreachable index raises rather than being recorded as "never archived" — the
+  index answers 5xx, resets connections, and times out often enough that the
+  same query returned `200 []` and then `503` three seconds apart.
+- **`abhilekh-patal`** — National Archives of India **catalogue** acquisition
+  (`kind: nai_catalogue_record`). Catalogue only, deliberately: search and
+  metadata are open, but the scans sit behind a paid reproduction-ordering flow,
+  so `status` never leaves `metadata_only`. Requires India-region egress, and
+  the site's WAF challenges every `commoner-probe` User-Agent — so the honest
+  default exits 1 with the cause named, `--user-agent` makes the choice
+  explicit, and the identity used is stamped into every record.
+- **`render`** — headless-browser fallback acquisition for JS-rendered portals a
+  plain GET cannot read, with a shell-vs-content assertion. Shells are written
+  to a separate directory and never recorded as success. A fallback, not a
+  default.
+- **`courts`** — India court data over the Indian Kanoon API wire contract
+  (reimplemented, no vendored code), with eCourts reachable only across a
+  subprocess boundary so its GPL-3.0 licence is never linked into this MIT
+  package. **Not live-verified:** no successful call has been made.
+- **`cag`** — CAG State Finance Accounts (Vol-II) acquisition.
+- **PRS Report Summaries and Vital Stats** (`--surface report-summaries` /
+  `vital-stats`) and **Bill Track** (`--surface bill-track`), completing the PRS
+  adapter. Bill Track reads status from the span's text, because the site emits
+  `class="status-pending"` on every row regardless of the real status.
+- **Wayback provenance on acquisition** — `attach_snapshot()` wired into
+  `MinistryDDGProbe` behind `--wayback` (CDX reads only) and `--wayback-save`.
+  Save Page Now is opt-in only: a probe does not make an outward-facing write to
+  a public permanent archive as a side effect of acquiring a file.
+- **DDG registry** extended to 9 portals with Ports/Shipping/Waterways.
+
+### Fixed
+
+- **`latest_capture()` discarded the index-unavailable reason**, so a CDX 503
+  during a read-only check wrote `wayback_status: "unarchived"` — asserting no
+  capture exists when the check merely failed.
+- **`visible_text()` counted markup-declared hidden subtrees**, which a
+  preloaded panel could use to lift an empty shell over the text floor.
+- **`ecourts_command()` used `str.split()`**, which breaks a quoted executable
+  path containing spaces and keeps the quote characters. Now `shlex.split()`.
+- **`courts --ecourts` ignored `--dry-run`** and appended to `manifest.jsonl`
+  unconditionally, so a dry run mutated an existing corpus.
+- **`cag_state_account` was never registered** for schema validation or corpus
+  streaming, so the adapter shipped unreachable from both.
+- **LS question-list pager**: `pageNo` is 1-indexed and `pageNo=0` returns HTTP
+  500; the guard raises before any request (REQ-0040).
+- **`dae` withdrawn from the DDG registry** hours after being added. Its listing
+  parsed nine clean rows; its documents cannot be downloaded at all, because
+  they sit on a host serving an incomplete certificate chain. The check that was
+  cheap to run passed; the check the adapter exists for was never run.
+- **Documentation**: the eCourts example in the README failed at argparse as
+  written (`--ecourts-arg --court` reads as a missing value). A docs-sync test
+  now parses every `commoner-probe` command in the README.
+
 ## 0.8.0 (2026-07-19)
 
 Nine new acquisition adapters, five new extraction modules, and major new

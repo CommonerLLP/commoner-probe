@@ -12,33 +12,36 @@ record; this file says what ships next and what is deliberately deferred.
 | 0.5.1 | 2026-06-25 | `record_filter_fn`; academic-jobs fetch resilience |
 | 0.6.x | 2026-07-03 | HEI parser expansion (`parser_utils`, IIT Gandhinagar, IIT Hyderabad) |
 | 0.7.0 | 2026-07-03 | `indiacode`; NeVA portal registry + `state-assembly-probe` |
+| 0.8.0 | 2026-07-19 | 9 adapters (`questions-list`, `prs`, `mospi`, `ministry-ddg`, `legacy-dspace`, `doe-pay-allowances`, `attendance`, `myneta`, `dpe-csr`); 5 extraction modules; `sansad` tabled / `--all` / `--mp-code` |
+| 0.9.0 | 2026-07-28 | `wayback`, `abhilekh-patal`, `render`, `courts`, `cag`; PRS completed; Wayback provenance on acquisition; the ten-finding Codex sweep |
 
-## On master, unreleased (merged since 0.7.0)
+## On master, unreleased
 
-- `sansad --all` full-corpus enumeration with suspect-marking and
-  per-window resume; `--member` per-member retrieval; `sansad tabled`
-  title-search mode.
-- `attendance`, `myneta`, `legacy-dspace`, `mospi`, `ministry-ddg`
-  (7-portal registry) adapters.
-- NeVA Gujarati extraction (two-column geometry split, district tables,
-  reference-calibrated glyph repair).
-- Committee outsourcing/consultancy typed signals in `extract-answers`;
-  vacancy rows; RS debates source contract.
+Nothing. 0.9.0 was cut from master with no open PRs.
 
-**Next gate: 0.8.0** — cut from master once the in-flight review fixes
-land. Version-bump checklist: bump `pyproject.toml`, CHANGELOG entry,
-`pip install -e .` in the repo `.venv` (refreshes the `dist-info` that
-`_resolve_version()` reads), tag.
+**Next gate: 1.0.0 — deferred deliberately, and gated on Phase 2.** Declaring
+1.0 promises interface stability, and the package rename to `probe`/`compose`
+on PyPI (below) would break that promise the moment it lands. Do the rename
+first, or accept that 1.0 means a 2.0 shortly after.
+
+Version-bump checklist: bump `pyproject.toml` (the single source of truth —
+`__version__` reads it), CHANGELOG entry, `pip install -e .` in the repo
+`.venv` (refreshes the `dist-info` that `_resolve_version()` reads), branch +
+PR, tag, then move consumer pins.
+
+**Pre-1.0 versioning rule in force here:** a new acquisition surface or any
+breaking change is a minor bump; only backwards-compatible fixes take a patch.
+0.9.0 carried both — five new subcommands and four behaviour changes (`render`
+exit codes, `rendered_page` manifest keys for query-string URLs, a dropped
+status enum value, 4xx reclassified as `error`).
 
 ## Queued (requested source adapters, not started)
 
-- BPRD *Data on Police Organisations* acquisition + extraction (needs the
-  shared OCR decision below).
-- Abhilekh Patal (National Archives of India) — India-egress hard
-  requirement verified; unscoped.
-- PRS Legislative adapter — licensing posture decided (internal research
-  use only, no text republication); not started.
-- Identity-safe per-member retrieval by stable member ID.
+- BPRD *Data on Police Organisations* acquisition + extraction. **Blocked at
+  source, not at egress** (verified 2026-07-28): `bprd.nic.in` resolves but
+  every connection times out from US *and* India egress, and `bprd.gov.in` does
+  not resolve. Needs a new host or a mirror before any adapter work; the shared
+  OCR decision is not the binding constraint.
 - MPLADS fund-release / works / utilisation-certificate records — source
   recon from an India vantage point first.
 - Finance document-disclosure adapters beyond the current budget set.
