@@ -42,6 +42,26 @@ _BILL_LINK_RE = re.compile(r'<a\s+href="([^"]+)"\s*>(.*?)</a>', re.DOTALL)
 # Withdrawn/…). The class is decoration; only the text is data.
 _BILL_STATUS_RE = re.compile(r'<span\s+class="status-[a-z-]*"\s*>(.*?)</span>', re.DOTALL)
 
+# Report Summaries and Vital Stats are the SAME Drupal Views template — an
+# `other_fields` block per publication holding an `<h3>` title anchor and a
+# "Download" anchor to the PDF. One parser serves both surfaces; only the
+# listing path and the record kind differ.
+#
+# Their rows carry inline style attributes BEFORE the class, so the literal
+# `<div class="views-row">` that Bill Track matches finds nothing here. Anchor
+# on the class attribute, not on a whole opening tag.
+PUBLICATION_PATHS = {
+    "report-summaries": "/policy/report-summaries",
+    "vital-stats": "/policy/vital-stats",
+}
+_PUB_ROW_RE = re.compile(r'class="other_fields"(.*?)(?=class="other_fields"|\Z)', re.DOTALL)
+_PUB_TITLE_RE = re.compile(r"<h3[^>]*>\s*<a\s+href=\"([^\"]+)\"[^>]*>(.*?)</a>", re.DOTALL)
+# Anchored on the download_pdf container, not on "any .pdf href in the block".
+# The last block runs to end-of-document, so a bare .pdf search would hand the
+# final item whatever PDF the page footer happens to carry — a wrong URL is
+# worse than a recorded absence.
+_PUB_PDF_RE = re.compile(r'class="[^"]*download_pdf[^"]*"[^>]*>\s*<a\s+href="([^"]+)"', re.IGNORECASE)
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
@@ -107,6 +127,42 @@ def parse_bill_track(page_html: str, *, base_url: str = BASE_URL) -> list[dict[s
             "status": status or "",
         })
     return bills
+
+
+def parse_publications(page_html: str, *, base_url: str = BASE_URL) -> list[dict[str, str]]:
+    """Parse a Report Summaries or Vital Stats listing into one dict per item.
+
+    Returns ``{title, url, slug, pdf_url}``. ``pdf_url`` is ``""`` when a row
+    offers no download — that is a real state on this surface, and dropping
+    those rows would silently shrink the corpus, so the item is kept and the
+    absence recorded.
+
+    Both listings render whole: 442 report summaries and 24 vital stats in one
+    response each, with no pager markup, and ``?page=1`` returns the identical
+    first row (verified live 2026-07-28). Nothing here paginates.
+    """
+    items: list[dict[str, str]] = []
+    seen_urls: set[str] = set()
+    for block in _PUB_ROW_RE.findall(page_html):
+        title_m = _PUB_TITLE_RE.search(block)
+        if not title_m:
+            continue
+        href = unescape(title_m.group(1).strip())
+        title = _clean(_TAG_RE.sub(" ", title_m.group(2)))
+        if not title:
+            continue
+        url = urljoin(base_url + "/", href)
+        if url in seen_urls:
+            continue
+        seen_urls.add(url)
+        pdf_m = _PUB_PDF_RE.search(block)
+        items.append({
+            "title": title,
+            "url": url,
+            "slug": href.rstrip("/").rsplit("/", 1)[-1],
+            "pdf_url": urljoin(base_url + "/", unescape(pdf_m.group(1))) if pdf_m else "",
+        })
+    return items
 
 
 def parse_mptrack_download(page_html: str) -> tuple[str, str]:
@@ -305,6 +361,100 @@ class PrsProbe:
                 self.append_manifest(record)
                 records.append(record)
                 seen[record["key"]] = record["bill_status"]
+            if max_records is not None and len(records) >= max_records:
+                break
+        return records
+
+    def _publication_record(
+        self,
+        item: dict[str, str],
+        *,
+        surface: str,
+        page_url: str,
+        status: str,
+        pdf_path: str | None = None,
+        pdf_sha256: str | None = None,
+    ) -> dict[str, Any]:
+        kind = "prs_report_summary" if surface == "report-summaries" else "prs_vital_stats"
+        return {
+            "key": f"PRS_{surface.upper().replace('-', '_')}|{item['slug']}",
+            "kind": kind,
+            "record_type": kind,
+            "source": "prsindia.org",
+            "surface": surface,
+            "source_page_url": page_url,
+            "title": item["title"],
+            "url": item["url"],
+            "slug": item["slug"],
+            "pdf_url": item["pdf_url"] or None,
+            "pdf_path": pdf_path,
+            "pdf_sha256": pdf_sha256,
+            "status": status,
+            "probed_at": _now(),
+        }
+
+    def probe_publications(
+        self,
+        *,
+        surface: str,
+        max_records: int | None = None,
+        download: bool = False,
+        dry_run: bool = False,
+    ) -> list[dict[str, Any]]:
+        """Acquire the Report Summaries or Vital Stats listing.
+
+        One request per surface — neither paginates. ``download`` also fetches
+        each item's PDF; without it this is metadata only.
+
+        A row whose PDF fetch fails is recorded with ``status: "error"`` and
+        the reason, not skipped. A missing row and a row that could not be
+        downloaded are different facts, and only one of them is about PRS.
+        """
+        if surface not in PUBLICATION_PATHS:
+            raise ValueError(f"unknown PRS surface {surface!r}; expected one of {sorted(PUBLICATION_PATHS)}")
+        page_url = f"{self.base_url}{PUBLICATION_PATHS[surface]}"
+        items = parse_publications(self._get_text(page_url), base_url=self.base_url)
+        seen = self.load_seen()
+        pdf_dir = self.out_dir / "pdf" / f"prs-{surface}"
+        records: list[dict[str, Any]] = []
+
+        for item in items:
+            record = self._publication_record(
+                item, surface=surface, page_url=page_url, status="dry_run" if dry_run else "metadata_only"
+            )
+            if dry_run:
+                records.append(record)
+                if max_records is not None and len(records) >= max_records:
+                    break
+                continue
+
+            prior = seen.get(record["key"])
+            if prior in self._TERMINAL or (prior == "metadata_only" and not download):
+                continue
+
+            if download and item["pdf_url"]:
+                if self.sleep:
+                    time.sleep(self.sleep)
+                try:
+                    r = self.session.get(item["pdf_url"], timeout=120)
+                    r.raise_for_status()
+                    body = r.content
+                    if not body.startswith(b"%PDF"):
+                        raise ValueError("response is not a PDF (WAF interstitial?)")
+                except Exception as exc:
+                    record["status"] = "error"
+                    record["error"] = f"{type(exc).__name__}: {exc}"
+                else:
+                    pdf_dir.mkdir(parents=True, exist_ok=True)
+                    dest = pdf_dir / f"{item['slug']}.pdf"
+                    dest.write_bytes(body)
+                    record["pdf_path"] = str(dest.relative_to(self.out_dir))
+                    record["pdf_sha256"] = hashlib.sha256(body).hexdigest()
+                    record["status"] = "downloaded"
+
+            self.append_manifest(record)
+            records.append(record)
+            seen[record["key"]] = record["status"]
             if max_records is not None and len(records) >= max_records:
                 break
         return records

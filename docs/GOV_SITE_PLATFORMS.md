@@ -179,13 +179,17 @@ are negative, and the negatives are the point of writing this down:
 
 | outcome | count | departments |
 |---|---|---|
-| No DDG link discoverable from the homepage | 17 | dfpd, dof, tourism, ayush, msme, jalshakti-dowr, doj, legislative, lawmin, doppw, isro/dos, moes, mea, dfs, dpe, dsir, mdoner, indiapost |
-| Connection timeout / reset from this egress | 8 | consumeraffairs.nic.in, fert, dare, indiaculture, desw, minorityaffairs, dopt (conn reset) |
-| Broken TLS | 2 | yas.gov.in, cooperation.gov.in |
+| No DDG link discoverable from the homepage | 18 | dfpd, dof, tourism, ayush, msme, jalshakti-dowr, doj, legislative, lawmin, doppw, isro/dos, moes, mea, dfs, dpe, dsir, mdoner, indiapost |
+| Connection timeout / reset from this egress | 7 | consumeraffairs.nic.in, fert, dare, indiaculture, desw, minorityaffairs, dopt (conn reset) |
 | robots.txt disallows the path | 4 | chemicals, dahd, mib, heavyindustries |
+| Broken TLS | 2 | yas.gov.in, cooperation.gov.in |
 | SPA shell homepage | 2 | mospi, dot |
 | Rejected by the SSRF guard | 2 | pharmaceuticals.gov.in, dbtindia.gov.in |
 | Links found, nothing parsed as a DDG | 2 | dor, dipam |
+| Parsed cleanly, wrong documents (see caution 1) | 2 | coal, panchayatiraj |
+
+The counts sum to 39. With `mopsw` registered and `dae` and `moca` held back,
+that is the 42.
 
 Two cautions for the next person who automates this:
 

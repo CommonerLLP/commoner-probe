@@ -64,6 +64,7 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import time
@@ -434,7 +435,15 @@ def ecourts_command(explicit: str | None = None) -> list[str] | None:
     """
     raw = (explicit or os.environ.get(ECOURTS_CMD_ENV) or "").strip()
     if raw:
-        parts = raw.split()
+        # shlex, not split(): a path like "/Applications/My Tools/ecourts"
+        # is one argument, and str.split would both break it in two and keep
+        # the quote characters that were there to hold it together.
+        try:
+            parts = shlex.split(raw)
+        except ValueError:
+            return None
+        if not parts:
+            return None
         return parts if (Path(parts[0]).exists() or shutil.which(parts[0])) else None
     found = shutil.which(ECOURTS_DEFAULT_CMD)
     return [found] if found else None

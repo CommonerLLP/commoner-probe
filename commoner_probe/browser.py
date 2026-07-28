@@ -66,9 +66,35 @@ SHELL_FRAMEWORK_MARKERS: tuple[tuple[str, str], ...] = (
 
 DEFAULT_ENGINE = "chromium"
 DEFAULT_TIMEOUT_MS = 45_000
+#: NOT "networkidle". Government SPAs commonly hold a socket open or poll on a
+#: timer, so networkidle never fires and the navigation times out with the page
+#: fully rendered on screen — mospi.gov.in did exactly that (90s timeout, 2026-07-27).
+#: "load" fires reliably; `settle_ms` then covers the client-side render that
+#: happens after it.
+DEFAULT_WAIT_UNTIL = "load"
+#: Grace period after load for client-side rendering to populate the DOM.
+#: Prefer `wait_for` (a selector) when a known one exists — this is the blunt
+#: fallback for when it does not.
+#:
+#: Measured, not guessed. On mospi.gov.in, 2,500 ms captured the empty React
+#: root in 4 of 5 cold trials (56 KB / 0 chars of visible text) and the full
+#: page in 1 — a value that passes occasionally is worse than one that fails
+#: consistently, because the occasional pass is what gets recorded as proof.
+#: 6,000 ms and above returned the rendered page (192 KB / 10,897 chars) in
+#: every trial. 8,000 ms buys margin on a slower day; the browser path is an
+#: explicit fallback, so seconds are cheaper here than a false capture.
+DEFAULT_SETTLE_MS = 8_000
 
 _STRIPPED_ELEMENTS_RE = re.compile(
     r"(?is)<(script|style|noscript|template|svg|head)\b[^>]*>.*?</\1>"
+)
+#: Elements the page itself declares invisible, in the markup. A preloaded
+#: panel or a duplicated responsive nav can carry thousands of characters no
+#: reader ever sees, which lifts a shell over the text floor.
+_HIDDEN_ELEMENTS_RE = re.compile(
+    r"(?is)<(div|section|nav|ul|ol|li|span|table|aside|header|footer|p|form)\b"
+    r"[^>]*?(?:\shidden(?=[\s/>])|style\s*=\s*[\"'][^\"']*(?:display\s*:\s*none|visibility\s*:\s*hidden))"
+    r"[^>]*>.*?</\1>"
 )
 _TAG_RE = re.compile(r"<[^>]+>")
 _WS_RE = re.compile(r"\s+")
@@ -88,9 +114,20 @@ def visible_text(html: str) -> str:
 
     Pure function. This is the measurement the whole module turns on — an
     inline JS payload is bytes, not content, and counting it is what makes a
-    shell look full.
+    shell look full. Markup-declared hidden subtrees go the same way, because a
+    preloaded panel or a duplicated responsive nav is bytes a reader never sees
+    and would lift a shell over the floor just as an inline payload would.
+
+    It reads markup, so it catches ``hidden`` and inline ``display:none`` and
+    **not** hiding done from a stylesheet class. Asking the browser for
+    ``body.innerText`` would catch every case, and would move the measurement
+    inside the one part of this module that cannot be unit-tested against canned
+    markup. That trade was made deliberately in favour of the pure function:
+    ``require_text`` is the answer when a page's real content must be proven,
+    and it does not depend on this heuristic at all.
     """
     body = _STRIPPED_ELEMENTS_RE.sub(" ", html or "")
+    body = _HIDDEN_ELEMENTS_RE.sub(" ", body)
     return _WS_RE.sub(" ", unescape(_TAG_RE.sub(" ", body))).strip()
 
 
@@ -181,12 +218,15 @@ def render_page(
     engine: str = DEFAULT_ENGINE,
     timeout_ms: int = DEFAULT_TIMEOUT_MS,
     user_agent: str | None = None,
+    wait_until: str = DEFAULT_WAIT_UNTIL,
+    settle_ms: int = DEFAULT_SETTLE_MS,
 ) -> tuple[str, int | None]:
     """Load *url* in a headless browser and return ``(html, http_status)``.
 
     ``wait_for`` is a CSS selector to await before snapshotting — the reliable
-    way to let a client-rendered list populate. Without it the page is captured
-    after the network settles, which can still be too early for a slow XHR.
+    way to let a client-rendered list populate. Without one, the capture waits
+    ``settle_ms`` after ``wait_until`` instead, which is a guess and is why a
+    selector is worth supplying whenever you know one.
 
     Raises :class:`BrowserUnavailable` when Playwright or its browser binary is
     missing, naming the install command. It never degrades to a plain fetch:
@@ -216,19 +256,34 @@ def render_page(
         try:
             context = browser.new_context(**({"user_agent": user_agent} if user_agent else {}))
             page = context.new_page()
-            response = page.goto(url, wait_until="networkidle", timeout=timeout_ms)
+            response = page.goto(url, wait_until=wait_until, timeout=timeout_ms)
             if wait_for:
                 page.wait_for_selector(wait_for, timeout=timeout_ms)
+            elif settle_ms:
+                page.wait_for_timeout(settle_ms)
             return page.content(), (response.status if response else None)
         finally:
             browser.close()
 
 
 def _slug(url: str) -> str:
+    """Filesystem-safe identity for *url*, including its query and fragment.
+
+    Host and path alone are not an identity: ``/search?q=alpha`` and
+    ``/search?q=beta`` are different pages that would share one manifest key
+    and one destination file, so the second capture silently overwrites the
+    first while both rows claim their own URL and hash. The query and fragment
+    are folded in as a short digest rather than spelled out, because they carry
+    separators, encodings and unbounded length.
+    """
     parsed = urlparse(url)
     raw = f"{parsed.netloc}{parsed.path}".strip("/")
     slug = _SLUG_RE.sub("-", raw.lower()).strip("-") or "page"
-    return slug[:80]
+    slug = slug[:80]
+    variant = f"{parsed.query}#{parsed.fragment}" if (parsed.query or parsed.fragment) else ""
+    if variant:
+        slug = f"{slug}-{hashlib.sha256(variant.encode('utf-8')).hexdigest()[:10]}"
+    return slug
 
 
 @dataclass
@@ -287,6 +342,7 @@ class BrowserProbe:
             record["status"] = "error"
             record["rendered"] = False
             record["error"] = f"{type(exc).__name__}: {exc}"
+            record["dry_run"] = dry_run
             if not dry_run:
                 self.append_manifest(record)
             return record
@@ -295,14 +351,33 @@ class BrowserProbe:
         record["http_status"] = http_status
         record.update(check.as_dict())
         record["sha256"] = hashlib.sha256(html.encode("utf-8")).hexdigest()
+
+        # Playwright returns a response for 4xx/5xx instead of raising, so the
+        # text check runs against an error page. A verbose 403 or a styled 500
+        # can clear the floor and record as `downloaded`. Only a short one gets
+        # caught, which is luck, not a check — the Akamai 403 that exposed this
+        # happened to be 201 chars. The status code decides first.
+        http_error = http_status is not None and not 200 <= http_status < 400
+        if http_error:
+            record["rendered"] = False
+            record["error"] = f"HTTP {http_status}"
+            record["reason"] = f"HTTP {http_status} — an error page, whatever its length"
+
         # A shell is evidence worth keeping — of the failure, not of the page.
-        subdir = "rendered" if check.rendered else "rendered_shells"
+        subdir = "rendered" if (check.rendered and not http_error) else "rendered_shells"
         dest = self.out_dir / subdir / f"{_slug(url)}.html"
         record["dest"] = str(dest)
-        record["status"] = "downloaded" if check.rendered else "shell_only"
+        if http_error:
+            record["status"] = "error"
+        else:
+            record["status"] = "downloaded" if check.rendered else "shell_only"
 
+        # `dry_run` is a mode, not a verdict. Overwriting `status` with it hid
+        # the failure the command exists to report: `render` without `--out` is
+        # forced into dry-run, so a shell capture in the ordinary preview mode
+        # exited 0. The verdict stays; the flag says nothing was written.
+        record["dry_run"] = dry_run
         if dry_run:
-            record["status"] = "dry_run"
             return record
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_text(html, encoding="utf-8")

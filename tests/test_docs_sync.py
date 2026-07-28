@@ -8,6 +8,7 @@ until Phase 9 lands a full README.
 from __future__ import annotations
 
 import re
+import shlex
 import unittest
 from contextlib import redirect_stdout
 from io import StringIO
@@ -87,6 +88,26 @@ class CliCommandSyncTests(unittest.TestCase):
             for opt in action.option_strings
         }
         self.assertNotIn("--crawl-composition", option_strings)
+
+    def test_readme_shell_examples_actually_parse(self):
+        """A documented command that fails at argparse is a broken interface.
+
+        The eCourts example shipped as `--ecourts-arg --court`, which argparse
+        reads as a missing value. Nothing caught it because no test had ever
+        run a README command through the parser.
+        """
+        readme = (Path(__file__).resolve().parents[1] / "README.md").read_text(encoding="utf-8")
+        parser = build_parser()
+        joined = readme.replace("\\\n", " ")
+        commands = re.findall(r"^commoner-probe .*$", joined, re.MULTILINE)
+        self.assertTrue(commands, "no commoner-probe examples found in README")
+        for raw in commands:
+            with self.subTest(command=raw):
+                argv = shlex.split(raw)[1:]
+                try:
+                    parser.parse_args(argv)
+                except SystemExit as exc:
+                    self.fail(f"README example does not parse (exit {exc.code}): {raw}")
 
     def test_indiacode_legacy_list_states_invocation_still_works(self):
         out = StringIO()

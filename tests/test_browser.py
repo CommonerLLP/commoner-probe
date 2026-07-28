@@ -108,6 +108,14 @@ def test_require_text_beats_a_long_but_wrong_page():
     assert check_rendered(error_page, require_text=["Bills Track"]).rendered is False
 
 
+def test_hidden_dom_does_not_count_towards_visible_text():
+    """A preloaded panel is bytes a reader never sees; it must not lift a shell."""
+    padding = "Preloaded row of data nobody can see. " * 200
+    shell = f'<html><body><div hidden>{padding}</div><div style="display:none">{padding}</div>Menu</body></html>'
+    assert visible_text(shell) == "Menu"
+    assert check_rendered(shell).rendered is False
+
+
 def test_detect_frameworks_deduplicates():
     assert detect_frameworks('<html data-n-head-ssr><script>window.__NUXT__=1</script>') == ("Nuxt",)
     assert detect_frameworks("<html><body>plain</body></html>") == ()
@@ -152,9 +160,39 @@ def test_capture_writes_one_manifest_row(tmp_path):
 def test_dry_run_writes_nothing(tmp_path):
     probe = BrowserProbe(tmp_path, renderer=fake_renderer(RENDERED_HTML))
     record = probe.capture("https://prsindia.org/billtrack", dry_run=True)
-    assert record["status"] == "dry_run"
+    assert record["dry_run"] is True
     assert not (tmp_path / "manifest.jsonl").exists()
     assert not (tmp_path / "rendered").exists()
+
+
+def test_dry_run_does_not_hide_a_shell_verdict(tmp_path):
+    """`render` without --out is forced into dry-run; a shell must still say so."""
+    probe = BrowserProbe(tmp_path, renderer=fake_renderer(SHELL_HTML))
+    record = probe.capture("https://www.data.gov.in/catalogs", dry_run=True)
+    assert record["status"] == "shell_only"
+    assert record["dry_run"] is True
+
+
+def test_http_error_is_never_downloaded_however_long_the_error_page(tmp_path):
+    """Playwright returns a response for 4xx/5xx; the text floor cannot judge it."""
+    wordy_403 = "<html><body>" + "Access denied by the security policy. " * 300 + "</body></html>"
+    assert check_rendered(wordy_403).rendered is True  # text alone would pass it
+    probe = BrowserProbe(tmp_path, renderer=fake_renderer(wordy_403, status=403))
+    record = probe.capture("https://example.gov.in/x")
+    assert record["status"] == "error"
+    assert record["rendered"] is False
+    assert record["error"] == "HTTP 403"
+    assert "rendered_shells" in record["dest"]
+    assert not (tmp_path / "rendered").exists()
+
+
+def test_query_string_variants_do_not_share_one_destination(tmp_path):
+    probe = BrowserProbe(tmp_path, renderer=fake_renderer(RENDERED_HTML))
+    a = probe.capture("https://example.gov.in/search?q=alpha")
+    b = probe.capture("https://example.gov.in/search?q=beta")
+    assert a["dest"] != b["dest"]
+    assert a["key"] != b["key"]
+    assert len(list((tmp_path / "rendered").glob("*.html"))) == 2
 
 
 def test_render_failure_is_recorded_as_error(tmp_path):

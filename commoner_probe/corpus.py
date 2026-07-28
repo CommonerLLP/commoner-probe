@@ -65,6 +65,7 @@ from .records import (
     ManifestMynetaRecord,
     ManifestPrsBillTrackRecord,
     ManifestPrsMpTrackRecord,
+    ManifestPrsPublicationRecord,
     ManifestQaRecord,
     ManifestQuestionListRecord,
     ManifestRenderedPageRecord,
@@ -235,6 +236,12 @@ class Corpus:
         for d in _iter_jsonl(self.out_dir / "manifest.jsonl"):
             if d.get("kind") == "prs_bill_track":
                 yield ManifestPrsBillTrackRecord.from_dict(d)
+
+    def manifest_prs_publications(self) -> Iterator[ManifestPrsPublicationRecord]:
+        """Stream PRS Report Summaries and Vital Stats records from manifest.jsonl."""
+        for d in _iter_jsonl(self.out_dir / "manifest.jsonl"):
+            if d.get("kind") in ("prs_report_summary", "prs_vital_stats"):
+                yield ManifestPrsPublicationRecord.from_dict(d)
 
     def manifest_question_lists(self) -> Iterator[ManifestQuestionListRecord]:
         """Stream pre-admission question-list/Bulletin records from manifest.jsonl."""
@@ -440,6 +447,7 @@ class Corpus:
         "manifest_cag_state_accounts": "manifest_cag_state_accounts",
         "manifest_prs_mp_track": "manifest_prs_mp_track",
         "manifest_prs_bill_track": "manifest_prs_bill_track",
+        "manifest_prs_publications": "manifest_prs_publications",
         "manifest_legacy_dspace": "manifest_legacy_dspace",
         "manifest_mospi": "manifest_mospi",
         "manifest_court_records": "manifest_court_records",

@@ -576,21 +576,27 @@ def courts_cmd(args: argparse.Namespace) -> None:
     )
 
     if args.ecourts:
-        if not args.out:
+        if not args.out and not args.dry_run:
             raise SystemExit("--out is required for --ecourts")
         ecourts_args = args.ecourts_arg or []
         try:
             rows = run_ecourts(ecourts_args, command=args.ecourts_cmd)
         except ECourtsUnavailable as exc:
             raise SystemExit(str(exc)) from exc
-        out = Path(args.out)
-        out.mkdir(parents=True, exist_ok=True)
         cmd = ecourts_command(args.ecourts_cmd)
-        with (out / "manifest.jsonl").open("a", encoding="utf-8") as f:
-            for raw in rows:
-                record = ecourts_record(raw, args=ecourts_args, command=cmd)
-                f.write(json.dumps(record, ensure_ascii=False) + "\n")
-                print(json.dumps(record, ensure_ascii=False))
+        records = [ecourts_record(raw, args=ecourts_args, command=cmd) for raw in rows]
+        # A dry run prints and writes nothing. This branch used to create the
+        # out dir and append to manifest.jsonl unconditionally, so --dry-run
+        # against an existing corpus mutated it — the opposite of the flag's
+        # advertised contract, and the Indian Kanoon branch already honoured it.
+        if not args.dry_run:
+            out = Path(args.out)
+            out.mkdir(parents=True, exist_ok=True)
+            with (out / "manifest.jsonl").open("a", encoding="utf-8") as f:
+                for record in records:
+                    f.write(json.dumps(record, ensure_ascii=False) + "\n")
+        for record in records:
+            print(json.dumps(record, ensure_ascii=False))
         return
 
     if not args.query:
@@ -691,6 +697,13 @@ def prs_cmd(args: argparse.Namespace) -> None:
     if args.surface == "bill-track":
         records = probe.probe_billtrack(
             max_records=args.max_records,
+            dry_run=args.dry_run,
+        )
+    elif args.surface in ("report-summaries", "vital-stats"):
+        records = probe.probe_publications(
+            surface=args.surface,
+            max_records=args.max_records,
+            download=args.download,
             dry_run=args.dry_run,
         )
     else:
@@ -1341,12 +1354,14 @@ def build_parser() -> argparse.ArgumentParser:
     prs.add_argument("--out", required=True, help="Output corpus directory")
     prs.add_argument(
         "--surface",
-        choices=["mp-track", "bill-track"],
+        choices=["mp-track", "bill-track", "report-summaries", "vital-stats"],
         default="mp-track",
         help=(
             "PRS surface to acquire. mp-track: per-MP participation CSV "
             "(--house/--loksabhas apply). bill-track: the full Bills listing, "
-            "one row per bill, single request, metadata only."
+            "one row per bill, single request, metadata only. "
+            "report-summaries / vital-stats: the policy publication listings, "
+            "one row per item; --download also fetches each PDF."
         ),
     )
     prs.add_argument("--house", choices=["ls", "rs", "both"], default="ls")
