@@ -724,7 +724,9 @@ def abhilekh_patal_cmd(args: argparse.Namespace) -> None:
     from .abhilekh_patal import DEFAULT_SLEEP, AbhilekhPatalProbe, ChallengeBlocked
 
     probe = AbhilekhPatalProbe(
-        Path(args.out), sleep=args.sleep or DEFAULT_SLEEP, user_agent=args.user_agent
+        Path(args.out),
+        sleep=DEFAULT_SLEEP if args.sleep is None else args.sleep,
+        user_agent=args.user_agent,
     )
     try:
         for record in probe.probe(
