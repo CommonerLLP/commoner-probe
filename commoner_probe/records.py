@@ -1201,3 +1201,36 @@ class ManifestNaiCatalogueRecord:
     @classmethod
     def from_dict(cls, d: dict) -> "ManifestNaiCatalogueRecord":
         return _from_dict(cls, d)
+
+
+@dataclass
+class ManifestWaybackCaptureRecord:
+    """One Wayback Machine capture-index entry.
+
+    `digest` is the load-bearing field: two captures with the same digest are
+    byte-identical, so a change history is the sequence of digest changes, not
+    the sequence of crawls.
+    """
+
+    key: str
+    kind: str
+    record_type: str
+    source_family: str
+    source: str
+    publisher: str
+    query_url: str
+    url: str
+    timestamp: str
+    snapshot_url: str
+    status: str
+    fetched_at: str
+    probed_at: str
+    captured_at: str | None = None
+    http_status: str | None = None
+    digest: str | None = None
+    media_type: str | None = None
+    length: int | None = None
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "ManifestWaybackCaptureRecord":
+        return _from_dict(cls, d)

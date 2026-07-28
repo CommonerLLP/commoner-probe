@@ -738,6 +738,26 @@ def abhilekh_patal_cmd(args: argparse.Namespace) -> None:
         raise SystemExit(str(exc)) from exc
 
 
+def wayback_cmd(args: argparse.Namespace) -> None:
+    from .wayback import IndexUnavailable, WaybackCaptureProbe
+
+    probe = WaybackCaptureProbe(Path(args.out), sleep=args.sleep)
+    try:
+        for record in probe.probe(
+            url=args.url,
+            from_date=args.from_date,
+            to_date=args.to_date,
+            match_prefix=args.prefix,
+            collapse_digest=args.collapse_digest,
+            only_ok=args.only_ok,
+            max_records=args.max_records,
+            dry_run=args.dry_run,
+        ):
+            print(json.dumps(record, ensure_ascii=False))
+    except IndexUnavailable as exc:
+        raise SystemExit(str(exc)) from exc
+
+
 def budget_cmd(args: argparse.Namespace) -> None:
     out = Path(args.out)
     sources = _split_csv(args.sources) or ["union-budget"]
@@ -1457,6 +1477,37 @@ def build_parser() -> argparse.ArgumentParser:
     )
     nai.add_argument("--dry-run", action="store_true", help="Print records without writing anything")
     nai.set_defaults(func=abhilekh_patal_cmd)
+
+    wayback = sub.add_parser(
+        "wayback",
+        help=(
+            "List a URL's Internet Archive capture history from the CDX index "
+            "(what the archive already holds, and when the page changed)."
+        ),
+    )
+    wayback.add_argument("--out", required=True, help="Output corpus directory")
+    wayback.add_argument("--url", required=True, help="URL, host, or path to query")
+    wayback.add_argument(
+        "--prefix",
+        action="store_true",
+        help="Match everything under the URL rather than that exact URL.",
+    )
+    wayback.add_argument("--from-date", dest="from_date", help="Earliest capture; a year, year-month, or full 14-digit stamp")
+    wayback.add_argument("--to-date", dest="to_date", help="Latest capture; same formats as --from-date")
+    wayback.add_argument(
+        "--collapse-digest",
+        action="store_true",
+        help="Drop consecutive captures with unchanged content — when the page CHANGED, not when it was crawled.",
+    )
+    wayback.add_argument(
+        "--only-ok",
+        action="store_true",
+        help="Keep HTTP 200 captures only, dropping redirects and error pages.",
+    )
+    wayback.add_argument("--max-records", type=int, help="Stop after N captures")
+    wayback.add_argument("--sleep", type=float, default=1.0, help="Pause between CDX requests")
+    wayback.add_argument("--dry-run", action="store_true", help="Print records without writing anything")
+    wayback.set_defaults(func=wayback_cmd)
 
     budget = sub.add_parser(
         "budget",
