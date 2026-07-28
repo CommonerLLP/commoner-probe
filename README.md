@@ -674,9 +674,13 @@ passed through unmodified.
 
 ```bash
 export COMMONER_PROBE_ECOURTS_CMD=/path/to/ecourts
-commoner-probe courts --ecourts --ecourts-arg --court --ecourts-arg delhi \
+commoner-probe courts --ecourts --ecourts-arg=--court --ecourts-arg=delhi \
   --out data/courts
 ```
+
+Option-shaped passthrough arguments need the `=` form. Written as
+`--ecourts-arg --court`, argparse reads `--court` as the next option rather
+than as this one's value, and the command fails during parsing.
 
 `openjustice-in/ecourts` is GPL-3.0 and commoner-probe is MIT, so it is
 neither imported nor declared a dependency — install it yourself and point

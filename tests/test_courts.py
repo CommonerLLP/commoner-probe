@@ -384,6 +384,21 @@ def test_ecourts_absent_is_a_reported_state_not_a_crash(monkeypatch):
         run_ecourts([])
 
 
+def test_ecourts_command_survives_a_path_containing_spaces(tmp_path, monkeypatch):
+    """str.split() would break the path in two and keep the quotes."""
+    spaced = tmp_path / "My Tools"
+    spaced.mkdir()
+    exe = spaced / "ecourts"
+    exe.write_text("#!/bin/sh\n", encoding="utf-8")
+    monkeypatch.setenv(ECOURTS_CMD_ENV, f'"{exe}" --verbose')
+    assert ecourts_command() == [str(exe), "--verbose"]
+
+
+def test_ecourts_command_on_unbalanced_quotes_is_none_not_a_crash(monkeypatch):
+    monkeypatch.setenv(ECOURTS_CMD_ENV, '"/unclosed/path')
+    assert ecourts_command() is None
+
+
 def test_run_ecourts_reads_json_array_from_stdout(tmp_path, monkeypatch):
     monkeypatch.setenv(ECOURTS_CMD_ENV, fake_ecourts(tmp_path, '[{"cnr": "A"}, {"cnr": "B"}]'))
     assert [r["cnr"] for r in run_ecourts([])] == ["A", "B"]
