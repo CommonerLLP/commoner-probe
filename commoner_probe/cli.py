@@ -720,6 +720,24 @@ def prs_cmd(args: argparse.Namespace) -> None:
         print(json.dumps(record, ensure_ascii=False))
 
 
+def abhilekh_patal_cmd(args: argparse.Namespace) -> None:
+    from .abhilekh_patal import DEFAULT_SLEEP, AbhilekhPatalProbe, ChallengeBlocked
+
+    probe = AbhilekhPatalProbe(
+        Path(args.out), sleep=args.sleep or DEFAULT_SLEEP, user_agent=args.user_agent
+    )
+    try:
+        for record in probe.probe(
+            query=args.query,
+            max_records=args.max_records,
+            max_pages=args.max_pages,
+            dry_run=args.dry_run,
+        ):
+            print(json.dumps(record, ensure_ascii=False))
+    except ChallengeBlocked as exc:
+        raise SystemExit(str(exc)) from exc
+
+
 def budget_cmd(args: argparse.Namespace) -> None:
     out = Path(args.out)
     sources = _split_csv(args.sources) or ["union-budget"]
@@ -1415,6 +1433,30 @@ def build_parser() -> argparse.ArgumentParser:
         help="List candidate handles from the browse index without fetching item pages.",
     )
     legacy_dspace.set_defaults(func=legacy_dspace_cmd)
+
+    nai = sub.add_parser(
+        "abhilekh-patal",
+        help=(
+            "Probe the National Archives of India catalogue (Abhilekh Patal). "
+            "Catalogue metadata only — the scans are behind a paid ordering "
+            "flow. Requires India-region egress."
+        ),
+    )
+    nai.add_argument("--out", required=True, help="Output corpus directory")
+    nai.add_argument("--query", required=True, help="Catalogue search term")
+    nai.add_argument("--max-records", type=int, help="Stop after N new records")
+    nai.add_argument("--max-pages", type=int, help="Stop after N result pages (10 records each)")
+    nai.add_argument("--sleep", type=float, help="Pause between requests (default 2s)")
+    nai.add_argument(
+        "--user-agent",
+        help=(
+            "Identity to present. The site's WAF challenges every "
+            "commoner-probe User-Agent, so acquisition requires choosing one "
+            "deliberately; whatever is used is stamped into each record."
+        ),
+    )
+    nai.add_argument("--dry-run", action="store_true", help="Print records without writing anything")
+    nai.set_defaults(func=abhilekh_patal_cmd)
 
     budget = sub.add_parser(
         "budget",

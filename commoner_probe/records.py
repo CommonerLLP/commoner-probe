@@ -1167,3 +1167,37 @@ __all__ = [
     "MinisterialAppointment",
     "BureaucraticPosting",
 ]
+
+
+@dataclass
+class ManifestNaiCatalogueRecord:
+    """One Abhilekh Patal (National Archives of India) catalogue description.
+
+    Catalogue only. The scanned record behind it is not publicly downloadable,
+    so there is no dest or sha256 and `status` is always metadata_only.
+    """
+
+    key: str
+    kind: str
+    record_type: str
+    source_family: str
+    source: str
+    publisher: str
+    item_id: str
+    url: str
+    title: str
+    search_query: str
+    status: str
+    fetched_at: str
+    probed_at: str
+    identifier: str | None = None
+    year: int | None = None
+    page_count: int | None = None
+    language: str | None = None
+    keywords: str | None = None
+    extra: dict | None = None
+    result_page: int | None = None
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "ManifestNaiCatalogueRecord":
+        return _from_dict(cls, d)

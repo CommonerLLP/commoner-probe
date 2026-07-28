@@ -1,0 +1,129 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CommonerLLP/commoner-probe/schemas/v1/manifest_abhilekh_patal.json",
+  "title": "manifest.jsonl — Abhilekh Patal (National Archives of India) catalogue record",
+  "description": "One archival description from the National Archives of India's Abhilekh Patal catalogue (REQ-0021). This is a CATALOGUE record, never a document: search and metadata are open, but the scanned records sit behind a paid reproduction-ordering flow (the results page carries Cart/Order markup and the site publishes a cancellation/refund policy), so `status` is always `metadata_only` and there is no dest or sha256. A `downloaded` status here would misdescribe what was acquired. Acquisition requires India-region egress — the AWS WAF answers other clients with HTTP 202 and a Human Verification page, which a headless browser does not clear either; the probe raises on that response rather than recording an empty corpus. `identifier` is the archive's own reference (e.g. MF_222400148993) and is the join key to a physical holding; `year` is the record's date as the archive states it, which for archival material is frequently absent. Any card label the site adds beyond the mapped set is preserved verbatim under `extra` rather than dropped.",
+  "type": "object",
+  "required": [
+    "key",
+    "kind",
+    "record_type",
+    "source_family",
+    "source",
+    "publisher",
+    "item_id",
+    "url",
+    "title",
+    "search_query",
+    "status",
+    "fetched_at",
+    "probed_at",
+    "user_agent"
+  ],
+  "properties": {
+    "key": {
+      "type": "string",
+      "pattern": "^NAI\\|[0-9a-f-]+$"
+    },
+    "kind": {
+      "type": "string",
+      "const": "nai_catalogue_record"
+    },
+    "record_type": {
+      "type": "string",
+      "const": "nai_catalogue_record"
+    },
+    "source_family": {
+      "type": "string",
+      "const": "national-archives"
+    },
+    "source": {
+      "type": "string",
+      "const": "abhilekh-patal.in"
+    },
+    "publisher": {
+      "type": "string",
+      "const": "National Archives of India"
+    },
+    "item_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f-]+$",
+      "description": "The archive's own item UUID, lower-cased. Stable identity for the record."
+    },
+    "url": {
+      "type": "string",
+      "format": "uri"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "identifier": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "The archive's reference number for the holding, e.g. MF_222400148993."
+    },
+    "year": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "description": "Null is common and meaningful: archival material is frequently undated in the catalogue."
+    },
+    "page_count": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "language": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "keywords": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "extra": {
+      "type": "object",
+      "description": "Card labels outside the mapped set, kept verbatim so a new field the archive introduces is not silently discarded.",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "search_query": {
+      "type": "string",
+      "description": "The query that surfaced this record. Provenance: this catalogue is acquired by search, not by enumeration, so the query is part of how the record was found."
+    },
+    "result_page": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "metadata_only",
+        "dry_run"
+      ],
+      "description": "Always metadata_only for a real run. The documents are not publicly downloadable."
+    },
+    "fetched_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "probed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "user_agent": {
+      "type": "string",
+      "description": "The identity presented when this record was acquired. Recorded because the site's WAF challenges every commoner-probe User-Agent, so acquiring the catalogue requires choosing an identity deliberately — the corpus carries that choice rather than hiding it."
+    }
+  }
+}

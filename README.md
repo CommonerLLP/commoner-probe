@@ -816,6 +816,47 @@ item's PDF into `pdf/prs-<surface>/` with a sha256, and a response that is not
 a PDF (a WAF interstitial answers 200 with HTML) is recorded as `status:
 "error"` rather than counted as an acquisition.
 
+### `commoner-probe abhilekh-patal` — National Archives of India catalogue
+
+```bash
+commoner-probe abhilekh-patal \
+  --out data/nai \
+  --query "police" \
+  --max-pages 20
+```
+
+Acquires the **catalogue** of Abhilekh Patal, the National Archives of India's
+digital records portal — one record per archival description, carrying the
+archive's own identifier, year, page count, language and keywords.
+
+**It does not acquire documents, and it never claims to.** Search and metadata
+are open, but the scans sit behind a paid reproduction-ordering flow (the
+results page carries `Cart`/`Order` markup and the site publishes a
+cancellation and refund policy). So `status` is always `metadata_only`; there
+is no `dest` and no `sha256`. Live 2026-07-28, a `police` query reports 59,414
+records across 5,942 pages.
+
+Two access facts, both measured rather than assumed:
+
+- **India-region egress is required.** From elsewhere the AWS WAF answers
+  HTTP 202 with a Human Verification page and no catalogue, and a real headless
+  Chromium executing JS does not clear it either — `commoner-probe render` is
+  not a workaround. Run this from an India egress path.
+- **The WAF challenges every `commoner-probe` User-Agent**, including the
+  scheme-free form that cleared `mha.gov.in`. Acquiring this source therefore
+  means deciding what identity to present, so the probe will not decide for
+  you: the honest default is kept, a challenge **fails loudly with exit 1**
+  rather than writing an empty corpus, and `--user-agent` lets an operator
+  choose explicitly. Whatever is used is stamped into every record's
+  `user_agent` field, so the corpus records how it was obtained.
+
+Pagination does not use a query parameter — `?Page.Number=N` on the search URL
+is silently ignored and returns page 0, so a crawler that trusted it would
+re-record the first ten results forever. The adapter uses the site's own
+`/Category/Search/PaginationScroll` endpoint instead. `--max-pages` and
+`--max-records` are brakes; without either it walks the whole result set at ten
+records per page.
+
 ### `commoner-probe bills` — bills & legislation catalog
 
 ```bash
