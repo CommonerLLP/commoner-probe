@@ -71,6 +71,7 @@ from .records import (
     ManifestQuestionListRecord,
     ManifestRenderedPageRecord,
     ManifestTabledPaperRecord,
+    ManifestWaybackCaptureRecord,
     NevaDistrictRowRecord,
     OutsourcingRowRecord,
     QuestionListRowRecord,
@@ -249,6 +250,12 @@ class Corpus:
         for d in _iter_jsonl(self.out_dir / "manifest.jsonl"):
             if d.get("kind") == "nai_catalogue_record":
                 yield ManifestNaiCatalogueRecord.from_dict(d)
+
+    def manifest_wayback_captures(self) -> Iterator[ManifestWaybackCaptureRecord]:
+        """Stream Wayback capture-index records from manifest.jsonl."""
+        for d in _iter_jsonl(self.out_dir / "manifest.jsonl"):
+            if d.get("kind") == "wayback_capture":
+                yield ManifestWaybackCaptureRecord.from_dict(d)
 
     def manifest_question_lists(self) -> Iterator[ManifestQuestionListRecord]:
         """Stream pre-admission question-list/Bulletin records from manifest.jsonl."""
@@ -456,6 +463,7 @@ class Corpus:
         "manifest_prs_bill_track": "manifest_prs_bill_track",
         "manifest_prs_publications": "manifest_prs_publications",
         "manifest_nai_catalogue": "manifest_nai_catalogue",
+        "manifest_wayback_captures": "manifest_wayback_captures",
         "manifest_legacy_dspace": "manifest_legacy_dspace",
         "manifest_mospi": "manifest_mospi",
         "manifest_court_records": "manifest_court_records",

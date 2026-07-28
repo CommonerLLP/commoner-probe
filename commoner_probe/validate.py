@@ -73,6 +73,8 @@ def _pick_schema_name(rec: dict) -> str | None:
         return "manifest_prs_publication"
     if kind == "nai_catalogue_record":
         return "manifest_abhilekh_patal"
+    if kind == "wayback_capture":
+        return "manifest_wayback_capture"
     if kind == "question_list":
         return "manifest_question_list"
     if kind == "legacy_dspace_item":

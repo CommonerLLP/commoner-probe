@@ -30,6 +30,7 @@ package. See REQ-0036 for the licence analysis.
 from __future__ import annotations
 
 import json
+import time
 from typing import Any
 from urllib.parse import quote
 
@@ -41,6 +42,27 @@ REPLAY_BASE = "https://web.archive.org/web/"
 
 # The CDX fields this module reads, in the order the API returns them.
 _CDX_FIELDS = "timestamp,original,statuscode,digest"
+
+# Fields requested when listing captures. Always sent explicitly: the API's
+# default column order is not the same as this one (it leads with `urlkey` and
+# puts `mimetype` before `statuscode`), so a positional read of a defaulted
+# response silently mis-assigns every column.
+CAPTURE_FIELDS = ("timestamp", "original", "statuscode", "digest", "mimetype", "length")
+
+# Rows per CDX request when walking a full capture list. The index is paged with
+# an opaque resumeKey rather than an offset.
+DEFAULT_BATCH = 1000
+
+# Listing a batch is a far heavier query than fetching one capture, and the
+# index is slow under load, so the listing timeout is its own (larger) number.
+LIST_TIMEOUT = 120.0
+
+# The index flaps: the same query returned `200 []` and then `503` three seconds
+# apart (measured 2026-07-28), and read timeouts are common. Retrying is not
+# optional politeness — without it a transient failure mid-walk truncates a
+# capture history and the corpus silently ends early.
+LIST_RETRIES = 4
+LIST_BACKOFF_SEC = 5.0
 
 DEFAULT_TIMEOUT = 30.0
 SAVE_TIMEOUT = 60.0
@@ -258,3 +280,305 @@ def _main(argv: list[str]) -> int:  # pragma: no cover - thin CLI shim
     fields = snapshot_fields(argv[0], save="--no-save" not in argv)
     print(json.dumps(fields, ensure_ascii=False))
     return 0
+
+
+# ---------------------------------------------------------------------------
+# Capture listing — the full history of a URL or prefix, not just the newest
+# ---------------------------------------------------------------------------
+
+class IndexUnavailable(RuntimeError):
+    """The CDX index could not be read. NOT the same as "no captures exist"."""
+
+
+def _cdx_rows(payload: Any) -> list[list[str]]:
+    """Data rows from a CDX json payload, header and resume markers removed."""
+    if not isinstance(payload, list) or not payload:
+        return []
+    header = payload[0]
+    rows = payload[1:] if isinstance(header, list) and header and header[0] in CAPTURE_FIELDS + ("urlkey",) else payload
+    # A resumeKey response ends with a blank row then a one-element row holding
+    # the key. Both are markers, not captures.
+    return [r for r in rows if isinstance(r, list) and len(r) > 1]
+
+
+def _resume_key(payload: Any) -> str | None:
+    """The opaque continuation token, if the response carried one.
+
+    Shape verified live 2026-07-28: the last two rows are ``[]`` followed by
+    ``["<key>"]``. A single-element final row is the only place the key appears.
+    """
+    if not isinstance(payload, list) or len(payload) < 2:
+        return None
+    last = payload[-1]
+    if isinstance(last, list) and len(last) == 1 and isinstance(last[0], str) and last[0]:
+        return last[0]
+    return None
+
+
+def capture_query(
+    url: str,
+    *,
+    from_date: str | None = None,
+    to_date: str | None = None,
+    match_prefix: bool = False,
+    collapse_digest: bool = False,
+    only_ok: bool = False,
+    limit: int = DEFAULT_BATCH,
+    resume_key: str | None = None,
+) -> dict[str, Any]:
+    """CDX query parameters for one batch of a capture listing.
+
+    ``from_date``/``to_date`` accept any timestamp prefix the API does — a bare
+    year, a year-month, or a full 14-digit stamp (verified live).
+
+    ``match_prefix`` appends ``/*``, which asks for every captured URL under the
+    given host or path rather than that exact URL.
+
+    ``collapse_digest`` drops consecutive captures whose content digest is
+    unchanged, which is how you get "when did this page actually change" rather
+    than "how often was it crawled". ``only_ok`` keeps HTTP 200 captures alone,
+    dropping the redirects and error pages the crawler also recorded.
+    """
+    target = url.rstrip("/") + "/*" if match_prefix else url
+    params: dict[str, Any] = {
+        "url": target,
+        "output": "json",
+        "fl": ",".join(CAPTURE_FIELDS),
+        "limit": limit,
+        "showResumeKey": "true",
+    }
+    if from_date:
+        params["from"] = from_date
+    if to_date:
+        params["to"] = to_date
+    if collapse_digest:
+        params["collapse"] = "digest"
+    if only_ok:
+        params["filter"] = "statuscode:200"
+    if resume_key:
+        params["resumeKey"] = resume_key
+    return params
+
+
+def iter_captures(
+    url: str,
+    *,
+    from_date: str | None = None,
+    to_date: str | None = None,
+    match_prefix: bool = False,
+    collapse_digest: bool = False,
+    only_ok: bool = False,
+    max_records: int | None = None,
+    batch: int = DEFAULT_BATCH,
+    session: Any = None,
+    timeout: float = LIST_TIMEOUT,
+    retries: int = LIST_RETRIES,
+    backoff: float = LIST_BACKOFF_SEC,
+) -> Any:
+    """Yield every capture of *url*, following resumeKey pagination.
+
+    Each capture is ``{timestamp, original, statuscode, digest, mimetype,
+    length, snapshot_url}``.
+
+    **A URL with no captures yields nothing; an unreachable index raises.**
+    Those are opposite facts and the API does not make them easy to tell apart:
+    "no captures" is HTTP 200 with a body of ``[]``, while the index answers
+    5xx — or resets the connection — often enough that the *same* query returned
+    ``200 []`` and then ``503`` three seconds later (measured 2026-07-28). A
+    caller that read a 503 as "never archived" would record an outage as a fact
+    about the source, which is the failure ``recheck()`` exists to prevent.
+    """
+    session = session or make_session()
+    resume: str | None = None
+    emitted = 0
+    seen_batches = 0
+
+    while True:
+        params = capture_query(
+            url,
+            from_date=from_date,
+            to_date=to_date,
+            match_prefix=match_prefix,
+            collapse_digest=collapse_digest,
+            only_ok=only_ok,
+            limit=batch,
+            resume_key=resume,
+        )
+        body = None
+        last_exc: Exception | None = None
+        for attempt in range(retries):
+            try:
+                r = session.get(CDX_API, params=params, timeout=timeout)
+                r.raise_for_status()
+                body = r.text
+                break
+            except Exception as exc:  # noqa: PERF203 - retry is the point
+                last_exc = exc
+                if attempt < retries - 1:
+                    time.sleep(backoff * (attempt + 1))
+        if body is None:
+            raise IndexUnavailable(
+                f"the Wayback CDX index could not be read for {url!r} after "
+                f"{retries} attempts: {type(last_exc).__name__}: {last_exc}. "
+                "This is NOT evidence that the URL has no captures — a 5xx, a "
+                "reset connection and a read timeout are all facts about the "
+                "index, not about the source."
+            ) from last_exc
+
+        if not body.strip():
+            return
+        try:
+            payload = json.loads(body)
+        except json.JSONDecodeError as exc:
+            raise IndexUnavailable(
+                f"the Wayback CDX index returned an unparseable body for {url!r}: {exc}"
+            ) from exc
+
+        rows = _cdx_rows(payload)
+        seen_batches += 1
+        for row in rows:
+            record = dict(zip(CAPTURE_FIELDS, row))
+            timestamp = str(record.get("timestamp") or "")
+            original = str(record.get("original") or url)
+            if not timestamp:
+                continue
+            record["snapshot_url"] = replay_url(timestamp, original)
+            yield record
+            emitted += 1
+            if max_records is not None and emitted >= max_records:
+                return
+
+        resume = _resume_key(payload)
+        if not resume or not rows:
+            return
+
+
+# ---------------------------------------------------------------------------
+# Probe — capture lists into the provenance manifest
+# ---------------------------------------------------------------------------
+
+class WaybackCaptureProbe:
+    """Write a URL's (or a prefix's) capture history into a corpus manifest.
+
+    This is the archival counterpart to :func:`attach_snapshot`. That records
+    *one* snapshot alongside a file as it is acquired; this records *what the
+    archive holds*, which is what answers "when did this page change, and what
+    did it say before" for a source nobody captured at the time.
+    """
+
+    def __init__(
+        self,
+        out_dir: Any,
+        *,
+        sleep: float = 1.0,
+        session: Any = None,
+    ) -> None:
+        from pathlib import Path
+
+        self.out_dir = Path(out_dir)
+        self.sleep = sleep
+        self.manifest = self.out_dir / "manifest.jsonl"
+        self.session = session or make_session(rate_limit_sec=sleep)
+
+    def load_seen(self) -> set:
+        seen: set = set()
+        if not self.manifest.exists():
+            return seen
+        for line in self.manifest.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if row.get("kind") == "wayback_capture" and row.get("key"):
+                seen.add(row["key"])
+        return seen
+
+    def append_manifest(self, record: dict) -> None:
+        self.out_dir.mkdir(parents=True, exist_ok=True)
+        with self.manifest.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+    def _record(self, capture: dict, *, query_url: str) -> dict:
+        from datetime import datetime, timezone
+
+        now = datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+        timestamp = str(capture.get("timestamp") or "")
+        original = str(capture.get("original") or "")
+        digest = str(capture.get("digest") or "")
+        length = capture.get("length")
+        try:
+            length_int = int(length) if length not in (None, "", "-") else None
+        except (TypeError, ValueError):
+            length_int = None
+        return {
+            # Timestamp plus digest, because one URL is captured many times and
+            # a re-crawl of unchanged content is a different row from a change.
+            "key": f"WAYBACK|{original}|{timestamp}",
+            "kind": "wayback_capture",
+            "record_type": "wayback_capture",
+            "source_family": "wayback",
+            "source": "web.archive.org",
+            "publisher": "Internet Archive",
+            "query_url": query_url,
+            "url": original,
+            "timestamp": timestamp,
+            "captured_at": _iso_from_cdx(timestamp),
+            "snapshot_url": capture.get("snapshot_url"),
+            "http_status": str(capture.get("statuscode") or "") or None,
+            "digest": digest or None,
+            "media_type": str(capture.get("mimetype") or "") or None,
+            "length": length_int,
+            "status": "metadata_only",
+            "fetched_at": now,
+            "probed_at": now,
+        }
+
+    def probe(
+        self,
+        *,
+        url: str,
+        from_date: str | None = None,
+        to_date: str | None = None,
+        match_prefix: bool = False,
+        collapse_digest: bool = False,
+        only_ok: bool = False,
+        max_records: int | None = None,
+        dry_run: bool = False,
+    ) -> Any:
+        """Stream capture records, writing each to the manifest as it arrives.
+
+        Resume is by ``key`` (url + timestamp): a capture already recorded is
+        never appended twice, so re-running extends the history rather than
+        duplicating it.
+        """
+        seen = self.load_seen()
+        for capture in iter_captures(
+            url,
+            from_date=from_date,
+            to_date=to_date,
+            match_prefix=match_prefix,
+            collapse_digest=collapse_digest,
+            only_ok=only_ok,
+            max_records=max_records,
+            session=self.session,
+        ):
+            record = self._record(capture, query_url=url)
+            if dry_run:
+                yield {**record, "status": "dry_run"}
+                continue
+            if record["key"] in seen:
+                continue
+            self.append_manifest(record)
+            seen.add(record["key"])
+            yield record
+
+
+def _iso_from_cdx(timestamp: str) -> str | None:
+    """``20260720035455`` -> ``2026-07-20T03:54:55Z``, or None if malformed."""
+    if len(timestamp) != 14 or not timestamp.isdigit():
+        return None
+    y, mo, d = timestamp[0:4], timestamp[4:6], timestamp[6:8]
+    h, mi, s = timestamp[8:10], timestamp[10:12], timestamp[12:14]
+    return f"{y}-{mo}-{d}T{h}:{mi}:{s}Z"

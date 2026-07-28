@@ -816,6 +816,46 @@ item's PDF into `pdf/prs-<surface>/` with a sha256, and a response that is not
 a PDF (a WAF interstitial answers 200 with HTML) is recorded as `status:
 "error"` rather than counted as an acquisition.
 
+### `commoner-probe wayback` — Internet Archive capture history
+
+```bash
+commoner-probe wayback \
+  --out data/wayback \
+  --url mospi.gov.in \
+  --collapse-digest \
+  --only-ok
+```
+
+Lists what the Internet Archive already holds for a URL. This is the archival
+counterpart to the `wayback_*` provenance fields other adapters attach: those
+record **one** snapshot as a file is acquired, whereas this answers *when did
+this page change, and what did it say before* — for sources nobody captured at
+the time.
+
+- `--prefix` matches everything under a host or path instead of that exact URL.
+  Live 2026-07-28, `mospi.gov.in` with `--prefix` reached **362 distinct URLs**
+  in 3,000 captures.
+- `--from-date` / `--to-date` take a bare year, a year-month, or a full
+  14-digit stamp.
+- `--collapse-digest` drops consecutive captures whose content digest is
+  unchanged — the difference between *when the page changed* and *how often it
+  was crawled*.
+- `--only-ok` keeps HTTP 200 captures, dropping the redirects and error pages
+  the crawler also recorded.
+
+Records are `metadata_only`: the index is a listing, and each row carries a
+citable `snapshot_url`. Pagination follows the API's opaque `resumeKey`, so a
+full history walks in batches rather than an offset.
+
+**A URL with no captures produces no records; an unreachable index raises.**
+Those are opposite facts and the API makes them easy to confuse — "no captures"
+is HTTP 200 with a body of `[]`, while the index answers 5xx, resets the
+connection, or times out often enough that the *same* query returned `200 []`
+and then `503` three seconds apart. Reading an outage as "never archived" would
+record a fact about the Internet Archive as a fact about the source, so the
+listing retries with backoff and then fails loudly rather than writing a short
+or empty corpus.
+
 ### `commoner-probe abhilekh-patal` — National Archives of India catalogue
 
 ```bash

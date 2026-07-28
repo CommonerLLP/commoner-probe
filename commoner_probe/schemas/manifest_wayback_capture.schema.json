@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CommonerLLP/commoner-probe/schemas/v1/manifest_wayback_capture.json",
+  "title": "manifest.jsonl — Internet Archive capture-index record",
+  "description": "One capture of a URL as recorded in the Wayback Machine's CDX index. This is the archival counterpart to the wayback_* provenance fields other record kinds carry: those record ONE snapshot alongside a file as it is acquired, whereas these records describe what the archive already holds, which is what answers 'when did this page change, and what did it say before' for a source nobody captured at the time. Records are metadata_only — the CDX index is a listing, and the capture itself lives at `snapshot_url`. `digest` is the load-bearing field: two captures of the same URL with the same digest are byte-identical, so a change history is the sequence of digest changes rather than the sequence of crawls (which is why the probe offers collapse=digest). A URL with no captures produces no records; that is NOT the same as the index being unreachable, and the probe raises IndexUnavailable rather than writing an empty corpus, because the CDX API answers 5xx or resets the connection often enough that the same query returned '200 []' and then '503' three seconds apart (measured 2026-07-28).",
+  "type": "object",
+  "required": [
+    "key",
+    "kind",
+    "record_type",
+    "source_family",
+    "source",
+    "publisher",
+    "query_url",
+    "url",
+    "timestamp",
+    "snapshot_url",
+    "status",
+    "fetched_at",
+    "probed_at"
+  ],
+  "properties": {
+    "key": {
+      "type": "string",
+      "pattern": "^WAYBACK\\|.+\\|[0-9]{14}$",
+      "description": "URL plus capture timestamp. One URL has many captures, so the timestamp is part of identity."
+    },
+    "kind": { "type": "string", "const": "wayback_capture" },
+    "record_type": { "type": "string", "const": "wayback_capture" },
+    "source_family": { "type": "string", "const": "wayback" },
+    "source": { "type": "string", "const": "web.archive.org" },
+    "publisher": { "type": "string", "const": "Internet Archive" },
+    "query_url": {
+      "type": "string",
+      "description": "The URL or prefix that was queried. Provenance: a prefix query returns captures of many URLs, so the query is part of how the record was found."
+    },
+    "url": {
+      "type": "string",
+      "description": "The captured URL exactly as the archive recorded it, ports and scheme included."
+    },
+    "timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{14}$",
+      "description": "The archive's own 14-digit capture stamp, used to build snapshot_url."
+    },
+    "captured_at": {
+      "type": ["string", "null"],
+      "description": "The same instant in ISO-8601, or null if the archive's stamp was malformed."
+    },
+    "snapshot_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "The stable citation URL for this capture."
+    },
+    "http_status": {
+      "type": ["string", "null"],
+      "description": "Status the crawler received. Kept as a string because the index uses '-' for unknown. Captures that are not 200 are real records of redirects and error pages; use only_ok to exclude them."
+    },
+    "digest": { "type": ["string", "null"] },
+    "media_type": { "type": ["string", "null"] },
+    "length": { "type": ["integer", "null"] },
+    "status": {
+      "type": "string",
+      "enum": ["metadata_only", "dry_run"],
+      "description": "The index is a listing; no captured body is downloaded."
+    },
+    "fetched_at": { "type": "string", "format": "date-time" },
+    "probed_at": { "type": "string", "format": "date-time" }
+  }
+}
