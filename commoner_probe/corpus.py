@@ -63,6 +63,7 @@ from .records import (
     ManifestMinesDmftRecord,
     ManifestMospiRecord,
     ManifestMynetaRecord,
+    ManifestNaiCatalogueRecord,
     ManifestPrsBillTrackRecord,
     ManifestPrsMpTrackRecord,
     ManifestPrsPublicationRecord,
@@ -242,6 +243,12 @@ class Corpus:
         for d in _iter_jsonl(self.out_dir / "manifest.jsonl"):
             if d.get("kind") in ("prs_report_summary", "prs_vital_stats"):
                 yield ManifestPrsPublicationRecord.from_dict(d)
+
+    def manifest_nai_catalogue(self) -> Iterator[ManifestNaiCatalogueRecord]:
+        """Stream Abhilekh Patal catalogue records from manifest.jsonl."""
+        for d in _iter_jsonl(self.out_dir / "manifest.jsonl"):
+            if d.get("kind") == "nai_catalogue_record":
+                yield ManifestNaiCatalogueRecord.from_dict(d)
 
     def manifest_question_lists(self) -> Iterator[ManifestQuestionListRecord]:
         """Stream pre-admission question-list/Bulletin records from manifest.jsonl."""
@@ -448,6 +455,7 @@ class Corpus:
         "manifest_prs_mp_track": "manifest_prs_mp_track",
         "manifest_prs_bill_track": "manifest_prs_bill_track",
         "manifest_prs_publications": "manifest_prs_publications",
+        "manifest_nai_catalogue": "manifest_nai_catalogue",
         "manifest_legacy_dspace": "manifest_legacy_dspace",
         "manifest_mospi": "manifest_mospi",
         "manifest_court_records": "manifest_court_records",

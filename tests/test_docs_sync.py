@@ -51,6 +51,7 @@ class CliCommandSyncTests(unittest.TestCase):
                 "mospi",
                 "courts",
                 "render",
+                "abhilekh-patal",
                 "attendance",
                 "myneta",
                 "prs",
