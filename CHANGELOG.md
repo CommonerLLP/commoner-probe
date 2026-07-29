@@ -2,6 +2,38 @@
 
 ## Unreleased
 
+### Added
+
+- **OCR fallback on acquisition-time PDF extraction** —
+  `textparse.ocr_pdf_text()` rasterizes one page with poppler and reads it with
+  tesseract, parameterized on `lang`/`dpi`/`psm`, with an injectable runner. It
+  is the last rung of this module's existing fallback chain (`pdftotext` →
+  `pdfminer` → OCR), which nine modules already use. A missing toolchain raises
+  `OcrUnavailable` rather than returning empty text, because empty text reads
+  as "the page had no words".
+- **`extract-answers --ocr`** (NeVA corpora; `--ocr-pages` sets how many pages,
+  default 1). A document whose text layer fails the reference check is re-read
+  by OCR and re-classified. **The OCR result is accepted only if it recovers
+  the portal subject the text layer could not** — an OCR pass that also fails
+  leaves the record exactly as it was, rather than replacing it with different
+  unverified text. Recovered records carry `quality: "ocr"` and
+  `text_source: "ocr"`; the run log reports `recovered` and `still_low`
+  separately, so the pass reports what it actually bought. Off by default: it
+  shells out and costs about a second per page.
+  - Why OCR here and not glyph repair: these documents are **not scans**. All
+    30 sampled carry a Gujarati Unicode text layer, but the font subset's
+    ToUnicode cmap is partially shifted and the corruption is
+    position-dependent, so no doc-wide substitution can undo it (a
+    substring-repair prototype recovered 1 of 110). The glyphs *draw*
+    correctly, so a fresh render is pristine and OCR reads what a reader
+    reads — 0.993 median title-line similarity against 0.942 from the text
+    layer, better on 28 of 30. That margin does not transfer to real scans.
+
+### Changed
+
+- `answers_neva_qa_response.quality` gains `ocr`; records gain an optional
+  `text_source` (`text_layer` | `ocr`).
+
 ### Decided, not changed
 
 - **`abhilekh-patal` will not present a browser User-Agent to clear the NAI

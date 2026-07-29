@@ -856,7 +856,9 @@ def extract_answers_cmd(args: argparse.Namespace) -> None:
         # NeVA state-assembly corpus layout (no manifest.jsonl).
         from .neva_text import extract_neva_answers
 
-        extract_neva_answers(out, log_fn=print)
+        extract_neva_answers(
+            out, log_fn=print, ocr=args.ocr, ocr_pages=args.ocr_pages
+        )
         return
     if not (out / "manifest.jsonl").exists():
         raise SystemExit(
@@ -1062,6 +1064,22 @@ def build_parser() -> argparse.ArgumentParser:
     )
     extract.add_argument("--out", required=True, help="Corpus directory containing manifest.jsonl + downloaded PDFs")
     extract.add_argument("--refresh", action="store_true", help="Force re-extraction even if answers.jsonl exists")
+    extract.add_argument(
+        "--ocr",
+        action="store_true",
+        help=(
+            "NeVA corpora only: re-read `low`-quality documents by rasterizing and "
+            "running tesseract, and accept the result only if it recovers the "
+            "reference the text layer could not. Needs poppler + tesseract with the "
+            "`guj` model; costs about a second per page"
+        ),
+    )
+    extract.add_argument(
+        "--ocr-pages",
+        type=int,
+        default=1,
+        help="Pages per document to OCR with --ocr (default 1 — the reference line is on page 1)",
+    )
     extract.set_defaults(func=extract_answers_cmd)
 
     state_assembly = sub.add_parser(

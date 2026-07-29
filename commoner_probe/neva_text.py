@@ -17,8 +17,19 @@ three ways that break ``answers.split_qa``:
    so it is NOT fully invertible: this module repairs what it can prove
    against a known-clean reference line (the portal's own metadata
    subject) and honestly reports quality — ``clean``, ``repaired``, or
-   ``low`` — instead of emitting fabricated text. ``low`` documents are
-   OCR-fallback candidates for downstream consumers.
+   ``low`` — instead of emitting fabricated text.
+
+   ``low`` documents are **not scans**. Measured across the Gujarat corpus
+   (2026-07-28): 30 of 30 sampled carry a Gujarati Unicode text layer. The
+   corruption is position-dependent rather than a consistent permutation,
+   so no doc-wide substitution can undo it — a substring-repair prototype
+   recovered 1 of 110, because a rule like ``પ``→``િ`` learned from one
+   position destroys every legitimate ``પ``. What does work is OCR of a
+   fresh render: the glyphs *draw* correctly and only the mapping is
+   wrong, so rasterizing yields a pristine image. Head to head on 30 such
+   documents, title-line similarity to the portal subject was 0.993 median
+   by OCR against 0.942 from the text layer, OCR better on 28. See
+   ``extract_neva_answers(ocr=True)``.
 """
 
 from __future__ import annotations
@@ -139,8 +150,11 @@ def repair_text(text: str, reference: str | None) -> tuple[str, str, dict[str, s
     - ``repaired`` — reference found only after applying a glyph map
       derived from the reference alignment itself (map applied doc-wide)
     - ``low``      — reference still absent; the text layer cannot be
-      trusted for Gujarati content (OCR-fallback candidate). The
-      normalized text is still returned; no repair map is applied.
+      trusted for Gujarati content. The normalized text is still
+      returned; no repair map is applied. Recoverable by re-reading the
+      page with OCR — see ``extract_neva_answers(ocr=True)``, which calls
+      this function a second time on the OCR text and only accepts the
+      result if it comes back ``clean`` or ``repaired``.
     """
     text = normalize_gujarati_text(text)
     if not reference:
@@ -356,6 +370,11 @@ class NevaExtractionStats:
     skipped_no_text: int = 0
     skipped_no_split: int = 0
     errors: list = field(default_factory=list)
+    #: Documents whose text layer failed the reference check and whose OCR read
+    #: then passed it. Counted separately from those where OCR also failed, so
+    #: an `--ocr` run reports what it actually bought.
+    ocr_recovered: int = 0
+    ocr_attempted_unrecovered: int = 0
 
 
 def _now() -> str:
@@ -363,7 +382,7 @@ def _now() -> str:
 
 
 def extract_neva_answers(
-    out_dir: Path, *, log_fn=print
+    out_dir: Path, *, log_fn=print, ocr: bool = False, ocr_pages: int = 1
 ) -> NevaExtractionStats:
     """Walk a NeVA corpus's ``questions.jsonl``, split each question PDF's
     Gujarati text into Q/A halves, and extract district-table rows.
@@ -376,9 +395,32 @@ def extract_neva_answers(
     line — that per-row match is the integrity condition; a corrupted
     district name never matches and never yields a row. The doc-level
     quality rides along so consumers can filter harder if they choose.
-    ``low``-quality documents remain the OCR backlog for their prose.
+
+    With ``ocr=True``, a document whose text layer fails the reference check
+    (``low``) is re-read by rasterizing its pages and running tesseract, and
+    is re-classified. If that recovers the reference the record's quality is
+    ``ocr`` and ``text_source`` is ``ocr``; otherwise the text layer's own
+    result stands and nothing is fabricated. These documents are **not**
+    scans — their glyphs draw correctly and only the font subset's cmap is
+    wrong — which is why a clean render beats the embedded layer here and
+    would not on a scan. Off by default: it shells out to poppler and
+    tesseract, and costs about a second per page.
     """
-    from .textparse import extract_pdf_text, read_jsonl
+    from .textparse import (
+        OcrUnavailable,
+        extract_pdf_text,
+        ocr_pdf_text,
+        ocr_toolchain_missing,
+        read_jsonl,
+    )
+
+    if ocr:
+        missing = ocr_toolchain_missing()
+        if missing:
+            raise OcrUnavailable(
+                f"--ocr needs {', '.join(missing)} on PATH (brew install poppler tesseract "
+                "tesseract-lang)"
+            )
 
     stats = NevaExtractionStats()
     questions = read_jsonl(out_dir / "questions.jsonl")
@@ -400,12 +442,33 @@ def extract_neva_answers(
             stats.skipped_no_text += 1
             continue
         repaired, quality, mapping = repair_text(text, rec.get("subject"))
+        text_source = "text_layer"
+        if ocr and quality == "low":
+            # The text layer is present but untrustworthy. Only accept the OCR
+            # read if it recovers the reference the text layer could not — an
+            # OCR pass that also fails proves nothing and must not overwrite a
+            # record with different unverified text.
+            try:
+                ocr_text = "\n".join(
+                    ocr_pdf_text(pdf, page=n, lang="guj") for n in range(1, ocr_pages + 1)
+                )
+            except OcrUnavailable as exc:
+                stats.errors.append({"key": rec.get("key"), "where": "ocr", "error": repr(exc)})
+                ocr_text = ""
+            if ocr_text.strip():
+                ocr_repaired, ocr_quality, _ = repair_text(ocr_text, rec.get("subject"))
+                if ocr_quality in ("clean", "repaired"):
+                    repaired, quality, text_source = ocr_repaired, "ocr", "ocr"
+                    stats.ocr_recovered += 1
+                else:
+                    stats.ocr_attempted_unrecovered += 1
         stats.quality_counts[quality] = stats.quality_counts.get(quality, 0) + 1
         common = {
             "key": rec.get("key"),
             "source_pdf": str(pdf.relative_to(out_dir)),
             "extracted_at": _now(),
             "language_classified": ["gu"],
+            "text_source": text_source,
         }
         qa = split_qa_neva(repaired)
         if qa is None:
@@ -433,10 +496,15 @@ def extract_neva_answers(
                 f.write(json.dumps(r, ensure_ascii=False) + "\n")
         tmp.replace(path)
 
+    ocr_note = (
+        f", ocr: recovered={stats.ocr_recovered} still_low={stats.ocr_attempted_unrecovered}"
+        if ocr
+        else ""
+    )
     log_fn(
         f"NeVA extraction: {stats.qa_records} qa records, "
         f"{stats.district_rows} district rows, quality={stats.quality_counts}, "
         f"skipped: no_pdf={stats.skipped_no_pdf} no_text={stats.skipped_no_text} "
-        f"no_split={stats.skipped_no_split}, errors={len(stats.errors)}"
+        f"no_split={stats.skipped_no_split}, errors={len(stats.errors)}{ocr_note}"
     )
     return stats
