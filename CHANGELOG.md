@@ -2,6 +2,38 @@
 
 ## Unreleased
 
+### Fixed — regressions introduced earlier in this same cycle
+
+Codex reviewed PRs #73–#77 after they merged. Each finding was verified against
+the tree before being touched; a merged PR is never proof a comment was
+addressed. Two of these broke `validate` on shipped output.
+
+- **`validate` rejected every legacy `_runs.jsonl` row.** `status` was marked
+  required, so a corpus written before the field existed failed validation —
+  contradicting the pre-`status` audit workflow documented in the same release.
+  `status` is now optional; absent means unaudited, not clean.
+- **`validate` rejected the output of a successful OCR run.**
+  `neva_district_row.schema.json` allowed only `clean`/`repaired`/`low`/`unknown`,
+  but an OCR-recovered document propagates `quality: "ocr"` onto its district
+  rows. The enum now includes `ocr`, and the schema carries `text_source`.
+- **`status` and `text_source` never reached the typed API.** `RunRecord`,
+  `AnswerNevaQaResponse` and `NevaDistrictRowRecord` did not declare them, and
+  `_from_dict` drops unknown keys — so every consumer of `Corpus.runs()`,
+  `.answers_neva_qa()` or `.neva_district_rows()` silently lost the new
+  provenance. This is the third time this exact failure has shipped; the fields
+  are now declared.
+- **`visible_text` split words on `del`, `ins`, `label`, `output`, `big`,
+  `strike` and `acronym`** — phrasing elements missing from the inline
+  allowlist, so `Min<del>is</del>try` read as `Min is try` and could again
+  misfile a real page as `shell_only`. The allowlist is now complete.
+- **`ocr_pdf_text` discarded the rasterizer's exit code.** A malformed PDF or
+  out-of-range page exits nonzero and writes no PNG, so the function returned
+  `""` instead of raising, and the caller recorded neither an error nor an
+  attempt — the exact silent-success the exception exists to prevent.
+- **`probe_ls_mpcode` enforced `--max-records` without recording it** in the
+  run scope, so the new corpus-truncation audit would report `null` for a
+  genuinely capped LS crawl and misclassify truncation as a thin source.
+
 ### Changed — read this before upgrading
 
 - **`sansad` now exits non-zero when a crawl's every bucket errored.** Anything

@@ -133,9 +133,10 @@ class _VisibleTextParser(HTMLParser):
     #: tag-stripping regex broke it into three by replacing every tag with a
     #: space. Everything not listed here is treated as block-level.
     INLINE_TAGS = frozenset({
-        "a", "abbr", "b", "bdi", "bdo", "cite", "code", "data", "dfn", "em",
-        "font", "i", "kbd", "mark", "q", "rp", "rt", "ruby", "s", "samp",
-        "small", "span", "strong", "sub", "sup", "time", "tt", "u", "var",
+        "a", "abbr", "acronym", "b", "bdi", "bdo", "big", "cite", "code",
+        "data", "del", "dfn", "em", "font", "i", "ins", "kbd", "label", "mark",
+        "nobr", "output", "q", "rp", "rt", "rtc", "ruby", "s", "samp", "small",
+        "span", "strike", "strong", "sub", "sup", "time", "tt", "u", "var",
         "wbr",
     })
     #: Void elements that a reader sees as a break. The other void tags

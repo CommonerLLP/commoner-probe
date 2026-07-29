@@ -837,8 +837,13 @@ class SansadProbe(BaseProbe):
         )
         run_id = self.runlog.start(
             kind="qa",
+            # max_records is enforced below, so it MUST appear here: the
+            # corpus-truncation audit in docs/SCHEMAS.md reads scope to tell a
+            # capped crawl from a thin source, and an omitted cap reads as
+            # "no cap" — exactly the misclassification that audit exists to stop.
             scope={"house": "ls", "mp_code": mp_code, "member": name, "loksabha": loksabha,
-                   "from_date": from_date, "to_date": to_date, "download": download},
+                   "from_date": from_date, "to_date": to_date, "download": download,
+                   "max_records": max_records},
             topic_name=self.topic.name,
             topic_path=self.topic_path,
             classifier_config=self.topic.classifier_config,
