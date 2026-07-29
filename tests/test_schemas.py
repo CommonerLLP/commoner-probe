@@ -276,6 +276,7 @@ _RUN = {
     "started_at": "2024-01-15T10:00:00",
     "ended_at": "2024-01-15T10:01:00",
     "added": 2,
+    "status": "complete",
     "errors": [],
     "bucket_attempts": [],
     "elapsed_ms": 1234.5,

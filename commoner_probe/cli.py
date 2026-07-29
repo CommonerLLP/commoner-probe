@@ -206,6 +206,7 @@ def sansad_cmd(args: argparse.Namespace) -> None:
             download=not args.no_download,
         )
         probe.log(f"DONE added={added} total={len(seen)}")
+        _exit_on_failed_runs(probe)
         return
     if args.house in ("both", "ls"):
         if args.all:
@@ -255,6 +256,22 @@ def sansad_cmd(args: argparse.Namespace) -> None:
                 download=not args.no_download,
             )
     probe.log(f"DONE added={added} total={len(seen)}")
+    _exit_on_failed_runs(probe)
+
+
+def _exit_on_failed_runs(probe: SansadProbe) -> None:
+    """Exit non-zero when a crawl's every bucket errored (REQ-0043).
+
+    Without this a run that reached nothing exits 0 with ``added: 0``,
+    which a consumer reads as a finding about the member rather than a
+    broken crawl. ``partial`` stays a success: some buckets did return.
+    """
+    failed = probe.runlog.statuses.count("failed")
+    if failed:
+        raise SystemExit(
+            f"{failed} of {len(probe.runlog.statuses)} run(s) failed every bucket — "
+            f"see status in {probe.runlog.path}"
+        )
 
 
 def _parse_kv_params(pairs: list[str] | None) -> dict:

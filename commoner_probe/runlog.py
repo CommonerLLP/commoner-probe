@@ -111,6 +111,11 @@ class Run:
     # error). Surfaced 2026-05-08 by user audit: empty-result crawls
     # were undebuggable from the run log.
     bucket_attempts: list[dict[str, Any]] = field(default_factory=list)
+    # Run-level outcome, derived at finish(): 'complete' | 'partial' |
+    # 'failed'. Added for REQ-0043 (zero-hour): a crawl whose every bucket
+    # raised still wrote added: 0 and exited 0, so a totally-failed run and
+    # a genuinely quiet member produced indistinguishable artefacts.
+    status: str = "complete"
 
 
 class RunLog:
@@ -120,6 +125,10 @@ class RunLog:
         self.path = out_dir / "_runs.jsonl"
         self._run: Run | None = None
         self._t0: float = 0.0
+        #: Status of every run finished on this instance, in order. One
+        #: invocation can finish several runs (sansad finishes one per
+        #: house), and the command's exit code has to see all of them.
+        self.statuses: list[str] = []
 
     def start(
         self,
@@ -174,11 +183,33 @@ class RunLog:
             return
         self._run.bucket_attempts.append(dict(fields))
 
-    def finish(self, *, added: int) -> None:
+    def _derive_status(self) -> str:
+        """Run outcome from what the crawl actually recorded.
+
+        Bucket attempts are the evidence when a crawler logs them: every
+        bucket erroring is a failed run, some erroring is partial. A
+        crawler that logs no buckets falls back to ``record_error``.
+        ``added`` is deliberately not consulted — a quiet member and a
+        broken crawl both add nothing, which is the confusion this
+        field exists to end.
+        """
+        assert self._run is not None
+        buckets = self._run.bucket_attempts
+        if buckets:
+            failed = sum(1 for b in buckets if b.get("error"))
+            if failed == len(buckets):
+                return "failed"
+            return "partial" if failed else "complete"
+        return "failed" if self._run.errors else "complete"
+
+    def finish(self, *, added: int) -> str:
+        """Close the run, append it, and return its status."""
         if self._run is None:
-            return
+            return ""
         self._run.ended_at = _now()
         self._run.added = added
+        self._run.status = self._derive_status()
+        self.statuses.append(self._run.status)
         payload = {
             **self._run.__dict__,
             "elapsed_ms": round((time.monotonic() - self._t0) * 1000, 1),
@@ -186,4 +217,6 @@ class RunLog:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(payload, ensure_ascii=False) + "\n")
+        status = self._run.status
         self._run = None
+        return status

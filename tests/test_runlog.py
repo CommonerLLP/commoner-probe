@@ -242,5 +242,98 @@ class RecordBucketTests(unittest.TestCase):
         self.assertEqual(rec["bucket_attempts"], [])
 
 
+class RunStatusTests(unittest.TestCase):
+    """Run-level outcome (REQ-0043, zero-hour).
+
+    A crawl whose every bucket raised still wrote ``added: 0`` and exited
+    0, so a totally-failed run and a genuinely quiet member were the same
+    artefact. 1,285 of 1,964 runs in zero-hour's ``census-2026`` carry
+    ``added: 0``; none of them could be told apart. ``status`` makes the
+    difference testable by the consumer.
+    """
+
+    def _profile(self, tmp: str) -> Path:
+        path = Path(tmp) / "topic.json"
+        path.write_text('{"name":"demo"}', encoding="utf-8")
+        return path
+
+    def _run(self, tmp: str, buckets: list[dict], *, errors: int = 0) -> dict:
+        log = RunLog(Path(tmp))
+        log.start(
+            kind="qa", scope={}, topic_name="demo",
+            topic_path=self._profile(tmp),
+            classifier_mode="regex", classifier_config={},
+        )
+        for b in buckets:
+            log.record_bucket(**b)
+        for i in range(errors):
+            log.record_error(where=f"w{i}", exc=ValueError("boom"))
+        self.status = log.finish(added=0)
+        self.log = log
+        return json.loads((Path(tmp) / "_runs.jsonl").read_text().splitlines()[0])
+
+    def test_every_bucket_errored_is_failed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            rec = self._run(tmp, [
+                {"query": "a", "error": "ConnectionError: timeout"},
+                {"query": "b", "error": "ConnectionError: timeout"},
+            ])
+        self.assertEqual(rec["status"], "failed")
+        self.assertEqual(self.status, "failed")
+
+    def test_some_buckets_errored_is_partial(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            rec = self._run(tmp, [
+                {"query": "a", "error": "ConnectionError: timeout"},
+                {"query": "b", "error": None},
+            ])
+        self.assertEqual(rec["status"], "partial")
+
+    def test_no_bucket_errored_is_complete(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            rec = self._run(tmp, [{"query": "a", "error": None}, {"query": "b"}])
+        self.assertEqual(rec["status"], "complete")
+
+    def test_zero_added_with_clean_buckets_is_still_complete(self):
+        """A genuinely quiet member must not read as a broken crawl."""
+        with tempfile.TemporaryDirectory() as tmp:
+            rec = self._run(tmp, [{"query": "a", "raw_returned": 0, "error": None}])
+        self.assertEqual(rec["status"], "complete")
+        self.assertEqual(rec["added"], 0)
+
+    def test_no_buckets_but_recorded_errors_is_failed(self):
+        """Crawlers that never call record_bucket still report honestly."""
+        with tempfile.TemporaryDirectory() as tmp:
+            rec = self._run(tmp, [], errors=1)
+        self.assertEqual(rec["status"], "failed")
+
+    def test_no_buckets_and_no_errors_is_complete(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            rec = self._run(tmp, [])
+        self.assertEqual(rec["status"], "complete")
+
+    def test_statuses_accumulate_across_runs_on_one_log(self):
+        """A sansad invocation finishes one run per house; the command's
+        exit code has to see both."""
+        with tempfile.TemporaryDirectory() as tmp:
+            log = RunLog(Path(tmp))
+            for buckets in ([{"query": "a"}], [{"query": "b", "error": "x"}]):
+                log.start(
+                    kind="qa", scope={}, topic_name="demo",
+                    topic_path=self._profile(tmp),
+                    classifier_mode="regex", classifier_config={},
+                )
+                for b in buckets:
+                    log.record_bucket(**b)
+                log.finish(added=0)
+            self.assertEqual(log.statuses, ["complete", "failed"])
+
+    def test_finish_without_start_returns_empty_and_records_nothing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            log = RunLog(Path(tmp))
+            self.assertEqual(log.finish(added=1), "")
+            self.assertEqual(log.statuses, [])
+
+
 if __name__ == "__main__":
     unittest.main()
