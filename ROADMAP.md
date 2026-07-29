@@ -14,10 +14,11 @@ record; this file says what ships next and what is deliberately deferred.
 | 0.7.0 | 2026-07-03 | `indiacode`; NeVA portal registry + `state-assembly-probe` |
 | 0.8.0 | 2026-07-19 | 9 adapters (`questions-list`, `prs`, `mospi`, `ministry-ddg`, `legacy-dspace`, `doe-pay-allowances`, `attendance`, `myneta`, `dpe-csr`); 5 extraction modules; `sansad` tabled / `--all` / `--mp-code` |
 | 0.9.0 | 2026-07-28 | `wayback`, `abhilekh-patal`, `render`, `courts`, `cag`; PRS completed; Wayback provenance on acquisition; the ten-finding Codex sweep |
+| 0.10.0 | 2026-07-29 | OCR fallback (`ocr_pdf_text`, `extract-answers --ocr`); run-level `status` on `_runs.jsonl` + non-zero exit on a failed crawl; corpus-truncation audit recipe; two post-merge Codex waves |
 
 ## On master, unreleased
 
-Nothing. 0.9.0 was cut from master with no open PRs.
+Nothing. 0.10.0 was cut from master with no open PRs.
 
 **Next gate: 1.0.0 — deferred deliberately, and gated on Phase 2.** Declaring
 1.0 promises interface stability, and the package rename to `probe`/`compose`
@@ -33,7 +34,9 @@ PR, tag, then move consumer pins.
 breaking change is a minor bump; only backwards-compatible fixes take a patch.
 0.9.0 carried both — five new subcommands and four behaviour changes (`render`
 exit codes, `rendered_page` manifest keys for query-string URLs, a dropped
-status enum value, 4xx reclassified as `error`).
+status enum value, 4xx reclassified as `error`). 0.10.0 added no subcommand but
+took the minor slot anyway on the breaking change alone: `sansad` exits
+non-zero where it exited 0.
 
 ## Queued (requested source adapters, not started)
 
