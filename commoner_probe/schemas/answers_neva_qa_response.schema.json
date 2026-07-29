@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/CommonerLLP/commoner-probe/schemas/v1/answers_neva_qa_response.json",
   "title": "answers.jsonl — NeVA Gujarati Q/A extraction",
-  "description": "One Gujarati NeVA question PDF split into question and answer halves via the two-column layout. quality records the text-layer trust level: clean (metadata subject found verbatim), repaired (found after a reference-calibrated glyph repair), low (glyph-corrupted beyond provable repair — OCR-fallback candidate), unknown (no reference available).",
+  "description": "One Gujarati NeVA question PDF split into question and answer halves via the two-column layout. quality records the trust level of the text this record was built from: clean (metadata subject found verbatim), repaired (found after a reference-calibrated glyph repair), ocr (the text layer failed the reference check and a rasterize-and-OCR re-read passed it), low (failed the reference check and was not recovered), unknown (no reference available). text_source says which read the record came from.",
   "type": "object",
   "required": [
     "key",
@@ -21,7 +21,12 @@
     "question_text": { "type": "string" },
     "answer_text": { "type": "string" },
     "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
-    "quality": { "type": "string", "enum": ["clean", "repaired", "low", "unknown"] },
+    "quality": { "type": "string", "enum": ["clean", "repaired", "ocr", "low", "unknown"] },
+    "text_source": {
+      "type": "string",
+      "enum": ["text_layer", "ocr"],
+      "description": "Which read produced this record. `ocr` only where the embedded text layer failed the reference check AND the OCR re-read passed it — an OCR pass that also failed never overwrites the record."
+    },
     "extractor": { "type": "string" },
     "boundary_marker": { "type": "string" },
     "question_subject": { "type": "string" },
