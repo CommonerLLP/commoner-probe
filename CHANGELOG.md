@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **Wayback capture staging moved from memory to disk.** `probe()` held every
+  row of a walk in a list until the end, so `--prefix` without `--max-records`
+  — an advertised way to walk every URL under a host — grew with the whole
+  capture history and could be OOM-killed before anything was written. Rows now
+  spool to a scratch file beside the manifest and stream onto it in one pass;
+  peak memory is one row regardless of history size. The spool is removed on
+  success, on failure, and on an early `break`.
+- **A part-way manifest append now names where the rows went.** If the final
+  copy hits an I/O error, this invocation's rows are written to a
+  `.recover.jsonl` sibling and the error says so. The manifest is deliberately
+  **not** truncated back: on a shared append-only file that is the bug this
+  replaced, and a loud recoverable failure beats a silent partial one.
+
 ## 0.10.0 (2026-07-29)
 
 One new capability, one breaking change, and two waves of post-merge review
