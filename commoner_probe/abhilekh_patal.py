@@ -22,6 +22,12 @@ challenge response as a **hard error naming the cause**, and never as an empty
 result set: an empty corpus that looks like "the archive had nothing" is the
 silent-success failure this repo keeps having to fix.
 
+India egress alone is not sufficient. Measured from ap-south-1 on 2026-07-28,
+the WAF challenges *every* honest ``commoner-probe`` identity as well, and only
+a mainstream browser token is let through. **This repo has decided not to send
+one** — see ``UA_CHALLENGE_NOTE`` below. The adapter is complete and tested and
+does not fetch, on purpose.
+
 Pagination is not a query parameter. ``?Page.Number=1`` on the search URL is
 ignored and silently returns page 0 — verified live, and the reason a naive
 crawler would loop forever re-recording the first ten records. The real
@@ -69,6 +75,20 @@ DEFAULT_SLEEP = 2.0
 #: to present a different identity passes it explicitly, and the choice is
 #: stamped into every record's ``user_agent`` field so the corpus carries how
 #: it was obtained rather than hiding it.
+#:
+#: **DECIDED 2026-07-28: this repo does not present a browser token to clear
+#: the challenge.** The adapter stays honest and therefore does not fetch this
+#: source. That is a deliberate posture with a known cost — a working,
+#: live-tested catalogue adapter sits idle — and NOT an unfinished task. The
+#: reasoning: this corpus is used in litigation-adjacent work where provenance
+#: is the product, and a client identity that is not true is a poor foundation
+#: for it, even where nothing is technically disallowed (the site publishes no
+#: robots.txt at all, so the WAF is the only barrier).
+#:
+#: Do not "fix" this by defaulting ``--user-agent`` to a browser string. If the
+#: posture is ever revisited, it is revisited by Commoner, not by a session
+#: that finds the adapter idle and assumes it is broken. The flag remains for
+#: an operator making that call explicitly and on the record.
 UA_CHALLENGE_NOTE = (
     "every commoner-probe User-Agent variant is challenged; pass --user-agent "
     "explicitly to choose a different identity"
