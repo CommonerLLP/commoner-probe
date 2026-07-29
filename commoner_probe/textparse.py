@@ -89,7 +89,7 @@ def ocr_pdf_text(
     with tempfile.TemporaryDirectory() as scratch:
         prefix = str(Path(scratch) / "page")
         try:
-            runner(
+            render = runner(
                 ["pdftoppm", "-r", str(dpi), "-png", "-f", str(page), "-l", str(page), str(path), prefix],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL,
@@ -98,6 +98,16 @@ def ocr_pdf_text(
             )
         except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
             raise OcrUnavailable(f"pdftoppm: {exc}") from exc
+
+        # A malformed PDF or an out-of-range page exits nonzero and writes no
+        # PNG. Returning "" there would make a tool failure indistinguishable
+        # from a blank page — the caller would record neither an error nor an
+        # attempt, which is the silent-success failure this exception exists
+        # to prevent.
+        if getattr(render, "returncode", 0) != 0:
+            raise OcrUnavailable(
+                f"pdftoppm exited {render.returncode} on {path.name} page {page}"
+            )
 
         pngs = sorted(Path(scratch).glob("*.png"))
         if not pngs:

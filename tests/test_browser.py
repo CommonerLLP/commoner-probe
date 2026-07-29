@@ -319,3 +319,12 @@ def test_rendered_page_kind_is_registered_for_validation_and_corpus(tmp_path):
     streamed = list(corpus_mod.Corpus(tmp_path).manifest_rendered_pages())
     assert [r.status for r in streamed] == ["downloaded", "shell_only"]
     assert "manifest_rendered_pages" in corpus_mod.Corpus._STREAM_MAP
+
+
+def test_del_and_ins_do_not_split_a_word():
+    """Phrasing elements outside the first allowlist draft — `del`, `ins`,
+    `label`, `output` — sit inside a line. Treating them as blocks turns
+    `Ministry` into `Min is try` and reopens the shell_only misclassification."""
+    for tag in ("del", "ins", "label", "output", "big", "strike", "acronym"):
+        html = f"<html><body>Min<{tag}>is</{tag}>try</body></html>"
+        assert visible_text(html) == "Ministry", f"<{tag}> split a word"

@@ -34,8 +34,11 @@ Measured on the corpus at
 
 - n=30 random: **30/30 have a text layer**, 569–30,819 chars, 236–8,485
   Gujarati codepoints. Zero image-only, zero latin-garbage.
-- n=120 re-classified through `repair_text`: 5 `clean`, 1 `repaired`, 113
-  `low` — ≈95%, consistent with the reported 5,972/6,384 (93.5%).
+- n=120 drawn, **119 classified** through `repair_text`: 5 `clean`, 1
+  `repaired`, 113 `low` — 113/119 ≈ **95%**, consistent with the reported
+  5,972/6,384 (93.5%). The 120th was skipped before classification because its
+  `pdf_path` had no file on disk; it is neither a pass nor a fail and is
+  excluded from the denominator rather than silently absorbed.
 
 So the count was right and the diagnosis was not.
 
@@ -166,6 +169,32 @@ ask as the thing to base this on, is the wrong reference regardless: it runs
 tesseract with no `-l` flag (English on Gujarati script), hardcodes DOPO table
 regexes and pages 50–120, and its input host `bprd.nic.in` is unreachable from
 two continents.
+
+## Limits of this evidence — read before scaling the decision
+
+Two hold, and both were raised in review rather than volunteered here.
+
+**1. The 28/30 result measures the title line, not the payload.** Similarity
+was scored against the portal `subject`, which is one line. The useful content
+is the full two-column Q/A body, later pages, and appendix tables. An OCR read
+can improve the title while degrading layout or figures, so this measurement
+does **not** establish whole-document superiority.
+
+Partial evidence that it does not degrade: an end-to-end run on six real `low`
+documents after the `preserve_interword_spaces=1` fix produced 1 Q/A record and
+1 district row against a text-layer baseline of 1 and 0. That is six documents,
+not thirty, and it is a floor rather than a benchmark. **Before any
+corpus-scale pass, score full-document output — Q/A split rate, district-row
+yield, and figure agreement against the text layer.** The acceptance gate in
+the shipped code (accept OCR only where it recovers the reference) bounds the
+risk but does not remove it.
+
+**2. The measurements are not reproducible from this document alone.** The
+scripts were scratch and were not kept; the seeds are recorded but the sampled
+record ids, population ordering, tool versions, and scoring function are not.
+Re-deriving these numbers means rewriting the harness. If any of them become
+load-bearing for a published claim, rebuild the harness as a committed script
+first and re-measure.
 
 ## Reproduction
 

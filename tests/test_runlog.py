@@ -337,3 +337,43 @@ class RunStatusTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LegacyAndTypedApiTests(unittest.TestCase):
+    """status must not break `validate` on corpora written before it existed,
+    and must not vanish through the typed API (Codex, PR #73)."""
+
+    def test_a_legacy_run_row_without_status_still_validates(self):
+        jsonschema = __import__("pytest").importorskip("jsonschema")
+        from commoner_probe import schemas
+
+        legacy = {
+            "run_id": "a" * 32, "kind": "qa", "scope": {}, "topic_name": "t",
+            "topic_path": "", "topic_hash": "sha256:unknown", "classifier_mode": "",
+            "classifier_config_redacted": {}, "tool_version": "0.8.0",
+            "started_at": "2026-01-01T00:00:00", "added": 0,
+            "errors": [], "bucket_attempts": [], "elapsed_ms": 1.0,
+        }
+        jsonschema.validate(legacy, schemas.load("runs"))
+
+    def test_status_survives_the_typed_record_api(self):
+        from commoner_probe.records import RunRecord
+
+        rec = RunRecord.from_dict({
+            "run_id": "a" * 32, "kind": "qa", "scope": {}, "topic_name": "t",
+            "topic_path": "", "topic_hash": "sha256:unknown", "classifier_mode": "",
+            "classifier_config_redacted": {}, "tool_version": "0.9.0",
+            "started_at": "2026-01-01T00:00:00", "added": 0, "status": "failed",
+        })
+        self.assertEqual(rec.status, "failed")
+
+    def test_a_legacy_run_record_has_status_none(self):
+        from commoner_probe.records import RunRecord
+
+        rec = RunRecord.from_dict({
+            "run_id": "a" * 32, "kind": "qa", "scope": {}, "topic_name": "t",
+            "topic_path": "", "topic_hash": "sha256:unknown", "classifier_mode": "",
+            "classifier_config_redacted": {}, "tool_version": "0.8.0",
+            "started_at": "2026-01-01T00:00:00", "added": 0,
+        })
+        self.assertIsNone(rec.status, "absent means unaudited, not clean")

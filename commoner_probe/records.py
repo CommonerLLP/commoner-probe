@@ -539,6 +539,8 @@ class AnswerNevaQaResponse:
     boundary_marker: str = ""
     question_subject: str | None = None
     question_ref: str | None = None
+    #: 'text_layer' | 'ocr' — which read produced this record.
+    text_source: str | None = None
     language_classified: list = field(default_factory=list)
 
     @classmethod
@@ -562,6 +564,8 @@ class NevaDistrictRowRecord:
     extractor: str
     area: str = ""
     line_no: int | None = None
+    #: 'text_layer' | 'ocr' — which read produced this record.
+    text_source: str | None = None
     language_classified: list = field(default_factory=list)
 
     @classmethod
@@ -1121,6 +1125,11 @@ class RunRecord:
     tool_version: str
     started_at: str
     added: int
+    #: 'complete' | 'partial' | 'failed'. Optional because corpora written
+    #: before the field existed have no value — absent means unaudited, not
+    #: clean. Declared here so the typed API does not silently drop it:
+    #: _from_dict discards unknown keys.
+    status: str | None = None
     errors: list = field(default_factory=list)
     bucket_attempts: list = field(default_factory=list)
     ended_at: str | None = None

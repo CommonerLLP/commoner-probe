@@ -260,3 +260,47 @@ class TestNevaOcrWiring:
         )
         stats = mod.extract_neva_answers(self._corpus(tmp_path), log_fn=lambda *_: None)
         assert stats.quality_counts.get("low") == 1
+
+
+def test_a_nonzero_rasterizer_exit_raises(tmp_path):
+    """A malformed PDF or out-of-range page exits nonzero and writes no PNG.
+
+    Returning "" there makes a tool failure indistinguishable from a blank
+    page, and the NeVA caller then records neither an error nor an attempt.
+    """
+    pdf = tmp_path / "q.pdf"
+    pdf.write_bytes(b"%PDF-1.4 fake")
+
+    class RenderFails(FakeRun):
+        def __call__(self, argv, **kwargs):
+            self.calls.append(list(argv))
+            return type("R", (), {"returncode": 1, "stdout": b"", "stderr": b""})()
+
+    with pytest.raises(OcrUnavailable, match="pdftoppm exited 1"):
+        ocr_pdf_text(pdf, page=99, runner=RenderFails())
+
+
+def test_ocr_quality_and_text_source_survive_schema_and_typed_api():
+    """A successful OCR run must produce output `validate` accepts and the
+    typed API preserves. Both were broken on merge (Codex, PR #77)."""
+    jsonschema = pytest.importorskip("jsonschema")
+    from commoner_probe import schemas
+    from commoner_probe.records import AnswerNevaQaResponse, NevaDistrictRowRecord
+
+    row = {
+        "key": "GJ|1", "kind": "neva_district_row", "source_pdf": "q.pdf",
+        "extracted_at": "2026-07-28T00:00:00", "district": "સુરત",
+        "figures": [12.0], "primary_figure": 12.0, "raw_line": "સુરત 12",
+        "quality": "ocr", "text_source": "ocr", "extractor": "neva-gu-v1",
+    }
+    jsonschema.validate(row, schemas.load("neva_district_row"))
+    assert NevaDistrictRowRecord.from_dict(row).text_source == "ocr"
+
+    qa = {
+        "key": "GJ|1", "kind": "neva_qa_response", "source_pdf": "q.pdf",
+        "extracted_at": "2026-07-28T00:00:00", "question_text": "પ્રશ્ન",
+        "answer_text": "જવાબ", "confidence": 1.0, "quality": "ocr",
+        "text_source": "ocr", "extractor": "neva-gu-v1",
+    }
+    jsonschema.validate(qa, schemas.load("answers_neva_qa_response"))
+    assert AnswerNevaQaResponse.from_dict(qa).text_source == "ocr"
