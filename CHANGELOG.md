@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Decided, not changed
+
+- **`abhilekh-patal` will not present a browser User-Agent to clear the NAI
+  WAF challenge.** Every honest `commoner-probe` identity is challenged from
+  India egress, and only a mainstream browser token returns the catalogue. The
+  repo's decision is to stay honest and therefore not fetch this source: a
+  complete, live-tested adapter sits idle by choice. Provenance is the product
+  in litigation-adjacent work, and a client identity that is not true is a poor
+  foundation for it — even though nothing here is technically disallowed (the
+  site publishes no robots.txt at all, so the WAF is the only barrier). No code
+  change; recorded so the idle adapter is not read as a bug. `--user-agent`
+  remains for an operator making that call explicitly and on the record.
+
 ### Fixed
 
 - **`visible_text` no longer fuses adjacent block elements.** Parser fragments
