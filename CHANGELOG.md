@@ -4,6 +4,19 @@
 
 ### Fixed
 
+- **A shared manifest append is now record-aligned.** The spool was copied out
+  with `shutil.copyfileobj`, which writes buffer-sized chunks: a chunk can end
+  mid-record, letting a concurrent writer's chunk land inside the row and
+  leaving malformed JSONL. Each record is now one `write()` under `O_APPEND`,
+  so every row is indivisible without needing a lock the other manifest writers
+  in this package do not take. (Measured: a 4,096-byte block copy of these rows
+  does end mid-record.)
+- **A failed append preserves the spool by renaming it, never by reading it.**
+  Reading it back to write a recovery file would reintroduce the OOM the spool
+  exists to prevent, on exactly the path where the walk was large enough to
+  fail — and a `MemoryError` there would have let the cleanup delete the rows
+  outright. The rename is O(1); if even that fails, the spool is left in place
+  and the error says where.
 - **Wayback capture staging moved from memory to disk.** `probe()` held every
   row of a walk in a list until the end, so `--prefix` without `--max-records`
   — an advertised way to walk every URL under a host — grew with the whole

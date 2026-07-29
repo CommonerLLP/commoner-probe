@@ -406,3 +406,107 @@ class TestStagingIsBounded:
             list(probe.probe(url="u"))
         assert list(tmp_path.glob("*.spool")) == []
         assert not (tmp_path / "manifest.jsonl").exists()
+
+
+class TestFlushIsRecordAligned:
+    """Every append must land whole rows (Codex, PR #81).
+
+    The manifest is shared and opened O_APPEND. A block copy writes
+    buffer-sized chunks, so a chunk can end mid-record and another process's
+    chunk can land inside the row — malformed JSONL. One write() per record
+    keeps each row indivisible without a lock the other manifest writers in
+    this package do not take.
+    """
+
+    def test_the_flush_writes_one_record_per_call(self, tmp_path):
+        probe = WaybackCaptureProbe(tmp_path, sleep=0, session=FakeSession([HEADER]))
+        probe._spool_path = tmp_path / "x.spool"
+        spool = probe._spool_path.open("w+", encoding="utf-8")
+        for i in range(4):
+            probe._stage(spool, {"key": f"K{i}", "pad": "y" * 5000})
+
+        writes: list[str] = []
+        real = probe.manifest
+
+        class Recorder:
+            def __init__(self, handle):
+                self._h = handle
+
+            def write(self, s):
+                writes.append(s)
+                return self._h.write(s)
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                self._h.close()
+                return False
+
+        class ManifestShim:
+            def open(self, *a, **k):
+                return Recorder(real.open(*a, **k))
+
+            def with_suffix(self, s):
+                return real.with_suffix(s)
+
+        probe.manifest = ManifestShim()
+        probe._flush_manifest(spool)
+        spool.close()
+
+        assert len(writes) == 4, "one write per record, not a block copy"
+        assert all(w.endswith("\n") and w.count("\n") == 1 for w in writes)
+
+    def test_two_concurrent_flushes_produce_only_whole_rows(self, tmp_path):
+        """The failure this guards: interleaved chunks leaving malformed JSONL."""
+        import threading
+
+        def flush(tag):
+            probe = WaybackCaptureProbe(tmp_path, sleep=0, session=FakeSession([HEADER]))
+            probe._spool_path = tmp_path / f"{tag}.spool"
+            spool = probe._spool_path.open("w+", encoding="utf-8")
+            for i in range(60):
+                probe._stage(spool, {"key": f"{tag}{i}", "pad": tag * 4000})
+            probe._flush_manifest(spool)
+            spool.close()
+
+        threads = [threading.Thread(target=flush, args=(t,)) for t in ("a", "b")]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        lines = (tmp_path / "manifest.jsonl").read_text().strip().splitlines()
+        assert len(lines) == 120
+        for line in lines:
+            json.loads(line)   # every row parses — no chunk landed mid-record
+
+
+class TestSpoolPreservation:
+    def test_a_failed_append_renames_the_spool_rather_than_reading_it(self, tmp_path):
+        """Reading it back would reintroduce the OOM on the one path where the
+        walk was big enough to fail (Codex, PR #81)."""
+        probe = WaybackCaptureProbe(tmp_path, sleep=0, session=FakeSession([HEADER]))
+        probe._spool_path = tmp_path / "x.spool"
+        spool = probe._spool_path.open("w+", encoding="utf-8")
+        probe._stage(spool, {"key": "K1"})
+
+        real = probe.manifest
+
+        class FullDisk:
+            def open(self, *a, **k):
+                raise OSError("No space left on device")
+
+            def with_suffix(self, s):
+                return real.with_suffix(s)
+
+        probe.manifest = FullDisk()
+        with pytest.raises(OSError, match="recover.jsonl"):
+            probe._flush_manifest(spool)
+        spool.close()
+
+        recovered = tmp_path / "manifest.recover.jsonl"
+        assert recovered.exists(), "the rows must survive a failed append"
+        assert json.loads(recovered.read_text().strip())["key"] == "K1"
+        # and the cleanup path must not delete what was just preserved
+        assert probe._spool_path == recovered
