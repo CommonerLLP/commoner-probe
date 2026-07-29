@@ -30,6 +30,8 @@ package. See REQ-0036 for the licence analysis.
 from __future__ import annotations
 
 import json
+import os
+import shutil
 import time
 from typing import Any
 from urllib.parse import quote
@@ -568,10 +570,10 @@ class WaybackCaptureProbe:
         arrive would leave an index outage on page six looking like a complete
         five-page history — this module's own failure (an outage recorded as a
         fact about the source) reappearing one level up, at the file instead of
-        the row. So rows are staged in memory and appended in one pass once the
-        walk finishes: either the whole history lands, or none of this
-        invocation's rows do and the error says why. Records already yielded
-        are the caller's to discard.
+        the row. So rows are spooled to a scratch file beside the manifest and
+        streamed onto it in one pass once the walk finishes: either the whole
+        history lands, or none of this invocation's rows do and the error says
+        why. Records already yielded are the caller's to discard.
 
         Staging, rather than writing and then restoring the file's prior size,
         is what makes that safe on a **shared** manifest. Truncating back to a
@@ -579,11 +581,18 @@ class WaybackCaptureProbe:
         appended in the meantime, turning this probe's outage into silent data
         loss for a different corpus.
 
+        Staging to **disk** rather than to a list is what keeps it bounded.
+        ``--prefix`` without ``--max-records`` walks every URL under a host, and
+        a large government domain's capture history does not fit in memory;
+        peak memory here is one row regardless of how long the history is.
+
         Abandoning the generator early (a ``break`` in the caller, or
         ``max_records``) is a deliberate stop, not a failure, and keeps its rows.
         """
         seen = self.load_seen()
-        staged: list[dict] = []
+        self.out_dir.mkdir(parents=True, exist_ok=True)
+        spool_path = self.manifest.with_suffix(f".{os.getpid()}.spool")
+        spool = spool_path.open("w+", encoding="utf-8")
         try:
             for capture in iter_captures(
                 url,
@@ -601,34 +610,72 @@ class WaybackCaptureProbe:
                     continue
                 if record["key"] in seen:
                     continue
-                staged.append(record)
+                self._stage(spool, record)
                 seen.add(record["key"])
                 yield record
         except GeneratorExit:
             # A caller that stops reading meant to stop, and keeps its rows.
-            self._flush_manifest(staged)
+            self._flush_manifest(spool)
             raise
         except Exception:
-            # Whole history or nothing: staged rows are simply dropped.
+            # Whole history or nothing: the spool is discarded unflushed.
             raise
         else:
-            self._flush_manifest(staged)
+            self._flush_manifest(spool)
+        finally:
+            spool.close()
+            spool_path.unlink(missing_ok=True)
 
-    def _flush_manifest(self, staged: list[dict]) -> None:
-        """Append this invocation's rows in one pass.
+    @staticmethod
+    def _stage(handle, record: dict) -> None:
+        """Park one row in the spool. Kept separate so it can be observed."""
+        handle.write(json.dumps(record, ensure_ascii=False) + "\n")
 
-        Staging rather than writing-then-restoring is what makes the failure
-        path safe on a SHARED manifest. Rolling back to a byte offset taken
-        before the walk deletes whatever another probe appended in the
-        meantime — one probe's index outage becoming silent data loss for a
-        different corpus.
+    def _flush_manifest(self, spool) -> None:
+        """Copy the spool onto the manifest in one streaming pass.
+
+        Two properties, and the second is why the spool exists at all.
+
+        **The failure path must not touch other writers' rows.** Restoring the
+        manifest to a byte offset taken before the walk deletes whatever another
+        probe appended in the meantime — one probe's index outage becoming
+        silent data loss for a different corpus. Nothing is written until the
+        walk has finished, so there is nothing to roll back.
+
+        **Staging goes to disk, not to a list.** ``--prefix`` without
+        ``--max-records`` is an advertised way to walk every URL under a host,
+        and a large government domain's capture history will not fit in memory.
+        The spool grows on disk as rows arrive and is streamed out at the end,
+        so peak memory is one row regardless of history size.
+
+        A disk-full shows up while spooling — before the manifest is opened —
+        which is what keeps the whole-history-or-nothing guarantee honest. An
+        I/O error during the copy itself is still possible; it raises with the
+        spool path named so the rows can be recovered by hand rather than
+        silently lost. Truncating the manifest back is deliberately NOT done:
+        on a shared append-only file that is the very bug this replaced.
         """
-        if not staged:
+        spool.flush()
+        if spool.tell() == 0:
             return
+        spool.seek(0)
         self.out_dir.mkdir(parents=True, exist_ok=True)
-        with self.manifest.open("a", encoding="utf-8") as f:
-            for record in staged:
-                f.write(json.dumps(record, ensure_ascii=False) + "\n")
+        try:
+            with self.manifest.open("a", encoding="utf-8") as f:
+                shutil.copyfileobj(spool, f)
+        except OSError as exc:
+            keep = self.manifest.with_suffix(".recover.jsonl")
+            try:
+                spool.seek(0)
+                keep.write_text(spool.read(), encoding="utf-8")
+            except OSError:
+                keep = None
+            raise OSError(
+                f"manifest append failed part-way ({exc}). This invocation's rows "
+                + (f"are preserved at {keep}" if keep else "could not be preserved")
+                + "; the manifest was NOT truncated, because other writers may "
+                "have appended to it."
+            ) from exc
 
 
 def _iso_from_cdx(timestamp: str) -> str | None:

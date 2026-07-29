@@ -352,3 +352,57 @@ def test_corpus_streams_wayback_captures(tmp_path):
     assert len(rows) == 1
     assert rows[0].digest == "AAA"
     assert rows[0].snapshot_url.startswith("https://web.archive.org/web/20060413232357/")
+
+
+class TestStagingIsBounded:
+    """Staging must not scale with the capture history (Codex, PR #74).
+
+    `--prefix` without `--max-records` is an advertised way to walk every URL
+    under a host. Holding the whole walk in a list makes memory grow with a
+    government domain's entire capture history; the streaming implementation
+    this replaced could not OOM.
+    """
+
+    def test_rows_are_staged_on_disk_not_in_a_list(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(wayback.time, "sleep", lambda _: None)
+        rows = [_row(f"2020070120{i:04d}", f"D{i}") for i in range(50)]
+        probe = WaybackCaptureProbe(tmp_path, sleep=0, session=FakeSession([HEADER] + rows))
+
+        seen_peak = []
+        real_stage = probe._stage
+
+        def spy(handle, record):
+            seen_peak.append(handle.tell())
+            return real_stage(handle, record)
+
+        probe._stage = spy
+        got = list(probe.probe(url="mospi.gov.in"))
+
+        assert len(got) == 50
+        # The spool grew monotonically on disk — proof rows left memory as they
+        # arrived rather than accumulating in a list.
+        assert seen_peak == sorted(seen_peak)
+        assert seen_peak[-1] > seen_peak[0]
+        assert len((tmp_path / "manifest.jsonl").read_text().strip().splitlines()) == 50
+
+    def test_the_spool_does_not_survive_a_successful_walk(self, tmp_path):
+        session = FakeSession([HEADER, _row("20060413232357", "AAA")])
+        list(WaybackCaptureProbe(tmp_path, sleep=0, session=session).probe(url="u"))
+        assert list(tmp_path.glob("*.spool")) == []
+        assert list(tmp_path.glob("*.tmp")) == []
+
+    def test_the_spool_does_not_survive_a_failed_walk(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(wayback.time, "sleep", lambda _: None)
+
+        class DiesOnPageTwo(FakeSession):
+            def get(self, url, params=None, timeout=None, **kwargs):
+                self.calls.append(dict(params or {}))
+                if "resumeKey" in (params or {}):
+                    raise RuntimeError("HTTP 503")
+                return FakeResponse([HEADER, _row("20060413232357", "AAA"), [], ["RESUME1"]])
+
+        probe = WaybackCaptureProbe(tmp_path, sleep=0, session=DiesOnPageTwo())
+        with pytest.raises(IndexUnavailable):
+            list(probe.probe(url="u"))
+        assert list(tmp_path.glob("*.spool")) == []
+        assert not (tmp_path / "manifest.jsonl").exists()
