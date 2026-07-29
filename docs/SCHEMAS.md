@@ -280,6 +280,7 @@ Produced by `commoner_probe/runlog.py`.
 | `started_at` | string | yes | ISO datetime | runlog.py:102 |
 | `ended_at` | string\|null | yes | ISO datetime; `null` if run did not finish | runlog.py:103 |
 | `added` | integer | yes | Records added in this run | runlog.py:104 |
+| `status` | string | yes | `"complete"` \| `"partial"` \| `"failed"`. Run outcome derived from `bucket_attempts` — every bucket errored is `failed`, some is `partial`. Crawlers that log no buckets fall back to `errors`. Never derived from `added`: a quiet source and a broken crawl both add nothing | runlog.py:110 |
 | `errors` | object[] | yes | `[{where: str, error: str}, ...]`; empty list if clean | runlog.py:105 |
 | `bucket_attempts` | object[] | yes | Per-bucket attempt log; schema is free-form. See conventional keys below | runlog.py:106-111 |
 | `elapsed_ms` | number | yes | Wall-clock milliseconds | runlog.py:183 |
@@ -311,6 +312,48 @@ Produced by `commoner_probe/runlog.py`.
 | `kept` | integer | Records written |
 | `elapsed_ms` | number | Bucket wall-clock ms |
 | `error` | string\|null | Exception string if failed |
+
+### Auditing an existing corpus for truncation
+
+A sparse crawl output has three possible causes, and `_runs.jsonl` tells them
+apart. Check it before reading a thin result as a finding about the source.
+
+**1. The crawl was capped by its own invocation.** `scope.max_records` and
+`scope.limit` are the operator's brakes; both default to `None`. A corpus
+whose directories all stop at the same round number was capped, not exhausted:
+
+```bash
+jq -r '.scope | "\(.max_records)\t\(.limit)\t\(.max_buckets)"' _runs.jsonl | sort -u
+```
+
+Any non-`null` value here bounds the result. Across many directories, run it
+over all of them — an identical ceiling everywhere is a flag, never a
+distribution.
+
+**2. The crawl reached nothing.** `status` is `"failed"` when every bucket
+errored, `"partial"` when some did. Since v0.9.1 such a run also exits
+non-zero; corpora crawled before that carry the status but were collected by
+a command that exited 0.
+
+```bash
+jq -r 'select(.status != "complete") | "\(.status)\t\(.added)\t\(.errors|length)"' _runs.jsonl
+```
+
+**3. The source genuinely holds little.** `status: "complete"`, no caps in
+scope, `bucket_attempts[].raw_returned` summing to roughly `added`. Only this
+case licenses a claim about the source.
+
+Records written before `status` existed print as `null` from the recipe above,
+so the same command audits an older corpus. `null` means unaudited, not clean:
+check `errors|length` on those rows and re-pull if the comparison they feed is
+load-bearing.
+
+Worked example — zero-hour's `census-2026`, 1,964 runs across 786 member
+directories, verified 2026-07-28. Recipe 1 returns `25 null null` for every
+directory: the ceiling was the caller's own `--max-records 25`, uniform across
+the corpus. Recipe 2 returns rows like `null 0 38` — 38 bucket errors, nothing
+added, and a command that exited 0. Both are visible in the artefact; neither
+was a finding about the members.
 
 ---
 

@@ -4,7 +4,7 @@
   "title": "_runs.jsonl — crawl run record",
   "description": "One audit record per crawl invocation written to _runs.jsonl.",
   "type": "object",
-  "required": ["run_id", "kind", "scope", "topic_name", "topic_path", "topic_hash", "classifier_mode", "classifier_config_redacted", "tool_version", "started_at", "added", "errors", "bucket_attempts", "elapsed_ms"],
+  "required": ["run_id", "kind", "scope", "topic_name", "topic_path", "topic_hash", "classifier_mode", "classifier_config_redacted", "tool_version", "started_at", "added", "status", "errors", "bucket_attempts", "elapsed_ms"],
   "properties": {
     "run_id": { "type": "string", "description": "UUID4 hex (32 chars)" },
     "kind": { "type": "string", "enum": ["qa", "committee_report", "floor_debate", "tabled_paper", "question_list"] },
@@ -18,6 +18,11 @@
     "started_at": { "type": "string" },
     "ended_at": { "type": ["string", "null"] },
     "added": { "type": "integer", "minimum": 0 },
+    "status": {
+      "type": "string",
+      "enum": ["complete", "partial", "failed"],
+      "description": "Run outcome. 'failed' = every bucket errored (or, for crawlers that log no buckets, at least one recorded error); 'partial' = some buckets errored; 'complete' = none did. Derived from bucket attempts, never from `added` — a quiet source and a broken crawl both add nothing."
+    },
     "errors": {
       "type": "array",
       "items": {

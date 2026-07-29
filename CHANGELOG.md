@@ -2,7 +2,24 @@
 
 ## Unreleased
 
+### Changed — read this before upgrading
+
+- **`sansad` now exits non-zero when a crawl's every bucket errored.** Anything
+  gating on this command's exit code changes behaviour. A `partial` run — some
+  buckets returned — still exits 0.
+
 ### Added
+
+- **`status` on every `_runs.jsonl` record** (`complete` / `partial` /
+  `failed`), derived from `bucket_attempts` and never from `added`. Closes
+  REQ-0043 (zero-hour): a run that reached nothing and a genuinely quiet source
+  both wrote `added: 0` and exited 0, so the artefact could not tell them apart.
+  `RunLog.finish()` returns the status; `RunLog.statuses` collects every run
+  finished on the instance.
+- **Corpus-truncation audit recipe** in `docs/SCHEMAS.md` — how to tell an
+  operator-capped crawl from a failed one from a genuinely thin source, using
+  `scope.max_records` and `status`. Includes a worked example against a real
+  1,964-run corpus.
 
 - **OCR fallback on acquisition-time PDF extraction** —
   `textparse.ocr_pdf_text()` rasterizes one page with poppler and reads it with
@@ -62,6 +79,15 @@
   in the meantime. Rows are now staged in memory and appended in one pass on
   success, so the "whole history or nothing" guarantee costs no other corpus
   its data. An early `break` or `max_records` still keeps its rows.
+
+### Not changed, and why
+
+REQ-0043 also reported that `sansad --member` silently caps at 25 rows per
+member. It does not. All 1,964 runs in the reporting corpus record
+`scope.max_records: 25` — the caller's own `--max-records`, whose default is
+`None`. The flag was already explicit in the CLI and already written to the run
+log, so the REQ's first two acceptance criteria were met by the shipped code.
+The audit recipe above is the durable fix for that class of misreading.
 
 ## 0.9.0 (2026-07-28)
 
