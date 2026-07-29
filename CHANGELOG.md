@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **`visible_text` no longer fuses adjacent block elements.** Parser fragments
+  were joined with nothing between them, so `<div>Ministry</div><div>of
+  Finance</div>` read as `Ministryof Finance`; `require_text` then failed and a
+  real capture was stored as `shell_only` — the silent-success path this module
+  exists to close, reappearing in the fix for it. Block boundaries now emit a
+  separator and inline elements do not, so `Mini<b>s</b>try` stays one word
+  (the tag-stripping regex this replaced broke it into three).
+- **A failed Wayback walk no longer deletes another writer's manifest rows.**
+  The failure path restored `manifest.jsonl` to a byte offset taken before the
+  walk, which discards anything a concurrent probe appended to the shared file
+  in the meantime. Rows are now staged in memory and appended in one pass on
+  success, so the "whole history or nothing" guarantee costs no other corpus
+  its data. An early `break` or `max_records` still keeps its rows.
+
 ## 0.9.0 (2026-07-28)
 
 Five new acquisition surfaces, a headless-browser fallback, and a fix wave that

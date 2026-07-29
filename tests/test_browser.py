@@ -152,6 +152,51 @@ def test_unbalanced_markup_does_not_swallow_the_page():
     assert "content survives" in visible_text(html)
 
 
+def test_block_boundaries_keep_words_apart():
+    """Adjacent block elements are separate lines to a reader.
+
+    Joining parser fragments with nothing between them turns
+    `<div>Ministry</div><div>of Finance</div>` into `Ministryof Finance`,
+    so `require_text=["Ministry of Finance"]` fails and a real capture is
+    stored as `shell_only` — the silent-success path this module exists
+    to close.
+    """
+    body = "<div>Ministry</div><div>of Finance</div>"
+    assert visible_text(f"<html><body>{body}</body></html>") == "Ministry of Finance"
+
+    # Same boundary on a page that clears the visible-text floor, so the
+    # verdict turns on require_text and not on length.
+    padded = f"<html><body>{body}<p>{'Sanctioned post detail. ' * 300}</p></body></html>"
+    check = check_rendered(padded, require_text=["Ministry of Finance"])
+    assert check.missing_text == ()
+    assert check.rendered is True
+
+
+def test_block_boundaries_separate_across_common_containers():
+    for html, expected in [
+        ("<p>Sanctioned</p><p>Filled</p>", "Sanctioned Filled"),
+        ("<td>12</td><td>34</td>", "12 34"),
+        ("<li>one</li><li>two</li>", "one two"),
+        ("<h1>Title</h1><p>Body</p>", "Title Body"),
+        ("<br>a<br>b", "a b"),
+    ]:
+        assert visible_text(f"<html><body>{html}</body></html>") == expected
+
+
+def test_inline_markup_does_not_split_a_word():
+    """The old tag-stripping regex replaced EVERY tag with a space, which
+    broke `Mini<b>s</b>try` into three tokens. Inline elements must not
+    introduce a boundary a reader does not see."""
+    html = "<html><body>Mini<b>s</b>try of <em>Finance</em></body></html>"
+    assert visible_text(html) == "Ministry of Finance"
+
+
+def test_block_separator_does_not_resurrect_hidden_text():
+    """Separators are inserted for visible elements only."""
+    html = '<html><body><div hidden><div>gone</div></div><div>kept</div></body></html>'
+    assert visible_text(html) == "kept"
+
+
 def test_detect_frameworks_deduplicates():
     assert detect_frameworks('<html data-n-head-ssr><script>window.__NUXT__=1</script>') == ("Nuxt",)
     assert detect_frameworks("<html><body>plain</body></html>") == ()
