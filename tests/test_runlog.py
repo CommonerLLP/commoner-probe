@@ -377,3 +377,40 @@ class LegacyAndTypedApiTests(unittest.TestCase):
             "started_at": "2026-01-01T00:00:00", "added": 0,
         })
         self.assertIsNone(rec.status, "absent means unaudited, not clean")
+
+
+class PositionalCompatibilityTests(unittest.TestCase):
+    """New optional fields go LAST (Codex, PR #78).
+
+    Inserting `status` ahead of `errors` silently reassigned every positional
+    argument after it — a caller passing an errors list positionally got it
+    bound to `status`, with no exception anywhere.
+    """
+
+    def test_new_fields_are_appended_not_inserted(self):
+        import dataclasses
+
+        from commoner_probe.records import (
+            AnswerNevaQaResponse,
+            NevaDistrictRowRecord,
+            RunRecord,
+        )
+
+        for cls, newest in (
+            (RunRecord, "status"),
+            (AnswerNevaQaResponse, "text_source"),
+            (NevaDistrictRowRecord, "text_source"),
+        ):
+            names = [f.name for f in dataclasses.fields(cls)]
+            self.assertEqual(names[-1], newest, f"{cls.__name__}: {newest} must be last")
+
+    def test_the_pre_status_positional_signature_still_binds_correctly(self):
+        from commoner_probe.records import RunRecord
+
+        rec = RunRecord(
+            "a" * 32, "qa", {}, "t", "", "sha256:unknown", "", {}, "0.8.0",
+            "2026-01-01T00:00:00", 3,
+            [{"where": "w", "error": "E: x"}],      # errors, positionally
+        )
+        self.assertEqual(rec.errors, [{"where": "w", "error": "E: x"}])
+        self.assertIsNone(rec.status)
