@@ -564,21 +564,26 @@ class WaybackCaptureProbe:
         never appended twice, so re-running extends the history rather than
         duplicating it.
 
-        **A walk that fails part-way writes nothing.** Pages are appended as
-        they arrive, so an index outage on page six would otherwise leave the
-        first five pages on disk — a schema-valid manifest that no reader can
-        distinguish from a complete history. That is this module's own failure
-        (an outage recorded as a fact about the source) reappearing one level
-        up, at the file instead of the row. So the manifest's size is taken
-        before the walk and restored if the walk raises: either the whole
-        history lands, or none of this invocation's rows do and the error says
-        why. Records already yielded are the caller's to discard.
+        **A walk that fails part-way writes nothing.** Appending pages as they
+        arrive would leave an index outage on page six looking like a complete
+        five-page history — this module's own failure (an outage recorded as a
+        fact about the source) reappearing one level up, at the file instead of
+        the row. So rows are staged in memory and appended in one pass once the
+        walk finishes: either the whole history lands, or none of this
+        invocation's rows do and the error says why. Records already yielded
+        are the caller's to discard.
+
+        Staging, rather than writing and then restoring the file's prior size,
+        is what makes that safe on a **shared** manifest. Truncating back to a
+        byte offset taken before the walk would delete whatever another probe
+        appended in the meantime, turning this probe's outage into silent data
+        loss for a different corpus.
 
         Abandoning the generator early (a ``break`` in the caller, or
         ``max_records``) is a deliberate stop, not a failure, and keeps its rows.
         """
         seen = self.load_seen()
-        rollback_to = self.manifest.stat().st_size if self.manifest.exists() else None
+        staged: list[dict] = []
         try:
             for capture in iter_captures(
                 url,
@@ -596,25 +601,34 @@ class WaybackCaptureProbe:
                     continue
                 if record["key"] in seen:
                     continue
-                self.append_manifest(record)
+                staged.append(record)
                 seen.add(record["key"])
                 yield record
-        except Exception:
-            # GeneratorExit is a BaseException and deliberately not caught here:
-            # a caller that stops reading meant to stop, and keeps its rows.
-            if not dry_run:
-                self._rollback_manifest(rollback_to)
+        except GeneratorExit:
+            # A caller that stops reading meant to stop, and keeps its rows.
+            self._flush_manifest(staged)
             raise
+        except Exception:
+            # Whole history or nothing: staged rows are simply dropped.
+            raise
+        else:
+            self._flush_manifest(staged)
 
-    def _rollback_manifest(self, size: int | None) -> None:
-        """Undo this invocation's appends. ``None`` means the file is ours to remove."""
-        if not self.manifest.exists():
+    def _flush_manifest(self, staged: list[dict]) -> None:
+        """Append this invocation's rows in one pass.
+
+        Staging rather than writing-then-restoring is what makes the failure
+        path safe on a SHARED manifest. Rolling back to a byte offset taken
+        before the walk deletes whatever another probe appended in the
+        meantime — one probe's index outage becoming silent data loss for a
+        different corpus.
+        """
+        if not staged:
             return
-        if size is None:
-            self.manifest.unlink()
-            return
-        with self.manifest.open("r+b") as f:
-            f.truncate(size)
+        self.out_dir.mkdir(parents=True, exist_ok=True)
+        with self.manifest.open("a", encoding="utf-8") as f:
+            for record in staged:
+                f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
 
 def _iso_from_cdx(timestamp: str) -> str | None:

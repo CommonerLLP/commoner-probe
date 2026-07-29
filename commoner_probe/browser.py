@@ -128,6 +128,19 @@ class _VisibleTextParser(HTMLParser):
         "area", "base", "br", "col", "embed", "hr", "img", "input",
         "link", "meta", "param", "source", "track", "wbr",
     })
+    #: Phrasing content: sits inside a line, so its boundaries are NOT word
+    #: boundaries. ``Mini<b>s</b>try`` is one word to a reader, and the old
+    #: tag-stripping regex broke it into three by replacing every tag with a
+    #: space. Everything not listed here is treated as block-level.
+    INLINE_TAGS = frozenset({
+        "a", "abbr", "b", "bdi", "bdo", "cite", "code", "data", "dfn", "em",
+        "font", "i", "kbd", "mark", "q", "rp", "rt", "ruby", "s", "samp",
+        "small", "span", "strong", "sub", "sup", "time", "tt", "u", "var",
+        "wbr",
+    })
+    #: Void elements that a reader sees as a break. The other void tags
+    #: (``img``, ``input``, ``meta``…) sit inline and must not split a word.
+    BREAK_VOID_TAGS = frozenset({"br", "hr"})
 
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
@@ -137,15 +150,20 @@ class _VisibleTextParser(HTMLParser):
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         if tag in self.VOID_TAGS:
+            if not self._suppressed and tag in self.BREAK_VOID_TAGS:
+                self.parts.append(" ")
             return
         if self._suppressed:
             self._suppressed.append(tag)
             return
         if tag in self.SKIP_TAGS or self._is_hidden(attrs):
             self._suppressed.append(tag)
+            return
+        self._separate(tag)
 
     def handle_endtag(self, tag: str) -> None:
         if not self._suppressed:
+            self._separate(tag)
             return
         # Close the innermost matching open tag. Unbalanced markup is normal on
         # the web, so an end tag with no match is ignored rather than trusted.
@@ -153,6 +171,17 @@ class _VisibleTextParser(HTMLParser):
             if self._suppressed[i] == tag:
                 del self._suppressed[i:]
                 return
+
+    def _separate(self, tag: str) -> None:
+        """Mark a block boundary so adjacent elements do not fuse.
+
+        ``<div>Ministry</div><div>of Finance</div>`` carries no whitespace
+        between the fragments, so joining them raw yields ``Ministryof
+        Finance`` — which fails ``require_text`` and files a real capture as
+        ``shell_only``.
+        """
+        if tag not in self.INLINE_TAGS and tag not in self.VOID_TAGS:
+            self.parts.append(" ")
 
     def handle_data(self, data: str) -> None:
         if not self._suppressed:

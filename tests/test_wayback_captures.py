@@ -270,6 +270,57 @@ class TestProbe:
         assert len(records) == 2
         assert len((tmp_path / "manifest.jsonl").read_text().strip().splitlines()) == 2
 
+    def test_a_failed_walk_keeps_a_concurrent_writer_rows(self, tmp_path, monkeypatch):
+        """The manifest is a shared corpus file, not this probe's private log.
+
+        Restoring it to a byte offset taken before the walk deletes every row
+        another probe appended while the walk ran — turning one probe's index
+        outage into silent data loss for a different corpus.
+        """
+        monkeypatch.setattr(wayback.time, "sleep", lambda _: None)
+        manifest = tmp_path / "manifest.jsonl"
+
+        other_row = json.dumps({"kind": "other_probe", "key": "OTHER|1"}) + "\n"
+
+        class DiesOnPageTwo(FakeSession):
+            def get(self, url, params=None, timeout=None, **kwargs):
+                self.calls.append(dict(params or {}))
+                if "resumeKey" in (params or {}):
+                    # A different probe wrote to the shared manifest while this
+                    # walk was in flight. Once, not once per retry.
+                    existing = (
+                        manifest.read_text(encoding="utf-8") if manifest.exists() else ""
+                    )
+                    if other_row not in existing:
+                        manifest.parent.mkdir(parents=True, exist_ok=True)
+                        with manifest.open("a", encoding="utf-8") as f:
+                            f.write(other_row)
+                    raise RuntimeError("HTTP 503")
+                return FakeResponse([HEADER, _row("20060413232357", "AAA"), [], ["RESUME1"]])
+
+        probe = WaybackCaptureProbe(tmp_path, sleep=0, session=DiesOnPageTwo())
+        with pytest.raises(IndexUnavailable):
+            list(probe.probe(url="mospi.gov.in"))
+
+        surviving = manifest.read_text(encoding="utf-8").splitlines()
+        assert surviving == [other_row.rstrip("\n")], (
+            "the other writer's row must survive, and none of this walk's rows may land"
+        )
+
+    def test_an_early_break_keeps_its_rows(self, tmp_path):
+        """A caller that stops reading meant to stop; staged rows still land."""
+        session = FakeSession([HEADER] + [_row(f"2020070120501{i}", f"D{i}") for i in range(5)])
+        probe = WaybackCaptureProbe(tmp_path, sleep=0, session=session)
+        taken = []
+        for rec in probe.probe(url="u"):
+            taken.append(rec)
+            if len(taken) == 2:
+                break
+        del probe
+
+        written = (tmp_path / "manifest.jsonl").read_text().strip().splitlines()
+        assert len(written) == 2
+
     def test_a_malformed_length_becomes_null_not_a_crash(self, tmp_path):
         session = FakeSession([HEADER, _row("20060413232357", "AAA", length="-")])
         assert list(self._probe(tmp_path, session).probe(url="u"))[0]["length"] is None
