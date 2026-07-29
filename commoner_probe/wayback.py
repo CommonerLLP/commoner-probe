@@ -31,8 +31,8 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 import time
+from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
@@ -591,8 +591,8 @@ class WaybackCaptureProbe:
         """
         seen = self.load_seen()
         self.out_dir.mkdir(parents=True, exist_ok=True)
-        spool_path = self.manifest.with_suffix(f".{os.getpid()}.spool")
-        spool = spool_path.open("w+", encoding="utf-8")
+        self._spool_path = self.manifest.with_suffix(f".{os.getpid()}.spool")
+        spool = self._spool_path.open("w+", encoding="utf-8")
         try:
             for capture in iter_captures(
                 url,
@@ -624,7 +624,9 @@ class WaybackCaptureProbe:
             self._flush_manifest(spool)
         finally:
             spool.close()
-            spool_path.unlink(missing_ok=True)
+            # _preserve_spool() repoints this at the .recover.jsonl it kept,
+            # so a preserved spool is not deleted by this cleanup.
+            self._spool_path.unlink(missing_ok=True)
 
     @staticmethod
     def _stage(handle, record: dict) -> None:
@@ -662,20 +664,38 @@ class WaybackCaptureProbe:
         self.out_dir.mkdir(parents=True, exist_ok=True)
         try:
             with self.manifest.open("a", encoding="utf-8") as f:
-                shutil.copyfileobj(spool, f)
+                # One write() per record, NOT a block copy. The manifest is
+                # opened O_APPEND and shared, so each write lands whole at the
+                # end of the file; a buffer-sized copy can end mid-record and
+                # let another process's chunk land inside this row, producing
+                # malformed JSONL. Record-aligned writes keep every row
+                # indivisible without needing a lock the other manifest writers
+                # in this package do not take.
+                for line in spool:
+                    f.write(line)
         except OSError as exc:
-            keep = self.manifest.with_suffix(".recover.jsonl")
-            try:
-                spool.seek(0)
-                keep.write_text(spool.read(), encoding="utf-8")
-            except OSError:
-                keep = None
             raise OSError(
                 f"manifest append failed part-way ({exc}). This invocation's rows "
-                + (f"are preserved at {keep}" if keep else "could not be preserved")
-                + "; the manifest was NOT truncated, because other writers may "
-                "have appended to it."
+                f"are preserved at {self._preserve_spool()}; the manifest was NOT "
+                "truncated, because other writers may have appended to it."
             ) from exc
+
+    def _preserve_spool(self) -> Path | str:
+        """Keep the spool for hand-recovery. Renames — never reads.
+
+        Reading the spool into memory to re-write it would reintroduce the
+        exact OOM this spool exists to avoid, on the one path where the walk
+        was large enough to fail. A rename is O(1) and cannot run out of
+        memory; if even that fails, the spool is left in place and the caller
+        is told where it is rather than losing it to the cleanup.
+        """
+        keep = self.manifest.with_suffix(".recover.jsonl")
+        try:
+            self._spool_path.rename(keep)
+        except OSError:
+            return f"{self._spool_path} (left in place; rename failed)"
+        self._spool_path = keep  # so the caller's cleanup does not unlink it
+        return keep
 
 
 def _iso_from_cdx(timestamp: str) -> str | None:
