@@ -1,44 +1,26 @@
 # Changelog
 
-## Unreleased
+## 0.10.0 (2026-07-29)
 
-### Fixed — regressions introduced earlier in this same cycle
+One new capability, one breaking change, and two waves of post-merge review
+findings — four of which were live breakage, including two that made
+`commoner-probe validate` reject data this repo had already written (PRs
+#73-#79).
 
-Codex reviewed PRs #73–#77 after they merged. Each finding was verified against
-the tree before being touched; a merged PR is never proof a comment was
-addressed. Two of these broke `validate` on shipped output.
-
-- **`validate` rejected every legacy `_runs.jsonl` row.** `status` was marked
-  required, so a corpus written before the field existed failed validation —
-  contradicting the pre-`status` audit workflow documented in the same release.
-  `status` is now optional; absent means unaudited, not clean.
-- **`validate` rejected the output of a successful OCR run.**
-  `neva_district_row.schema.json` allowed only `clean`/`repaired`/`low`/`unknown`,
-  but an OCR-recovered document propagates `quality: "ocr"` onto its district
-  rows. The enum now includes `ocr`, and the schema carries `text_source`.
-- **`status` and `text_source` never reached the typed API.** `RunRecord`,
-  `AnswerNevaQaResponse` and `NevaDistrictRowRecord` did not declare them, and
-  `_from_dict` drops unknown keys — so every consumer of `Corpus.runs()`,
-  `.answers_neva_qa()` or `.neva_district_rows()` silently lost the new
-  provenance. This is the third time this exact failure has shipped; the fields
-  are now declared.
-- **`visible_text` split words on `del`, `ins`, `label`, `output`, `big`,
-  `strike` and `acronym`** — phrasing elements missing from the inline
-  allowlist, so `Min<del>is</del>try` read as `Min is try` and could again
-  misfile a real page as `shell_only`. The allowlist is now complete.
-- **`ocr_pdf_text` discarded the rasterizer's exit code.** A malformed PDF or
-  out-of-range page exits nonzero and writes no PNG, so the function returned
-  `""` instead of raising, and the caller recorded neither an error nor an
-  attempt — the exact silent-success the exception exists to prevent.
-- **`probe_ls_mpcode` enforced `--max-records` without recording it** in the
-  run scope, so the new corpus-truncation audit would report `null` for a
-  genuinely capped LS crawl and misclassify truncation as a thin source.
+A minor bump rather than a patch: `sansad` now exits non-zero where it exited
+0, and the pre-1.0 rule in `ROADMAP.md` puts any breaking change in the minor
+slot.
 
 ### Changed — read this before upgrading
 
 - **`sansad` now exits non-zero when a crawl's every bucket errored.** Anything
   gating on this command's exit code changes behaviour. A `partial` run — some
   buckets returned — still exits 0.
+- `answers_neva_qa_response.quality` and `neva_district_row.quality` gain `ocr`;
+  both records gain an optional `text_source` (`text_layer` | `ocr`).
+- `_runs.jsonl` records gain an optional `status`. **Not required** — a corpus
+  written before this release has no value there, and absent means unaudited,
+  not clean.
 
 ### Added
 
@@ -78,24 +60,6 @@ addressed. Two of these broke `validate` on shipped output.
     reads — 0.993 median title-line similarity against 0.942 from the text
     layer, better on 28 of 30. That margin does not transfer to real scans.
 
-### Changed
-
-- `answers_neva_qa_response.quality` gains `ocr`; records gain an optional
-  `text_source` (`text_layer` | `ocr`).
-
-### Decided, not changed
-
-- **`abhilekh-patal` will not present a browser User-Agent to clear the NAI
-  WAF challenge.** Every honest `commoner-probe` identity is challenged from
-  India egress, and only a mainstream browser token returns the catalogue. The
-  repo's decision is to stay honest and therefore not fetch this source: a
-  complete, live-tested adapter sits idle by choice. Provenance is the product
-  in litigation-adjacent work, and a client identity that is not true is a poor
-  foundation for it — even though nothing here is technically disallowed (the
-  site publishes no robots.txt at all, so the WAF is the only barrier). No code
-  change; recorded so the idle adapter is not read as a bug. `--user-agent`
-  remains for an operator making that call explicitly and on the record.
-
 ### Fixed
 
 - **`visible_text` no longer fuses adjacent block elements.** Parser fragments
@@ -111,6 +75,51 @@ addressed. Two of these broke `validate` on shipped output.
   in the meantime. Rows are now staged in memory and appended in one pass on
   success, so the "whole history or nothing" guarantee costs no other corpus
   its data. An early `break` or `max_records` still keeps its rows.
+
+### Fixed — regressions introduced within this cycle
+
+Codex reviewed PRs #73–#77 after they merged. Each finding was verified against
+the tree before being touched; a merged PR is never proof a comment was
+addressed. Two of these broke `validate` on shipped output.
+
+- **`validate` rejected every legacy `_runs.jsonl` row.** `status` was marked
+  required, so a corpus written before the field existed failed validation —
+  contradicting the pre-`status` audit workflow documented in the same release.
+  `status` is now optional; absent means unaudited, not clean.
+- **`validate` rejected the output of a successful OCR run.**
+  `neva_district_row.schema.json` allowed only `clean`/`repaired`/`low`/`unknown`,
+  but an OCR-recovered document propagates `quality: "ocr"` onto its district
+  rows. The enum now includes `ocr`, and the schema carries `text_source`.
+- **`status` and `text_source` never reached the typed API.** `RunRecord`,
+  `AnswerNevaQaResponse` and `NevaDistrictRowRecord` did not declare them, and
+  `_from_dict` drops unknown keys — so every consumer of `Corpus.runs()`,
+  `.answers_neva_qa()` or `.neva_district_rows()` silently lost the new
+  provenance. This is the third time this exact failure has shipped; the fields
+  are now declared.
+- **`visible_text` split words on `del`, `ins`, `label`, `output`, `big`,
+  `strike` and `acronym`** — phrasing elements missing from the inline
+  allowlist, so `Min<del>is</del>try` read as `Min is try` and could again
+  misfile a real page as `shell_only`. The allowlist is now complete.
+- **`ocr_pdf_text` discarded the rasterizer's exit code.** A malformed PDF or
+  out-of-range page exits nonzero and writes no PNG, so the function returned
+  `""` instead of raising, and the caller recorded neither an error nor an
+  attempt — the exact silent-success the exception exists to prevent.
+- **`probe_ls_mpcode` enforced `--max-records` without recording it** in the
+  run scope, so the new corpus-truncation audit would report `null` for a
+  genuinely capped LS crawl and misclassify truncation as a thin source.
+
+### Decided, not changed
+
+- **`abhilekh-patal` will not present a browser User-Agent to clear the NAI
+  WAF challenge.** Every honest `commoner-probe` identity is challenged from
+  India egress, and only a mainstream browser token returns the catalogue. The
+  repo's decision is to stay honest and therefore not fetch this source: a
+  complete, live-tested adapter sits idle by choice. Provenance is the product
+  in litigation-adjacent work, and a client identity that is not true is a poor
+  foundation for it — even though nothing here is technically disallowed (the
+  site publishes no robots.txt at all, so the WAF is the only barrier). No code
+  change; recorded so the idle adapter is not read as a bug. `--user-agent`
+  remains for an operator making that call explicitly and on the record.
 
 ### Not changed, and why
 
