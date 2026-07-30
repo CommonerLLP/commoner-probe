@@ -4,6 +4,15 @@
 
 ### Fixed
 
+- **The recovery file now survives the cleanup that used to delete it.** The
+  spool was spared from `probe()`'s cleanup by repointing `_spool_path` at the
+  kept `.recover.jsonl` — but the cleanup unlinks whatever that attribute
+  names, so every failed append deleted the rows while the raised error told
+  the operator the path they were preserved at. The rename-failure branch lost
+  them the same way. A flag now marks the spool as preserved and the cleanup
+  removes only an unpreserved one. The prior test asserted the repoint, which
+  was the bug; the property — the named file still exists after the run — is
+  asserted against a full `probe()` walk.
 - **A shared manifest append is now record-aligned.** The spool was copied out
   with `shutil.copyfileobj`, which writes buffer-sized chunks: a chunk can end
   mid-record, letting a concurrent writer's chunk land inside the row and

@@ -25,6 +25,9 @@ No network.
 from __future__ import annotations
 
 import json
+import re
+from pathlib import Path
+from unittest import mock
 
 import pytest
 
@@ -508,5 +511,70 @@ class TestSpoolPreservation:
         recovered = tmp_path / "manifest.recover.jsonl"
         assert recovered.exists(), "the rows must survive a failed append"
         assert json.loads(recovered.read_text().strip())["key"] == "K1"
-        # and the cleanup path must not delete what was just preserved
-        assert probe._spool_path == recovered
+        # That the file survives the caller's CLEANUP is a separate property,
+        # asserted below against a full probe() run — this test only reaches
+        # _flush_manifest, so it cannot see the unlink.
+        assert probe._spool_preserved is True
+
+    def test_the_recovery_file_survives_the_cleanup(self, tmp_path):
+        """The rows must still be there after probe() finishes (Codex, PR #82).
+
+        The previous test asserted the mechanism — that ``_preserve_spool()``
+        repoints ``_spool_path`` at the kept file — and the mechanism was the
+        bug: the cleanup unlinks whatever that attribute names, so every append
+        failure deleted the rows while the raised error named the path they were
+        supposedly preserved at.
+        """
+        session = FakeSession([HEADER, _row("20060413232357", "AAA")])
+        probe = WaybackCaptureProbe(tmp_path, sleep=0, session=session)
+        real = probe.manifest
+
+        class FullDisk:
+            def open(self, *a, **k):
+                raise OSError("No space left on device")
+
+            def with_suffix(self, s):
+                return real.with_suffix(s)
+
+            def exists(self):
+                return False
+
+        probe.manifest = FullDisk()
+        with pytest.raises(OSError) as excinfo:
+            list(probe.probe(url="u"))
+
+        named = re.search(r"preserved at (.+?); the manifest", str(excinfo.value)).group(1)
+        assert Path(named).exists(), "the error names a path the cleanup deleted"
+        assert json.loads(Path(named).read_text().strip())["digest"] == "AAA"
+
+    def test_a_spool_that_could_not_be_renamed_is_not_deleted_either(self, tmp_path):
+        """The rename-failure branch leaves the spool in place and says so — so
+        the cleanup must spare it too, or the message names a deleted file."""
+        session = FakeSession([HEADER, _row("20060413232357", "AAA")])
+        probe = WaybackCaptureProbe(tmp_path, sleep=0, session=session)
+        real = probe.manifest
+
+        class FullDisk:
+            def open(self, *a, **k):
+                raise OSError("No space left on device")
+
+            def with_suffix(self, s):
+                return real.with_suffix(s)
+
+            def exists(self):
+                return False
+
+        probe.manifest = FullDisk()
+
+        def no_rename(self, target):
+            raise OSError("cross-device link")
+
+        with mock.patch.object(Path, "rename", no_rename):
+            with pytest.raises(OSError) as excinfo:
+                list(probe.probe(url="u"))
+
+        message = str(excinfo.value)
+        assert "left in place; rename failed" in message
+        spool = Path(message.split("preserved at ")[1].split(" (left in place")[0])
+        assert spool.exists(), "the spool the message names must still hold the rows"
+        assert json.loads(spool.read_text().strip())["digest"] == "AAA"
