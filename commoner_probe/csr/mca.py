@@ -14,7 +14,12 @@ from pathlib import Path
 from commoner_probe.http_client import USER_AGENT
 from commoner_probe.url_safety import is_safe_url
 
-BASE_URL = "https://www.mcacdm.nic.in"
+#: Apex, not ``www``. The certificate MCA installed on 2026-07-02 (GlobalSign
+#: GCC R3 DV, valid to 2027-01-17) carries a single SAN, ``DNS:mcacdm.nic.in``,
+#: so every ``www.`` request fails hostname verification before a redirect can
+#: be followed. Verified 2026-07-29: the apex serves ``/csr-data`` and
+#: ``/cdm/export.php`` with HTTP 200 while ``www`` cannot be reached at all.
+BASE_URL = "https://mcacdm.nic.in"
 CSR_PAGE_PATH = "/csr-data"
 EXPORT_PATH = "/cdm/export.php"
 CSR_PAGE_URL = f"{BASE_URL}{CSR_PAGE_PATH}"
