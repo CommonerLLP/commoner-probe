@@ -2,6 +2,36 @@
 
 ## Unreleased
 
+### Added
+
+- **`commoner-probe census` — ORGI / Census of India acquisition** (REQ-0045,
+  theright2read). A source family the org covered nowhere. Four surfaces from
+  the data.gov.in API: `pca`, `village-amenities`, `town-amenities`,
+  `town-directory`, each with a provenance manifest and a typed corpus stream.
+  - **The District Census Handbook PDFs are not the primary route.** The request
+    named ~640 DCHBs at ~18 MB each — ~11.5 GB plus PDF table extraction — but
+    the same content is served as structured rows: 2,225 PCA resources and 1,128
+    Village Amenities resources. PCA 2011 carries `scheduled_castes_population_*`
+    and `scheduled_tribes_population_*` by person/male/female with codes down to
+    ward, which is the denominator layer under every per-capita claim in the org.
+  - **The urban library count IS still behind the PDFs**, and the request asked
+    for all libraries, not the rural ones. Checked rather than assumed: "Complete
+    Town Directory" is a place index (8 fields, codes only); "Town Amenities" —
+    all 232 field names read — runs demographics → health → education and stops
+    before Statement V; catalogue titles `library`/`libraries`/`recreational`
+    return only funding schemes. Recorded in `census.py` as
+    `URBAN_LIBRARY_COUNT_UNAVAILABLE`, and kept as a well-searched NOT FOUND
+    rather than a proof of absence.
+  - **The library fields are differently typed and the adapter refuses to
+    conflate them.** Rural is an availability flag per settlement (plus a
+    distance-range code); urban is a count that itself merges Public Library with
+    Public Reading Room. Summing them is the wrong "~75,000 libraries".
+  - The `api-key` rides in the query string, so the request URL is a credential:
+    manifests and error text carry a key-free form.
+  - The sample-key guard compares a **digest, not a prefix** — every data.gov.in
+    key begins `579b464db66e`, registered ones included, so the first cut of that
+    guard refused the org's own key.
+
 ### Changed
 
 - **NeVA extraction checkpoints, so an interrupted pass resumes instead of

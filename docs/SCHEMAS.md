@@ -814,3 +814,29 @@ manifest (kind=committee_report, report_type=demands_for_grants | bill | subject
 
 `pdf_path` values are relative to the corpus `out_dir`. To get an absolute path,
 join with the directory that contains `manifest.jsonl`.
+
+## `manifest.jsonl` — ORGI Census resource (`kind = "orgi_census_resource"`)
+
+One record per acquired Census catalogue resource, written by
+`commoner-probe census`. Schema: `manifest_orgi_census.schema.json`.
+
+| Field | Type | Required | Notes | Provenance |
+|---|---|---|---|---|
+| `key` | string | yes | `ORGI\|{surface}\|{resource_id}` | census.py |
+| `source_name` | string | yes | `pca` \| `village-amenities` \| `town-amenities` \| `town-directory` | census.py |
+| `resource_id` | string | yes | OGD `index_name`, stable across pulls | census.py |
+| `census_year` | string\|null | no | Parsed from the title as a token; **null means unparsed, never 2011** | census.py |
+| `level` | string | yes | `state` or `district` — what the RESOURCE covers, not its row granularity | census.py |
+| `state_name` / `district_name` | string\|null | no | **Census 2011 areas** — districts created since do not appear | census.py |
+| `url` | string | yes | **Key-free.** A value containing `api-key` is a credential leak | census.py |
+| `dest` / `rows` / `sha256` | | cond | Present once downloaded | census.py |
+| `status` | string | yes | `pending` \| `dry_run` \| `downloaded` | census.py |
+
+**The library fields are differently typed and must never be summed.**
+`village-amenities` records `public_library` as an availability flag per
+settlement (A=1/NA=2), with a distance-range code for the nearest facility when
+absent. The urban COUNT — ORGI's Statement V, which itself fuses the separately
+defined 9.11 Public Library and 9.12 Public Reading Room — is **not on the OGD
+API** and must come from the DCHB Part A PDFs. Adding a rural flag to an urban
+count is what produces the widely-cited and wrong "~75,000 libraries"
+(70,817 + 4,580).

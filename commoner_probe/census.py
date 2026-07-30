@@ -214,7 +214,8 @@ def parse_title(title: str) -> dict[str, str | None]:
         area = area.replace(year, " ")
     area = re.sub(
         r"primary\s+census\s+abstract|complete\s+town\s+directory|town\s+directory"
-        r"|village\s+amenities|by\s+india/state/district/sub-district\s+level|census",
+        r"|village\s+amenities|town\s+amenities"
+        r"|by\s+india/state/district/sub-district\s+level|census",
         " ",
         area,
         flags=re.I,

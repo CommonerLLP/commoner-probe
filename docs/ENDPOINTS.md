@@ -333,3 +333,42 @@ Outputs:
   `downloaded` only when the assertion passed, `shell_only` otherwise
 - snapshots under `rendered/`, and failed captures under `rendered_shells/` —
   separate directories, because downstream tools glob directories
+
+## ORGI / Census of India (`census`)
+
+Publisher: Office of the Registrar General & Census Commissioner, via the
+data.gov.in (OGD) API. Contract verified 2026-07-30.
+
+Source contract:
+
+- catalogue: `GET https://api.data.gov.in/lists?filters[title]=<q>&limit&offset`
+- resource:  `GET https://api.data.gov.in/resource/<id>?limit&offset`
+
+Auth: `api-key` in the query string. Read from `$DATA_GOV_IN_KEY`, else the
+org's shared secrets file. **Because the key is a query parameter, the request
+URL is a credential** — manifest rows and error text carry a key-free form.
+
+Surfaces:
+
+| surface | resources | one resource covers | note |
+|---|---:|---|---|
+| `pca` | 2,225 | a state (rows to ward level) | Primary Census Abstract — population, households, age 0-6, SC and ST counts by person/male/female. 2001 and 2011 |
+| `village-amenities` | 1,128 | a district | 396 fields; `public_library` and `public_reading_room` are SEPARATE availability flags (A=1/NA=2) plus distance-range codes |
+| `town-amenities` | per district | a district | 232 fields: demographics, health, education. **No Statement V** |
+| `town-directory` | 380 | a state | a place INDEX — 8 fields, codes and names, no amenities |
+
+Traps, all measured:
+
+- Title filters match **loosely** — `town amenities` returns "Digital Payments
+  Data: New Town Kolkata". Every hit is re-checked against the surface pattern.
+- Titles carry two formats: `Abstract, 2001 - Delhi` and `Abstract 2011 -
+  Rajasthan`. The year is read as a token, not by position.
+- The API is slow and intermittent: a 100-row page took 11.8 s, a 100-item
+  listing timed out, and one query errored then succeeded moments later.
+- **The urban public-library COUNT is not on this API.** Town Directory
+  Statement V lives only in the DCHB Part A PDFs. Never sum it with the rural
+  availability flag — that is the wrong "~75,000 libraries".
+- 2011 vintage: districts created since (all of Telangana, splits elsewhere) do
+  not exist in these codes.
+
+Outputs: `manifest.jsonl` (`kind: orgi_census_resource`) + `rows/<surface>__<id>.jsonl`.
