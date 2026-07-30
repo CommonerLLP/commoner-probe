@@ -15,10 +15,11 @@ record; this file says what ships next and what is deliberately deferred.
 | 0.8.0 | 2026-07-19 | 9 adapters (`questions-list`, `prs`, `mospi`, `ministry-ddg`, `legacy-dspace`, `doe-pay-allowances`, `attendance`, `myneta`, `dpe-csr`); 5 extraction modules; `sansad` tabled / `--all` / `--mp-code` |
 | 0.9.0 | 2026-07-28 | `wayback`, `abhilekh-patal`, `render`, `courts`, `cag`; PRS completed; Wayback provenance on acquisition; the ten-finding Codex sweep |
 | 0.10.0 | 2026-07-29 | OCR fallback (`ocr_pdf_text`, `extract-answers --ocr`); run-level `status` on `_runs.jsonl` + non-zero exit on a failed crawl; corpus-truncation audit recipe; two post-merge Codex waves |
+| 0.10.1 | 2026-07-29 | Fixes only. Two live breakages on shipped code: `mca-csr` dead at the TLS layer since 2026-07-02 (cert SAN vs a hardcoded `www.`), and `prs --surface mp-track --house rs` writing nothing and exiting 0 for its whole life (REQ-0044, RS/LS column divergence). Plus the `--ocr` acceptance gate (16/60 -> 26/60 recovery, no longer destroys records) and five Codex findings |
 
 ## On master, unreleased
 
-Nothing. 0.10.0 was cut from master with no open PRs.
+Nothing. 0.10.1 was cut from master with no open PRs and no open issues.
 
 **Next gate: 1.0.0 — deferred deliberately, and gated on Phase 2.** Declaring
 1.0 promises interface stability, and the package rename to `probe`/`compose`
@@ -36,7 +37,10 @@ breaking change is a minor bump; only backwards-compatible fixes take a patch.
 exit codes, `rendered_page` manifest keys for query-string URLs, a dropped
 status enum value, 4xx reclassified as `error`). 0.10.0 added no subcommand but
 took the minor slot anyway on the breaking change alone: `sansad` exits
-non-zero where it exited 0.
+non-zero where it exited 0. **0.10.1 is the patch case done properly**: seven
+fixes, no new surface, and no contract change — the two new `ValueError`s it
+raises fire only where the previous behaviour was to write nothing and exit 0,
+so no working caller changes behaviour.
 
 ## Queued (requested source adapters, not started)
 

@@ -1,6 +1,25 @@
 # Changelog
 
-## Unreleased
+## 0.10.1 (2026-07-29)
+
+Fixes only — no new capability, no schema or CLI contract change, so a patch
+rather than a minor. Two of these were **live breakage on shipped code**, and
+neither was visible to the test suite:
+
+- `commoner-probe mca-csr` had been dead at the TLS layer since 2026-07-02. MCA
+  installed a certificate with a single SAN, `DNS:mcacdm.nic.in`, and `BASE_URL`
+  hardcoded `www.`. Every test asserts the URL *string*; none reaches the host,
+  so four weeks of total failure stayed green.
+- `prs --surface mp-track --house rs` wrote nothing and exited 0 for its whole
+  life (REQ-0044). The RS CSV diverges from the LS CSV on 13 of 27 column names,
+  and the adapter was built and fixtured against LS only.
+
+The rest close five Codex findings, each reproduced by execution before being
+touched. Four of the seven fixes in this release are corrections to earlier
+fixes in the same session — recorded plainly because the pattern is the point:
+in this cycle a fix drew a finding of its own seven rounds running, in two
+recurring shapes (*a label asserting more than was verified*, and *a guard that
+cannot see its own edge case*).
 
 ### Fixed
 
