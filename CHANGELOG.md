@@ -16,11 +16,13 @@
   record — an index-only fix would still have emitted null metrics. RS names are
   now normalized on read. Live: **0 records before, 828 after** (727 with
   non-zero debate counts), LS unchanged at 544, all 1,372 pass `validate`.
-- **A parsed MP Track CSV that yields no identity on any row now raises.** This
-  is the generalizable half: exiting 0 with no output is what made the above
-  invisible for a day. A resume run that writes nothing because every key is
-  already terminal stays quiet, as it should — the guard fires only when every
-  parsed row lacked an identity, which is a changed source contract.
+- **An MP Track CSV that yields no usable rows now raises, both ways.** Exiting 0
+  with no output is what made the above invisible for a day. The guard covers a
+  CSV whose every row lacked an identity **and** one that parsed to zero rows at
+  all — an empty or header-only body on an HTTP 200, which the first cut of this
+  guard skipped, reproducing the very failure it was written to stop. Neither
+  case can be a resume: a resume has parsed rows whose keys are already
+  terminal, so it still writes nothing and stays quiet, as it should.
 - **Each preserved spool gets its own recovery path.** The recovery file was a
   fixed `manifest.recover.jsonl`, and `rename()` replaces its destination on
   POSIX — so a second failed append silently destroyed the first invocation's

@@ -231,3 +231,21 @@ def test_a_resume_run_that_writes_nothing_stays_quiet(tmp_path):
     is the normal resume path, and it is not a contract change."""
     assert len(_rs_probe(tmp_path).probe_mptrack(houses=["rs"], loksabhas=[])) == 1
     assert _rs_probe(tmp_path).probe_mptrack(houses=["rs"], loksabhas=[]) == []
+
+
+def test_an_empty_or_header_only_csv_raises_too(tmp_path):
+    """The guard's own silent-success hole (Codex, PR #87).
+
+    `if parsed and ...` skipped the check entirely when the CSV parsed to zero
+    rows — an empty or header-only body on an HTTP 200 — so the command wrote
+    nothing and exited 0, which is the exact failure REQ-0044 filed. Zero parsed
+    rows cannot be a resume: a resume has rows whose keys are terminal.
+    """
+    import pytest
+
+    header_only = RS_CSV_TEXT.splitlines()[0] + "\n"
+    for body in (header_only, ""):
+        with pytest.raises(ValueError, match="no rows at all"):
+            _rs_probe(tmp_path / f"c{len(body)}", body).probe_mptrack(
+                houses=["rs"], loksabhas=[]
+            )
