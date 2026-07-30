@@ -247,6 +247,90 @@ class TestNevaOcrWiring:
         with pytest.raises(OcrUnavailable, match="tesseract"):
             mod.extract_neva_answers(self._corpus(tmp_path), log_fn=lambda *_: None, ocr=True)
 
+    #: The same body with the boundary word glyph-corrupted the way the live
+    #: corpus corrupts it (`જવાબ` -> `જિાબ`). The header regex needs `વા[બફ]`,
+    #: so the splitter finds no boundary and the document yields NO record —
+    #: 3,122 of 6,384 Gujarat questions, measured 2026-07-29.
+    BODY_CORRUPT_HEADER = "પ્રશ્ન                જિાબ\n (1) પ્રશ્ન લખાણ            (1) હા,\n"
+
+    def test_ocr_recovers_a_document_that_yielded_no_record(self, monkeypatch, tmp_path):
+        """The coverage case: subject is fine, the BOUNDARY is what OCR fixes.
+
+        Triggering only on `quality == "low"` skipped these entirely, and
+        accepting only on the subject line rejected the ones it did reach —
+        together that discarded 10 of 60 sampled recoverable documents.
+        """
+        stats = self._run(
+            monkeypatch, tmp_path,
+            layer_text=self.SUBJECT + "\n" + self.BODY_CORRUPT_HEADER,
+            ocr_text=self.SUBJECT + "\n" + self.BODY,
+        )
+        assert stats.skipped_no_split == 0, "the document must now produce a record"
+        assert stats.qa_records == 1
+        assert stats.ocr_recovered == 1
+        assert stats.ocr_recovered_split == 1, "counted as a NEW record, not better text"
+        assert self._records(tmp_path)[0]["text_source"] == "ocr"
+
+    def test_a_boundary_recovery_does_not_claim_the_reference_check_passed(
+        self, monkeypatch, tmp_path
+    ):
+        """`quality` and `text_source` are orthogonal facts (Codex, PR #85).
+
+        `quality: "ocr"` means an OCR re-read that PASSED the reference check.
+        A document recovered only because OCR restored the boundary, while its
+        subject check still fails, must not carry that label — it would read as
+        trusted while holding unverified glyph-corrupted text. It keeps the OCR
+        read's own verdict, and `text_source` carries the fact that OCR ran.
+        """
+        stats = self._run(
+            monkeypatch, tmp_path,
+            layer_text="રાજયમાાં ભૂ-રાિાયસ્ણક િંશોધન બાબત\n" + self.BODY_CORRUPT_HEADER,
+            ocr_text="ગગગ ગગગ ગગગ ગગગ\n" + self.BODY,   # boundary restored, subject still junk
+        )
+        assert stats.qa_records == 1, "the record is still a real gain"
+        assert stats.ocr_recovered_split == 1
+
+        rec = self._records(tmp_path)[0]
+        assert rec["text_source"] == "ocr", "the text did come from OCR"
+        assert rec["quality"] == "low", "but the reference check did NOT pass"
+        assert stats.quality_counts.get("ocr") is None
+        assert stats.quality_counts.get("low") == 1
+
+    def test_ocr_that_also_finds_no_boundary_yields_nothing_and_says_so(
+        self, monkeypatch, tmp_path
+    ):
+        stats = self._run(
+            monkeypatch, tmp_path,
+            layer_text=self.SUBJECT + "\n" + self.BODY_CORRUPT_HEADER,
+            ocr_text=self.SUBJECT + "\n" + self.BODY_CORRUPT_HEADER,
+        )
+        assert stats.qa_records == 0
+        assert stats.skipped_no_split == 1
+        assert stats.ocr_recovered == 0
+        assert stats.ocr_attempted_unrecovered == 1
+
+    def test_ocr_never_costs_a_split_the_text_layer_already_had(self, monkeypatch, tmp_path):
+        """The trapdoor: OCR fixes the SUBJECT but breaks the BOUNDARY.
+
+        Accepting on the subject alone swaps in text that no longer splits, so a
+        document that had a record loses it. That is exactly how the first
+        end-to-end OCR run took this corpus from 1 Q/A record to 0 with a fully
+        green suite. The record must survive, and stay on the text layer.
+        """
+        stats = self._run(
+            monkeypatch, tmp_path,
+            layer_text="રાજયમાાં ભૂ-રાિાયસ્ણક િંશોધન બાબત\n" + self.BODY,   # low subject, GOOD header
+            ocr_text=self.SUBJECT + "\n" + self.BODY_CORRUPT_HEADER,        # good subject, BAD header
+        )
+        assert stats.qa_records == 1, "the text layer's record must not be thrown away"
+        assert stats.skipped_no_split == 0
+        assert stats.ocr_recovered == 0
+        assert stats.ocr_attempted_unrecovered == 1
+
+        rec = self._records(tmp_path)[0]
+        assert rec["quality"] == "low"
+        assert rec["text_source"] == "text_layer"
+
     def test_ocr_is_off_by_default(self, monkeypatch, tmp_path):
         from commoner_probe import neva_text as mod
 

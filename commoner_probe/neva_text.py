@@ -370,11 +370,19 @@ class NevaExtractionStats:
     skipped_no_text: int = 0
     skipped_no_split: int = 0
     errors: list = field(default_factory=list)
-    #: Documents whose text layer failed the reference check and whose OCR read
-    #: then passed it. Counted separately from those where OCR also failed, so
-    #: an `--ocr` run reports what it actually bought.
+    #: Documents whose OCR read was accepted, for either reason. Counted apart
+    #: from those where OCR bought nothing, so an `--ocr` run reports what it
+    #: actually gained.
     ocr_recovered: int = 0
+    #: OCR ran and was rejected. NOT "still low" — the gate re-reads documents
+    #: whose subject was never `low`, so this covers both a failed reference
+    #: recovery and a failed boundary recovery.
     ocr_attempted_unrecovered: int = 0
+    #: Of `ocr_recovered`, the ones that yielded NO Q/A record from the text
+    #: layer at all — a coverage gain rather than a character-quality gain.
+    #: Reported separately because the two are worth different things: this
+    #: number is new records, the remainder is better text in existing ones.
+    ocr_recovered_split: int = 0
 
 
 def _now() -> str:
@@ -443,11 +451,18 @@ def extract_neva_answers(
             continue
         repaired, quality, mapping = repair_text(text, rec.get("subject"))
         text_source = "text_layer"
-        if ocr and quality == "low":
-            # The text layer is present but untrustworthy. Only accept the OCR
-            # read if it recovers the reference the text layer could not — an
-            # OCR pass that also fails proves nothing and must not overwrite a
-            # record with different unverified text.
+        qa = split_qa_neva(repaired)
+        if ocr and (quality == "low" or qa is None):
+            # Two independent reasons to re-read a document, and the second is
+            # the larger one. `quality == "low"` means the portal subject could
+            # not be found: a character-quality problem. `qa is None` means the
+            # two-column Q/A boundary could not be found, so the document yields
+            # NO record at all — measured 2026-07-29 on the Gujarat corpus,
+            # 3,122 of 6,384 questions, and in 28 of 30 sampled the boundary
+            # word `જવાબ` is on the page but glyph-corrupted (`જિાબ`, `જલાફ`,
+            # `જવયબ`), which is the same corruption landing where it is fatal
+            # rather than merely degrading. Triggering on `low` alone missed the
+            # documents whose subject survived but whose header did not.
             try:
                 ocr_text = "\n".join(
                     ocr_pdf_text(pdf, page=n, lang="guj") for n in range(1, ocr_pages + 1)
@@ -457,8 +472,35 @@ def extract_neva_answers(
                 ocr_text = ""
             if ocr_text.strip():
                 ocr_repaired, ocr_quality, _ = repair_text(ocr_text, rec.get("subject"))
-                if ocr_quality in ("clean", "repaired"):
-                    repaired, quality, text_source = ocr_repaired, "ocr", "ocr"
+                ocr_qa = split_qa_neva(ocr_repaired)
+                # Accept the OCR read when it recovers the portal subject the
+                # text layer could not, OR when the text layer yields no Q/A
+                # boundary and the OCR read does. The second can only turn "no
+                # record" into "a record".
+                #
+                # Never at the cost of a split we already had. Swapping in text
+                # that no longer splits is how the first end-to-end OCR run
+                # took this corpus from 1 Q/A record to 0 while the mocked
+                # suite stayed green; accepting on the subject line alone leaves
+                # that trapdoor open, because the subject and the boundary are
+                # different words on the page and OCR can fix either without
+                # the other.
+                reference_recovered = ocr_quality in ("clean", "repaired")
+                if ocr_qa is not None and (reference_recovered or qa is None):
+                    # `quality` answers "did the reference check pass?" and
+                    # `text_source` answers "where did the text come from?".
+                    # They are orthogonal, and only the second is settled by
+                    # running OCR. Stamping `ocr` on a boundary recovery whose
+                    # subject check still failed would assert a verification
+                    # that did not happen — the record would read as trusted
+                    # while carrying unverified glyph-corrupted text. So a
+                    # boundary-only recovery keeps the OCR read's own honest
+                    # verdict (`low`) and is marked `text_source: "ocr"`.
+                    if qa is None:
+                        stats.ocr_recovered_split += 1
+                    quality = "ocr" if reference_recovered else ocr_quality
+                    repaired, text_source = ocr_repaired, "ocr"
+                    qa = ocr_qa
                     stats.ocr_recovered += 1
                 else:
                     stats.ocr_attempted_unrecovered += 1
@@ -470,7 +512,6 @@ def extract_neva_answers(
             "language_classified": ["gu"],
             "text_source": text_source,
         }
-        qa = split_qa_neva(repaired)
         if qa is None:
             stats.skipped_no_split += 1
             continue
@@ -497,7 +538,12 @@ def extract_neva_answers(
         tmp.replace(path)
 
     ocr_note = (
-        f", ocr: recovered={stats.ocr_recovered} still_low={stats.ocr_attempted_unrecovered}"
+        # NOT "still_low": the gate now deliberately re-reads documents whose
+        # subject was never `low`, so an unrecovered one of those is not "still
+        # low" — it is a boundary OCR that bought nothing.
+        f", ocr: recovered={stats.ocr_recovered} "
+        f"(new_records={stats.ocr_recovered_split}) "
+        f"unrecovered={stats.ocr_attempted_unrecovered}"
         if ocr
         else ""
     )
