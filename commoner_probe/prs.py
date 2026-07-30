@@ -568,13 +568,20 @@ class PrsProbe:
                 seen[key] = status
                 if max_records is not None and len(records) >= max_records:
                     return records
-            # A CSV that parsed rows and yielded no usable identity on ANY of
-            # them is a changed source contract, not an empty result. Exiting 0
-            # with no output is what made REQ-0044 invisible for a day. This is
-            # deliberately not "no records were written" — a resume run
-            # legitimately writes nothing because every key is already terminal,
-            # and that must stay quiet.
-            if parsed and dropped_no_index == len(parsed):
+            # Two ways this CSV can be useless, and both must be loud. Exiting 0
+            # with no output is what made REQ-0044 invisible for a day.
+            #
+            # Neither is a resume. A resume run HAS parsed rows — it writes
+            # nothing because their keys are already terminal — so zero usable
+            # rows never describes one, and the quiet path stays quiet.
+            if not parsed:
+                raise ValueError(
+                    f"PRS MP Track ({house}{loksabha or ''}): the CSV returned no rows "
+                    f"at all ({len(body)} bytes from {source['csv_url']}). Neither House "
+                    "has zero members, so an empty or header-only CSV is a broken or "
+                    "changed source, not an empty result."
+                )
+            if dropped_no_index == len(parsed):
                 raise ValueError(
                     f"PRS MP Track ({house}{loksabha or ''}): parsed {len(parsed)} rows "
                     f"and none carried an identity column. Expected "
