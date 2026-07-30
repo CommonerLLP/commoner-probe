@@ -69,6 +69,16 @@
   separately as `new_records`, because new records and better text in existing
   records are worth different things. Supersedes the acceptance rule described
   under 0.10.0.
+  - **`quality` and `text_source` are orthogonal, and only the second is settled
+    by running OCR.** `quality: "ocr"` means an OCR re-read that *passed the
+    reference check*; a document recovered only because OCR restored the
+    boundary, while its subject check still fails, keeps the OCR read's own
+    verdict (`low`) and records `text_source: "ocr"`. The first cut of this
+    change stamped `ocr` on both, which asserted a verification that had not
+    happened and would have let unverified glyph-corrupted text read as trusted.
+  - The run log reports `unrecovered=` rather than `still_low=`. The gate now
+    deliberately re-reads documents whose subject was never `low`, so "still
+    low" no longer described what was counted.
 
 ## 0.10.0 (2026-07-29)
 

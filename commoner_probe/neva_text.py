@@ -370,10 +370,13 @@ class NevaExtractionStats:
     skipped_no_text: int = 0
     skipped_no_split: int = 0
     errors: list = field(default_factory=list)
-    #: Documents whose text layer failed the reference check and whose OCR read
-    #: then passed it. Counted separately from those where OCR also failed, so
-    #: an `--ocr` run reports what it actually bought.
+    #: Documents whose OCR read was accepted, for either reason. Counted apart
+    #: from those where OCR bought nothing, so an `--ocr` run reports what it
+    #: actually gained.
     ocr_recovered: int = 0
+    #: OCR ran and was rejected. NOT "still low" — the gate re-reads documents
+    #: whose subject was never `low`, so this covers both a failed reference
+    #: recovery and a failed boundary recovery.
     ocr_attempted_unrecovered: int = 0
     #: Of `ocr_recovered`, the ones that yielded NO Q/A record from the text
     #: layer at all — a coverage gain rather than a character-quality gain.
@@ -482,10 +485,21 @@ def extract_neva_answers(
                 # that trapdoor open, because the subject and the boundary are
                 # different words on the page and OCR can fix either without
                 # the other.
-                if ocr_qa is not None and (ocr_quality in ("clean", "repaired") or qa is None):
+                reference_recovered = ocr_quality in ("clean", "repaired")
+                if ocr_qa is not None and (reference_recovered or qa is None):
+                    # `quality` answers "did the reference check pass?" and
+                    # `text_source` answers "where did the text come from?".
+                    # They are orthogonal, and only the second is settled by
+                    # running OCR. Stamping `ocr` on a boundary recovery whose
+                    # subject check still failed would assert a verification
+                    # that did not happen — the record would read as trusted
+                    # while carrying unverified glyph-corrupted text. So a
+                    # boundary-only recovery keeps the OCR read's own honest
+                    # verdict (`low`) and is marked `text_source: "ocr"`.
                     if qa is None:
                         stats.ocr_recovered_split += 1
-                    repaired, quality, text_source = ocr_repaired, "ocr", "ocr"
+                    quality = "ocr" if reference_recovered else ocr_quality
+                    repaired, text_source = ocr_repaired, "ocr"
                     qa = ocr_qa
                     stats.ocr_recovered += 1
                 else:
@@ -524,9 +538,12 @@ def extract_neva_answers(
         tmp.replace(path)
 
     ocr_note = (
+        # NOT "still_low": the gate now deliberately re-reads documents whose
+        # subject was never `low`, so an unrecovered one of those is not "still
+        # low" — it is a boundary OCR that bought nothing.
         f", ocr: recovered={stats.ocr_recovered} "
         f"(new_records={stats.ocr_recovered_split}) "
-        f"still_low={stats.ocr_attempted_unrecovered}"
+        f"unrecovered={stats.ocr_attempted_unrecovered}"
         if ocr
         else ""
     )

@@ -271,6 +271,31 @@ class TestNevaOcrWiring:
         assert stats.ocr_recovered_split == 1, "counted as a NEW record, not better text"
         assert self._records(tmp_path)[0]["text_source"] == "ocr"
 
+    def test_a_boundary_recovery_does_not_claim_the_reference_check_passed(
+        self, monkeypatch, tmp_path
+    ):
+        """`quality` and `text_source` are orthogonal facts (Codex, PR #85).
+
+        `quality: "ocr"` means an OCR re-read that PASSED the reference check.
+        A document recovered only because OCR restored the boundary, while its
+        subject check still fails, must not carry that label — it would read as
+        trusted while holding unverified glyph-corrupted text. It keeps the OCR
+        read's own verdict, and `text_source` carries the fact that OCR ran.
+        """
+        stats = self._run(
+            monkeypatch, tmp_path,
+            layer_text="રાજયમાાં ભૂ-રાિાયસ્ણક િંશોધન બાબત\n" + self.BODY_CORRUPT_HEADER,
+            ocr_text="ગગગ ગગગ ગગગ ગગગ\n" + self.BODY,   # boundary restored, subject still junk
+        )
+        assert stats.qa_records == 1, "the record is still a real gain"
+        assert stats.ocr_recovered_split == 1
+
+        rec = self._records(tmp_path)[0]
+        assert rec["text_source"] == "ocr", "the text did come from OCR"
+        assert rec["quality"] == "low", "but the reference check did NOT pass"
+        assert stats.quality_counts.get("ocr") is None
+        assert stats.quality_counts.get("low") == 1
+
     def test_ocr_that_also_finds_no_boundary_yields_nothing_and_says_so(
         self, monkeypatch, tmp_path
     ):
