@@ -697,9 +697,21 @@ class WaybackCaptureProbe:
         kept file does not: the caller's cleanup unlinks whatever that attribute
         names, so the repoint deleted the recovery file it was meant to spare
         (Codex, PR #82).
+
+        The recovery name is per-process and non-colliding. A fixed
+        ``manifest.recover.jsonl`` is destroyed by the next failure, because
+        ``rename()`` replaces its destination on POSIX — so a second outage
+        would silently delete the first invocation's only copy of its rows
+        while reporting the new one as preserved (Codex, PR #83). The pid keeps
+        concurrent probes apart; the counter keeps successive failures in one
+        process apart.
         """
         self._spool_preserved = True
-        keep = self.manifest.with_suffix(".recover.jsonl")
+        keep = self.manifest.with_suffix(f".{os.getpid()}.recover.jsonl")
+        n = 2
+        while keep.exists():
+            keep = self.manifest.with_suffix(f".{os.getpid()}.recover.{n}.jsonl")
+            n += 1
         try:
             self._spool_path.rename(keep)
         except OSError:
