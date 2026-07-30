@@ -1080,7 +1080,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="Extract structured question/answer and recommendation/response pairs from PDFs into answers.jsonl",
     )
     extract.add_argument("--out", required=True, help="Corpus directory containing manifest.jsonl + downloaded PDFs")
-    extract.add_argument("--refresh", action="store_true", help="Force re-extraction even if answers.jsonl exists")
+    extract.add_argument(
+        "--refresh",
+        action="store_true",
+        help=(
+            "Force re-extraction even if answers.jsonl exists. Sansad corpora only "
+            "— a NeVA corpus (questions.jsonl) always re-extracts, except that an "
+            "interrupted run resumes from where it stopped"
+        ),
+    )
     extract.add_argument(
         "--ocr",
         action="store_true",

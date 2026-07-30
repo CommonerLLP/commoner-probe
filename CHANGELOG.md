@@ -1,5 +1,29 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- **NeVA extraction checkpoints, so an interrupted pass resumes instead of
+  restarting.** Records accumulated in a list and were written once at the very
+  end, which made a full Gujarat `--ocr` run — about 2.5 hours — all-or-nothing.
+  Three consecutive runs were lost to it on 2026-07-29/30: killed at 14 minutes,
+  killed at 100 minutes, and the third failing at **2h34m on the final write
+  itself**, when the external volume holding the corpus blinked out and the
+  single `open()` got `ENOENT`. Records now stream to `.partial` files as they
+  are produced and every processed key is appended to `.neva_extract_progress`,
+  so a re-run skips completed documents. Progress is marked at every exit — not
+  on entry, which would silently drop a document that crashed mid-way, and not
+  only on success, which would re-OCR every no-split document at ~1.2s each. The
+  atomic replace still happens at the end, so a consumer never reads a
+  half-written corpus, and a completed run leaves no `.partial` or progress file.
+  Verified by SIGKILL on a 40-document corpus of real PDFs: killed after 3, then
+  resumed to 27 records with no duplicates and no re-reads.
+  A resumed run's stats cover that invocation only, so the log now names both
+  the run's counts and the artefact's total rather than conflating them.
+- `--refresh`'s help text no longer implies it applies to NeVA corpora. It never
+  reached that path: a corpus with `questions.jsonl` always re-extracts.
+
 ## 0.10.1 (2026-07-29)
 
 Fixes only — no new capability, no schema or CLI contract change, so a patch

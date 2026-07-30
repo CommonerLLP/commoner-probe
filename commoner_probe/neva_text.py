@@ -432,110 +432,166 @@ def extract_neva_answers(
 
     stats = NevaExtractionStats()
     questions = read_jsonl(out_dir / "questions.jsonl")
-    out_records: list[dict] = []
-    row_records: list[dict] = []
-    for rec in questions:
-        stats.questions_processed += 1
-        pdf_rel = rec.get("pdf_path")
-        pdf = (out_dir / pdf_rel) if pdf_rel else None
-        if not pdf or not pdf.exists():
-            stats.skipped_no_pdf += 1
-            continue
-        try:
-            text = extract_pdf_text(pdf)
-        except Exception as exc:  # noqa: BLE001
-            stats.errors.append({"key": rec.get("key"), "where": "pdftotext", "error": repr(exc)})
-            continue
-        if not text or not text.strip():
-            stats.skipped_no_text += 1
-            continue
-        repaired, quality, mapping = repair_text(text, rec.get("subject"))
-        text_source = "text_layer"
-        qa = split_qa_neva(repaired)
-        if ocr and (quality == "low" or qa is None):
-            # Two independent reasons to re-read a document, and the second is
-            # the larger one. `quality == "low"` means the portal subject could
-            # not be found: a character-quality problem. `qa is None` means the
-            # two-column Q/A boundary could not be found, so the document yields
-            # NO record at all — measured 2026-07-29 on the Gujarat corpus,
-            # 3,122 of 6,384 questions, and in 28 of 30 sampled the boundary
-            # word `જવાબ` is on the page but glyph-corrupted (`જિાબ`, `જલાફ`,
-            # `જવયબ`), which is the same corruption landing where it is fatal
-            # rather than merely degrading. Triggering on `low` alone missed the
-            # documents whose subject survived but whose header did not.
-            try:
-                ocr_text = "\n".join(
-                    ocr_pdf_text(pdf, page=n, lang="guj") for n in range(1, ocr_pages + 1)
-                )
-            except OcrUnavailable as exc:
-                stats.errors.append({"key": rec.get("key"), "where": "ocr", "error": repr(exc)})
-                ocr_text = ""
-            if ocr_text.strip():
-                ocr_repaired, ocr_quality, _ = repair_text(ocr_text, rec.get("subject"))
-                ocr_qa = split_qa_neva(ocr_repaired)
-                # Accept the OCR read when it recovers the portal subject the
-                # text layer could not, OR when the text layer yields no Q/A
-                # boundary and the OCR read does. The second can only turn "no
-                # record" into "a record".
-                #
-                # Never at the cost of a split we already had. Swapping in text
-                # that no longer splits is how the first end-to-end OCR run
-                # took this corpus from 1 Q/A record to 0 while the mocked
-                # suite stayed green; accepting on the subject line alone leaves
-                # that trapdoor open, because the subject and the boundary are
-                # different words on the page and OCR can fix either without
-                # the other.
-                reference_recovered = ocr_quality in ("clean", "repaired")
-                if ocr_qa is not None and (reference_recovered or qa is None):
-                    # `quality` answers "did the reference check pass?" and
-                    # `text_source` answers "where did the text come from?".
-                    # They are orthogonal, and only the second is settled by
-                    # running OCR. Stamping `ocr` on a boundary recovery whose
-                    # subject check still failed would assert a verification
-                    # that did not happen — the record would read as trusted
-                    # while carrying unverified glyph-corrupted text. So a
-                    # boundary-only recovery keeps the OCR read's own honest
-                    # verdict (`low`) and is marked `text_source: "ocr"`.
-                    if qa is None:
-                        stats.ocr_recovered_split += 1
-                    quality = "ocr" if reference_recovered else ocr_quality
-                    repaired, text_source = ocr_repaired, "ocr"
-                    qa = ocr_qa
-                    stats.ocr_recovered += 1
-                else:
-                    stats.ocr_attempted_unrecovered += 1
-        stats.quality_counts[quality] = stats.quality_counts.get(quality, 0) + 1
-        common = {
-            "key": rec.get("key"),
-            "source_pdf": str(pdf.relative_to(out_dir)),
-            "extracted_at": _now(),
-            "language_classified": ["gu"],
-            "text_source": text_source,
-        }
-        if qa is None:
-            stats.skipped_no_split += 1
-            continue
-        qa.quality = quality
-        out_records.append({**common, **qa.to_record()})
-        stats.qa_records += 1
-        # Scan only the answer half: the question prose can mention a
-        # district next to an incidental number ("અમદાવાદ ... છેલ્લા 2
-        # વર્ષમાં"), and the tabled figures always live in the answer
-        # column / appendix statements. line_no on these rows indexes
-        # into answer_text.
-        for row in extract_district_rows(qa.answer_text):
-            row_records.append({**common, "quality": quality, **row.to_record()})
-            stats.district_rows += 1
 
-    for path, records in (
-        (out_dir / "answers.jsonl", out_records),
-        (out_dir / "neva_district_rows.jsonl", row_records),
+    answers_path = out_dir / "answers.jsonl"
+    rows_path = out_dir / "neva_district_rows.jsonl"
+    answers_partial = answers_path.with_name(answers_path.name + ".partial")
+    rows_partial = rows_path.with_name(rows_path.name + ".partial")
+    progress_path = out_dir / ".neva_extract_progress"
+
+    # Resume, because this pass is long and used to be all-or-nothing. A full
+    # Gujarat run with --ocr is ~2.5 hours, and records used to accumulate in a
+    # list written once at the very end — so a kill, a sleep, or the external
+    # volume blinking out cost the entire pass. Three consecutive runs were lost
+    # that way on 2026-07-29/30, the third at 2h34m, on the final write.
+    #
+    # Records now stream to .partial files and every processed key is recorded,
+    # so an interrupted run resumes instead of restarting. The atomic replace
+    # still happens at the end, so a consumer never sees a half-written corpus.
+    done: set[str] = set()
+    if progress_path.exists():
+        done = {
+            line.strip()
+            for line in progress_path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        }
+        log_fn(
+            f"NeVA extraction: RESUMING — {len(done)} of {len(questions)} documents "
+            "already processed by an interrupted run; their records are kept"
+        )
+    else:
+        # No progress file means no run to resume, so a .partial left behind by
+        # something else must not be appended to.
+        answers_partial.unlink(missing_ok=True)
+        rows_partial.unlink(missing_ok=True)
+
+    def _write(handle, record: dict) -> None:
+        handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+        handle.flush()
+
+    with (
+        answers_partial.open("a", encoding="utf-8") as answers_f,
+        rows_partial.open("a", encoding="utf-8") as rows_f,
+        progress_path.open("a", encoding="utf-8") as progress_f,
     ):
-        tmp = path.with_name(path.name + ".tmp")
-        with tmp.open("w", encoding="utf-8") as f:
-            for r in records:
-                f.write(json.dumps(r, ensure_ascii=False) + "\n")
-        tmp.replace(path)
+
+        def _mark(key) -> None:
+            """Record a document as processed, whatever its outcome.
+
+            Marked at every exit, not at the top of the loop: marking on entry
+            would let a crash mid-document silently drop it from the corpus,
+            and marking only on success would re-OCR every no-split document on
+            resume — at ~1.2s each, most of the run.
+            """
+            progress_f.write(f"{key}\n")
+            progress_f.flush()
+
+        for rec in questions:
+            key = rec.get("key")
+            if key in done:
+                continue
+            stats.questions_processed += 1
+            pdf_rel = rec.get("pdf_path")
+            pdf = (out_dir / pdf_rel) if pdf_rel else None
+            if not pdf or not pdf.exists():
+                stats.skipped_no_pdf += 1
+                _mark(key)
+                continue
+            try:
+                text = extract_pdf_text(pdf)
+            except Exception as exc:  # noqa: BLE001
+                stats.errors.append({"key": rec.get("key"), "where": "pdftotext", "error": repr(exc)})
+                _mark(key)
+                continue
+            if not text or not text.strip():
+                stats.skipped_no_text += 1
+                _mark(key)
+                continue
+            repaired, quality, mapping = repair_text(text, rec.get("subject"))
+            text_source = "text_layer"
+            qa = split_qa_neva(repaired)
+            if ocr and (quality == "low" or qa is None):
+                # Two independent reasons to re-read a document, and the second is
+                # the larger one. `quality == "low"` means the portal subject could
+                # not be found: a character-quality problem. `qa is None` means the
+                # two-column Q/A boundary could not be found, so the document yields
+                # NO record at all — measured 2026-07-29 on the Gujarat corpus,
+                # 3,122 of 6,384 questions, and in 28 of 30 sampled the boundary
+                # word `જવાબ` is on the page but glyph-corrupted (`જિાબ`, `જલાફ`,
+                # `જવયબ`), which is the same corruption landing where it is fatal
+                # rather than merely degrading. Triggering on `low` alone missed the
+                # documents whose subject survived but whose header did not.
+                try:
+                    ocr_text = "\n".join(
+                        ocr_pdf_text(pdf, page=n, lang="guj") for n in range(1, ocr_pages + 1)
+                    )
+                except OcrUnavailable as exc:
+                    stats.errors.append({"key": rec.get("key"), "where": "ocr", "error": repr(exc)})
+                    ocr_text = ""
+                if ocr_text.strip():
+                    ocr_repaired, ocr_quality, _ = repair_text(ocr_text, rec.get("subject"))
+                    ocr_qa = split_qa_neva(ocr_repaired)
+                    # Accept the OCR read when it recovers the portal subject the
+                    # text layer could not, OR when the text layer yields no Q/A
+                    # boundary and the OCR read does. The second can only turn "no
+                    # record" into "a record".
+                    #
+                    # Never at the cost of a split we already had. Swapping in text
+                    # that no longer splits is how the first end-to-end OCR run
+                    # took this corpus from 1 Q/A record to 0 while the mocked
+                    # suite stayed green; accepting on the subject line alone leaves
+                    # that trapdoor open, because the subject and the boundary are
+                    # different words on the page and OCR can fix either without
+                    # the other.
+                    reference_recovered = ocr_quality in ("clean", "repaired")
+                    if ocr_qa is not None and (reference_recovered or qa is None):
+                        # `quality` answers "did the reference check pass?" and
+                        # `text_source` answers "where did the text come from?".
+                        # They are orthogonal, and only the second is settled by
+                        # running OCR. Stamping `ocr` on a boundary recovery whose
+                        # subject check still failed would assert a verification
+                        # that did not happen — the record would read as trusted
+                        # while carrying unverified glyph-corrupted text. So a
+                        # boundary-only recovery keeps the OCR read's own honest
+                        # verdict (`low`) and is marked `text_source: "ocr"`.
+                        if qa is None:
+                            stats.ocr_recovered_split += 1
+                        quality = "ocr" if reference_recovered else ocr_quality
+                        repaired, text_source = ocr_repaired, "ocr"
+                        qa = ocr_qa
+                        stats.ocr_recovered += 1
+                    else:
+                        stats.ocr_attempted_unrecovered += 1
+            stats.quality_counts[quality] = stats.quality_counts.get(quality, 0) + 1
+            common = {
+                "key": rec.get("key"),
+                "source_pdf": str(pdf.relative_to(out_dir)),
+                "extracted_at": _now(),
+                "language_classified": ["gu"],
+                "text_source": text_source,
+            }
+            if qa is None:
+                stats.skipped_no_split += 1
+                _mark(key)
+                continue
+            qa.quality = quality
+            _write(answers_f, {**common, **qa.to_record()})
+            stats.qa_records += 1
+            # Scan only the answer half: the question prose can mention a
+            # district next to an incidental number ("અમદાવાદ ... છેલ્લા 2
+            # વર્ષમાં"), and the tabled figures always live in the answer
+            # column / appendix statements. line_no on these rows indexes
+            # into answer_text.
+            for row in extract_district_rows(qa.answer_text):
+                _write(rows_f, {**common, "quality": quality, **row.to_record()})
+                stats.district_rows += 1
+            _mark(key)
+
+    # The walk finished, so the partials are complete: publish them atomically
+    # and drop the progress file, which is what marks a run as resumable.
+    answers_partial.replace(answers_path)
+    rows_partial.replace(rows_path)
+    progress_path.unlink(missing_ok=True)
 
     ocr_note = (
         # NOT "still_low": the gate now deliberately re-reads documents whose
@@ -547,10 +603,21 @@ def extract_neva_answers(
         if ocr
         else ""
     )
+    # On a resume the stats cover THIS invocation only, while the artefact holds
+    # this run's records plus the interrupted run's. Reporting one number for
+    # both would misstate whichever the reader cared about, so both are named.
+    resumed_note = ""
+    if done:
+        total = sum(1 for line in answers_path.read_text(encoding="utf-8").splitlines() if line.strip())
+        resumed_note = (
+            f" [resumed run: {len(done)} documents carried over; "
+            f"answers.jsonl now holds {total} records in total]"
+        )
     log_fn(
         f"NeVA extraction: {stats.qa_records} qa records, "
         f"{stats.district_rows} district rows, quality={stats.quality_counts}, "
         f"skipped: no_pdf={stats.skipped_no_pdf} no_text={stats.skipped_no_text} "
         f"no_split={stats.skipped_no_split}, errors={len(stats.errors)}{ocr_note}"
+        f"{resumed_note}"
     )
     return stats
