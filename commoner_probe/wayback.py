@@ -592,6 +592,7 @@ class WaybackCaptureProbe:
         seen = self.load_seen()
         self.out_dir.mkdir(parents=True, exist_ok=True)
         self._spool_path = self.manifest.with_suffix(f".{os.getpid()}.spool")
+        self._spool_preserved = False
         spool = self._spool_path.open("w+", encoding="utf-8")
         try:
             for capture in iter_captures(
@@ -624,9 +625,12 @@ class WaybackCaptureProbe:
             self._flush_manifest(spool)
         finally:
             spool.close()
-            # _preserve_spool() repoints this at the .recover.jsonl it kept,
-            # so a preserved spool is not deleted by this cleanup.
-            self._spool_path.unlink(missing_ok=True)
+            # Only an UNPRESERVED spool is scratch. Once _preserve_spool() has
+            # kept the rows — renamed, or left in place because the rename
+            # failed — deleting anything here would destroy the file the raised
+            # error just told the operator to recover from.
+            if not self._spool_preserved:
+                self._spool_path.unlink(missing_ok=True)
 
     @staticmethod
     def _stage(handle, record: dict) -> None:
@@ -688,13 +692,19 @@ class WaybackCaptureProbe:
         was large enough to fail. A rename is O(1) and cannot run out of
         memory; if even that fails, the spool is left in place and the caller
         is told where it is rather than losing it to the cleanup.
+
+        The flag is what protects the file. Repointing ``_spool_path`` at the
+        kept file does not: the caller's cleanup unlinks whatever that attribute
+        names, so the repoint deleted the recovery file it was meant to spare
+        (Codex, PR #82).
         """
+        self._spool_preserved = True
         keep = self.manifest.with_suffix(".recover.jsonl")
         try:
             self._spool_path.rename(keep)
         except OSError:
             return f"{self._spool_path} (left in place; rename failed)"
-        self._spool_path = keep  # so the caller's cleanup does not unlink it
+        self._spool_path = keep
         return keep
 
 
