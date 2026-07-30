@@ -1085,10 +1085,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--ocr",
         action="store_true",
         help=(
-            "NeVA corpora only: re-read `low`-quality documents by rasterizing and "
-            "running tesseract, and accept the result only if it recovers the "
-            "reference the text layer could not. Needs poppler + tesseract with the "
-            "`guj` model; costs about a second per page"
+            "NeVA corpora only: re-read a document by rasterizing and running "
+            "tesseract when its text layer either fails the reference check or "
+            "yields no Q/A split. The result is accepted only if it recovers the "
+            "reference, or splits where the text layer could not — never if it "
+            "would cost a split the text layer already had. Needs poppler + "
+            "tesseract with the `guj` model; costs about a second per page"
         ),
     )
     extract.add_argument(
