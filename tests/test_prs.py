@@ -147,3 +147,87 @@ def test_corpus_streams_prs_mp_track(tmp_path):
     records = list(Corpus(tmp_path).manifest_prs_mp_track())
     assert len(records) == 1
     assert records[0].mp_name == "Jugal Kishore"
+
+
+# The Rajya Sabha CSV's real column names, verified live 2026-07-29: the identity
+# column is `mp_index`, the activity counts carry an `ag_` prefix, and attendance
+# is `avg_attendance`. 13 of the 27 names differ from the Lok Sabha CSV, which is
+# the only one the adapter was originally built and fixtured against.
+RS_CSV_TEXT = """mp_index,mp_name,nature_membership,term_start_date,term_end_date,term,pc_name,state,mp_political_party,mp_gender,educational_qualification,educational_qualification_details,mp_age,ag_debates,ag_private_member_bills,ag_questions,avg_attendance,mp_note,ag_national_average_debate,ag_national_average_pmb,ag_national_average_questions,avg_attendance_national_average,ag_state_average_debate,ag_state_average_pmb,ag_state_average_questions,avg_attendance_state_average,mp_house
+900411,Ravneet Singh,Elected,20-07-2022,19-07-2028,First Term,NA,Rajasthan,Bharatiya Janata Party,Male,Graduate,B.A.,55,41,1,88,0.82,Sample note.,74.28,0.9,120.5,0.79,60.1,0.5,99.2,0.71,Rajya Sabha
+"""
+
+
+class _RsSession:
+    """Serves the Rajya Sabha page + its CSV with the real RS column names."""
+
+    def __init__(self, csv_text: str = RS_CSV_TEXT):
+        self.csv_text = csv_text
+        self.calls: list[str] = []
+
+    def get(self, url, **kwargs):
+        self.calls.append(url)
+        if url.endswith("/mptrack/rajya-sabha"):
+            return FakeResponse(
+                '<a onclick="window.open(\'/mptrack/download?file_path=files/mptrack/'
+                'rajya-sabha/Mp-Track/RS MP Track.csv\', \'_blank\').focus();" '
+                'id="mptrack-expor-link">Download Data</a>'
+            )
+        if "/mptrack/download" in url:
+            return FakeResponse(content=self.csv_text.encode("utf-8"))
+        raise AssertionError(f"unrouted url: {url}")
+
+
+def _rs_probe(tmp_path, csv_text: str = RS_CSV_TEXT):
+    probe = PrsProbe(tmp_path, sleep=0)
+    probe.session = _RsSession(csv_text)
+    return probe
+
+
+def test_the_rajya_sabha_surface_writes_records(tmp_path):
+    """REQ-0044: it wrote nothing at all and exited 0.
+
+    Every RS row lacks `mp_election_index`, so all 828 were dropped for want of a
+    key — no file, no directory, no log line, exit 0. Live before the fix: 0
+    records. After: 828.
+    """
+    records = _rs_probe(tmp_path).probe_mptrack(houses=["rs"], loksabhas=[])
+
+    assert len(records) == 1, "the RS row must survive the identity lookup"
+    assert (tmp_path / "manifest.jsonl").exists(), "a real run must write its manifest"
+
+
+def test_the_rs_activity_columns_are_not_silently_dropped(tmp_path):
+    """The key was only the visible half. All 13 diverging columns are read by
+    `_record`, so an index-only fix would still have emitted null metrics."""
+    record = _rs_probe(tmp_path).probe_mptrack(houses=["rs"], loksabhas=[])[0]
+
+    assert record["mp_election_index"] == 900411
+    assert record["mp_name"] == "Ravneet Singh"
+    assert record["debates"] == 41                      # ag_debates
+    assert record["private_member_bills"] == 1          # ag_private_member_bills
+    assert record["questions"] == 88                    # ag_questions
+    assert record["attendance"] == 0.82                 # avg_attendance
+    assert record["national_average_debate"] == 74.28   # ag_national_average_debate
+    assert record["attendance_state_average"] == 0.71   # avg_attendance_state_average
+
+
+def test_a_csv_with_no_identity_column_raises_instead_of_exiting_quietly(tmp_path):
+    """The generalizable half of REQ-0044.
+
+    A parsed CSV that yields no usable identity on ANY row is a changed source
+    contract, not an empty result. Without this the next column rename is silent
+    again.
+    """
+    import pytest
+
+    renamed = RS_CSV_TEXT.replace("mp_index,", "mp_unique_ref,", 1)
+    with pytest.raises(ValueError, match="none carried an identity column"):
+        _rs_probe(tmp_path, renamed).probe_mptrack(houses=["rs"], loksabhas=[])
+
+
+def test_a_resume_run_that_writes_nothing_stays_quiet(tmp_path):
+    """The guard must not fire on a legitimate no-op: every key already terminal
+    is the normal resume path, and it is not a contract change."""
+    assert len(_rs_probe(tmp_path).probe_mptrack(houses=["rs"], loksabhas=[])) == 1
+    assert _rs_probe(tmp_path).probe_mptrack(houses=["rs"], loksabhas=[]) == []
