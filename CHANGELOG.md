@@ -48,6 +48,27 @@
   changed — only the route to it. FY 2024-25 is still unpublished; the portal
   offers FY 2014-15 to FY 2023-24, and requesting the missing year trips the
   CSV-header guard instead of writing an error page to disk.
+- **`extract-answers --ocr` no longer loses a Q/A record it already had.**
+  The OCR read was accepted whenever it recovered the portal `subject`, without
+  checking that the Q/A boundary survived — so a document whose OCR fixed the
+  subject but mangled the boundary went from one record to none, while the run
+  log counted it as `recovered`. Reproduced on `796a834`: `ocr_recovered=1` with
+  `qa_records=0`. Acceptance now requires the OCR text to split.
+- **`extract-answers --ocr` now reaches documents that yield no record at all.**
+  OCR ran only when `quality == "low"` — the portal-subject check — and was
+  accepted only on that same check. But the corpus-scale problem is the two-column
+  boundary: on the Gujarat corpus **3,122 of 6,384 questions produce no Q/A
+  record**, and in 28 of 30 sampled the boundary word `જવાબ` is present but
+  glyph-corrupted (`જિાબ`, `જલાફ`, `જવયબ`) — the same cmap corruption that
+  produces `low`, landing where it is fatal instead of merely degrading. Page
+  count does not discriminate (173/200 non-producing are single-page, against
+  162/200 of a producing control) and neither does `low` (29/30 against 26/30).
+  OCR is now also attempted when the text layer yields no split, and accepted
+  when the OCR read splits. Measured over 60 sampled documents, that moves
+  recovery from 16/60 to 26/60. Recovered-by-boundary documents are reported
+  separately as `new_records`, because new records and better text in existing
+  records are worth different things. Supersedes the acceptance rule described
+  under 0.10.0.
 
 ## 0.10.0 (2026-07-29)
 
