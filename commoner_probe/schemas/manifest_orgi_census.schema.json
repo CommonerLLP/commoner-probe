@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CommonerLLP/commoner-probe/schemas/v1/manifest_orgi_census.json",
+  "title": "manifest.jsonl — ORGI / Census of India resource",
+  "description": "One ORGI Census product acquired from the data.gov.in (OGD) API. A record describes ONE catalogue resource: a state for Primary Census Abstract and Town Directory, a district for Village and Town Amenities. `url` is deliberately key-free — the OGD contract puts `api-key` in the query string, so the literal request URL is a credential and must never reach an artefact.",
+  "type": "object",
+  "required": [
+    "key",
+    "kind",
+    "record_type",
+    "source_family",
+    "source_name",
+    "publisher",
+    "resource_id",
+    "title",
+    "level",
+    "url",
+    "status",
+    "fetched_at",
+    "probed_at"
+  ],
+  "properties": {
+    "key": {
+      "type": "string",
+      "pattern": "^ORGI\\|[a-z-]+\\|.+$"
+    },
+    "kind": { "const": "orgi_census_resource" },
+    "record_type": { "const": "orgi_census_resource" },
+    "source_family": { "const": "orgi-census" },
+    "source_name": {
+      "type": "string",
+      "enum": ["pca", "village-amenities", "town-amenities", "town-directory"],
+      "description": "The Census product. `pca` is the Primary Census Abstract — population, households, age 0-6, literates, workers, and Scheduled Caste / Scheduled Tribe counts by person/male/female. `village-amenities` and `town-amenities` are the settlement-level facility tables. `town-directory` is a place INDEX only (codes and names, no amenities)."
+    },
+    "publisher": { "type": "string" },
+    "resource_id": {
+      "type": "string",
+      "description": "The OGD catalogue resource id (`index_name`), stable across pulls."
+    },
+    "title": { "type": "string" },
+    "census_year": {
+      "type": ["string", "null"],
+      "description": "Census vintage parsed from the catalogue title. Titles carry two formats — `Primary Census Abstract, 2001 - Delhi` and `Primary Census Abstract 2011 - Rajasthan` — so the year is read as a token, not by position. **Null means unparsed, never 2011.**"
+    },
+    "level": {
+      "type": "string",
+      "enum": ["state", "district"],
+      "description": "What one resource covers, NOT the granularity of its rows: a PCA state resource contains rows down to ward level."
+    },
+    "state_name": { "type": ["string", "null"] },
+    "district_name": {
+      "type": ["string", "null"],
+      "description": "Present for per-district products only. **Census 2011 areas.** Many districts have been created since — all of Telangana, and splits in Gujarat and elsewhere — so a join from current administrative data will silently miss unless it is mediated by a vintage-aware mapping."
+    },
+    "url": {
+      "type": "string",
+      "pattern": "^https://api\\.data\\.gov\\.in/",
+      "description": "Key-free request URL. A value containing `api-key` is a credential leak, not a provenance record."
+    },
+    "dest": {
+      "type": ["string", "null"],
+      "description": "Path to the acquired rows (JSONL), relative to the corpus root. Null until downloaded."
+    },
+    "rows": { "type": ["integer", "null"], "minimum": 0 },
+    "sha256": { "type": ["string", "null"], "pattern": "^[0-9a-f]{64}$" },
+    "status": {
+      "type": "string",
+      "enum": ["pending", "dry_run", "downloaded"]
+    },
+    "fetched_at": { "type": "string" },
+    "probed_at": { "type": "string" }
+  },
+  "additionalProperties": true
+}

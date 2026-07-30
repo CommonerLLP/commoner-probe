@@ -37,6 +37,7 @@ class CliCommandSyncTests(unittest.TestCase):
             subcommands,
             {
                 "sansad",
+                "census",
                 "committees",
                 "extract-answers",
                 "extract-debates",

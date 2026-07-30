@@ -100,6 +100,16 @@ SURFACES: dict[str, Surface] = {
         title_must_match=re.compile(r"village\s+amenities", re.I),
         level="district",
     ),
+    "town-amenities": Surface(
+        name="town-amenities",
+        query="town amenities",
+        title_must_match=re.compile(r"town\s+amenities", re.I),
+        level="district",
+    ),
+    #: A place INDEX, not amenities. "Complete Town Directory" carries 8 fields
+    #: — state/district/sub-district/town codes and names — and no facility
+    #: columns at all. Kept because the urban settlement roster with 2011 codes
+    #: is a useful join target, but it does NOT answer amenity questions.
     "town-directory": Surface(
         name="town-directory",
         query="town directory",
@@ -107,6 +117,36 @@ SURFACES: dict[str, Surface] = {
         level="state",
     ),
 }
+
+#: NOT AVAILABLE ON THE OGD API. Searched 2026-07-30, and this is the half of
+#: REQ-0045 the API does NOT cover — theright2read asked for ALL libraries, not
+#: the rural ones, so this gap blocks the consumer rather than trimming it.
+#:
+#: What was checked:
+#:   - `town-directory` ("Complete Town Directory"): 8 fields, codes and names
+#:     only, no facility columns at all — a place index.
+#:   - `town-amenities` ("Town Amenities for <district>"): all 232 field names
+#:     read, not keyword-searched. It runs demographics -> health -> education
+#:     and stops at degree colleges. ORGI's Statement V (Social, Recreational
+#:     and Culture Facilities) is simply not in it.
+#:   - catalogue titles `library`, `libraries`, `recreational`: 14, 14 and 1
+#:     resources, every one a funding scheme or a city dataset, none a Census
+#:     amenity table.
+#:   - no district was found carrying a second town resource (the "997 town
+#:     amenities" count is mostly unrelated noise the title filter removes).
+#:
+#: So the urban public-library COUNT — and with it REQ-0045's merge trap, since
+#: that column fuses ORGI's separately-defined 9.11 Public Library and 9.12
+#: Public Reading Room — lives only in the DCHB Part A PDFs. Summing it with the
+#: rural availability flag is what produces the wrong "~75,000 libraries".
+#:
+#: Caveat kept deliberately: the catalogue holds 285,830 resources and its title
+#: filter is lossy, so this is a well-searched NOT FOUND, not a proof of absence.
+URBAN_LIBRARY_COUNT_UNAVAILABLE = (
+    "Town Directory Statement V (the urban public-library count) is not in any OGD "
+    "resource found; acquire it from the DCHB Part A PDFs. Never sum it with the "
+    "rural village-amenities flag — one is a count, the other an availability flag."
+)
 
 _YEAR_RE = re.compile(r"\b(19|20)\d{2}\b")
 

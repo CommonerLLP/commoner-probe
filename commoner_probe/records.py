@@ -206,6 +206,41 @@ class ManifestDpeCsrRecord:
 
 
 @dataclass
+class ManifestOrgiCensusRecord:
+    """One ORGI / Census of India resource record from manifest.jsonl.
+
+    Every field the writer emits is declared here on purpose: `_from_dict`
+    drops unknown keys, so an undeclared field silently vanishes for every
+    typed-API consumer. That exact failure has shipped three times in this
+    package (`user_agent`, then `status`, then `text_source`).
+    """
+
+    key: str
+    kind: str
+    record_type: str
+    source_family: str
+    source_name: str
+    publisher: str
+    resource_id: str
+    title: str
+    level: str
+    url: str
+    status: str
+    fetched_at: str
+    probed_at: str
+    census_year: str | None = None
+    state_name: str | None = None
+    district_name: str | None = None
+    dest: str | None = None
+    rows: int | None = None
+    sha256: str | None = None
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "ManifestOrgiCensusRecord":
+        return _from_dict(cls, d)
+
+
+@dataclass
 class ManifestMinesDmftRecord:
     """One Ministry of Mines / DMFT raw source-file record from manifest.jsonl."""
 
