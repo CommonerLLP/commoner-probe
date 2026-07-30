@@ -137,8 +137,8 @@ CSR public data page.
 
 Source contract:
 
-- page: `GET https://www.mcacdm.nic.in/csr-data`
-- export: `POST https://www.mcacdm.nic.in/cdm/export.php`
+- page: `GET https://mcacdm.nic.in/csr-data`
+- export: `POST https://mcacdm.nic.in/cdm/export.php`
 
 Outputs:
 

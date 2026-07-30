@@ -38,6 +38,16 @@
   `.recover.jsonl` sibling and the error says so. The manifest is deliberately
   **not** truncated back: on a shared append-only file that is the bug this
   replaced, and a loud recoverable failure beats a silent partial one.
+- **MCA CSR acquisition reaches the apex host, not `www`.** The certificate MCA
+  installed on 2026-07-02 carries a single SAN, `DNS:mcacdm.nic.in`, so every
+  request to `www.mcacdm.nic.in` failed hostname verification before a redirect
+  could be followed — `commoner-probe mca-csr` had been dead at the TLS layer
+  since that date, and nothing in the repo noticed. `BASE_URL` is now the apex,
+  verified live end to end: FY 2023-24 and FY 2014-15 both re-download
+  byte-identical to the corpus already on disk, so nothing about the data
+  changed — only the route to it. FY 2024-25 is still unpublished; the portal
+  offers FY 2014-15 to FY 2023-24, and requesting the missing year trips the
+  CSV-header guard instead of writing an error page to disk.
 
 ## 0.10.0 (2026-07-29)
 

@@ -170,8 +170,14 @@ RS reports carry `date_presentation` instead. Both shapes share all other fields
 ### Shape E — MCA CSR company-spend export (`kind = "mca_csr_company_spend"`)
 
 One record per MCA CDM CSR CSV export produced by `commoner-probe mca-csr`.
-Source page verified on 2026-06-16: `https://www.mcacdm.nic.in/csr-data`.
-Download endpoint: `POST https://www.mcacdm.nic.in/cdm/export.php`.
+Source page verified on 2026-07-29: `https://mcacdm.nic.in/csr-data`.
+Download endpoint: `POST https://mcacdm.nic.in/cdm/export.php`.
+
+Apex only. The certificate MCA installed on 2026-07-02 carries a single SAN,
+`DNS:mcacdm.nic.in`, so a `www.` request fails TLS hostname verification before
+any redirect can be followed. The portal offers FY 2014-15 to FY 2023-24;
+FY 2024-25 is not published, and requesting it trips the CSV-header guard
+rather than writing an error page to disk.
 
 | Field | Type | Required | Enum / format | Provenance |
 |---|---|---|---|---|

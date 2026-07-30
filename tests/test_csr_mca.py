@@ -76,7 +76,7 @@ def test_probe_years_writes_csv_and_manifest_record(tmp_path, monkeypatch) -> No
 
     csv_path = tmp_path / "mca_csr_company_spend_2022-23.csv"
     assert csv_path.read_bytes() == body
-    assert captured["url"] == "https://www.mcacdm.nic.in/cdm/export.php"
+    assert captured["url"] == "https://mcacdm.nic.in/cdm/export.php"
     assert captured["data"] == {
         "csrf_token": ["csrf-token"],
         "financialyear[]": ["FY 2022-23"],
@@ -114,8 +114,8 @@ def test_mca_csr_manifest_schema_is_bundled_and_validates_record(tmp_path) -> No
         "financial_year": "FY 2022-23",
         "filename": "mca_csr_company_spend_2022-23.csv",
         "dest": str(tmp_path / "mca_csr_company_spend_2022-23.csv"),
-        "source_page": "https://www.mcacdm.nic.in/csr-data",
-        "url": "https://www.mcacdm.nic.in/cdm/export.php",
+        "source_page": "https://mcacdm.nic.in/csr-data",
+        "url": "https://mcacdm.nic.in/cdm/export.php",
         "status": "downloaded",
         "sha256": "a" * 64,
         "timestamp_utc": "2026-06-16T16:19:02+00:00",
@@ -160,8 +160,8 @@ def test_corpus_streams_mca_csr_manifest_records(tmp_path) -> None:
         "financial_year": "FY 2022-23",
         "filename": "mca_csr_company_spend_2022-23.csv",
         "dest": str(tmp_path / "mca_csr_company_spend_2022-23.csv"),
-        "source_page": "https://www.mcacdm.nic.in/csr-data",
-        "url": "https://www.mcacdm.nic.in/cdm/export.php",
+        "source_page": "https://mcacdm.nic.in/csr-data",
+        "url": "https://mcacdm.nic.in/cdm/export.php",
         "status": "downloaded",
         "sha256": "a" * 64,
         "timestamp_utc": "2026-06-16T16:19:02+00:00",
@@ -233,7 +233,7 @@ def test_redirect_targets_are_validated(monkeypatch) -> None:
     import urllib.request
 
     handler = mca._GuardedRedirectHandler()
-    req = urllib.request.Request("https://www.mcacdm.nic.in/csr-data")
+    req = urllib.request.Request("https://mcacdm.nic.in/csr-data")
 
     monkeypatch.setattr(mca, "is_safe_url", lambda url: False)
     with pytest.raises(ValueError, match="Redirect target rejected"):
@@ -241,6 +241,6 @@ def test_redirect_targets_are_validated(monkeypatch) -> None:
 
     monkeypatch.setattr(mca, "is_safe_url", lambda url: True)
     followed = handler.redirect_request(
-        req, None, 302, "Found", {"Location": "https://www.mcacdm.nic.in/next"}, "https://www.mcacdm.nic.in/next"
+        req, None, 302, "Found", {"Location": "https://mcacdm.nic.in/next"}, "https://mcacdm.nic.in/next"
     )
-    assert followed.full_url == "https://www.mcacdm.nic.in/next"
+    assert followed.full_url == "https://mcacdm.nic.in/next"
