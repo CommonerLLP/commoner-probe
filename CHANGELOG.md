@@ -4,6 +4,17 @@
 
 ### Fixed
 
+- **Each preserved spool gets its own recovery path.** The recovery file was a
+  fixed `manifest.recover.jsonl`, and `rename()` replaces its destination on
+  POSIX — so a second failed append silently destroyed the first invocation's
+  only copy of its rows while reporting the new one as preserved. The name is now
+  pid-scoped with a counter: the pid keeps concurrent probes apart, the counter
+  keeps successive failures in one process apart.
+- **The user-facing MCA link in `EXPLAINER.html` reaches the apex host.** The
+  adapter, docs and tests moved off `www.mcacdm.nic.in`, but the explainer's
+  reader-facing link did not, so anyone clicking it got the same
+  hostname-verification failure the code fix removed. Found by a repo-wide
+  search the original fix should have run.
 - **The recovery file now survives the cleanup that used to delete it.** The
   spool was spared from `probe()`'s cleanup by repointing `_spool_path` at the
   kept `.recover.jsonl` — but the cleanup unlinks whatever that attribute

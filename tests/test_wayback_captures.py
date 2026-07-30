@@ -504,11 +504,16 @@ class TestSpoolPreservation:
                 return real.with_suffix(s)
 
         probe.manifest = FullDisk()
+        probe._spool_preserved = False
         with pytest.raises(OSError, match="recover.jsonl"):
             probe._flush_manifest(spool)
         spool.close()
 
-        recovered = tmp_path / "manifest.recover.jsonl"
+        # The name is pid-scoped so successive failures cannot overwrite each
+        # other (Codex, PR #83) — glob rather than hardcode it.
+        recovered_paths = sorted(tmp_path.glob("manifest.*.recover*.jsonl"))
+        assert len(recovered_paths) == 1, f"expected one recovery file, got {recovered_paths}"
+        recovered = recovered_paths[0]
         assert recovered.exists(), "the rows must survive a failed append"
         assert json.loads(recovered.read_text().strip())["key"] == "K1"
         # That the file survives the caller's CLEANUP is a separate property,
@@ -546,6 +551,43 @@ class TestSpoolPreservation:
         named = re.search(r"preserved at (.+?); the manifest", str(excinfo.value)).group(1)
         assert Path(named).exists(), "the error names a path the cleanup deleted"
         assert json.loads(Path(named).read_text().strip())["digest"] == "AAA"
+
+    def test_a_second_failure_does_not_destroy_the_first_recovery_file(self, tmp_path):
+        """`rename()` replaces its destination on POSIX (Codex, PR #83).
+
+        With a fixed `manifest.recover.jsonl`, the second outage silently deletes
+        the first invocation's only copy of its rows — while reporting the new
+        one as preserved. Both runs' rows must survive.
+        """
+        real = None
+
+        class FullDisk:
+            def open(self, *a, **k):
+                raise OSError("No space left on device")
+
+            def with_suffix(self, s):
+                return real.with_suffix(s)
+
+            def exists(self):
+                return False
+
+        kept = []
+        for tag in ("A", "B"):
+            session = FakeSession([HEADER, _row("20060413232357", tag)])
+            probe = WaybackCaptureProbe(tmp_path, sleep=0, session=session)
+            real = probe.manifest
+            probe.manifest = FullDisk()
+            with pytest.raises(OSError) as excinfo:
+                list(probe.probe(url="u"))
+            named = re.search(r"preserved at (.+?); the manifest", str(excinfo.value)).group(1)
+            kept.append(Path(named))
+
+        assert kept[0] != kept[1], "the two runs must not share one recovery path"
+        digests = []
+        for path in kept:
+            assert path.exists(), f"{path.name} was destroyed by the later failure"
+            digests.append(json.loads(path.read_text().strip())["digest"])
+        assert sorted(digests) == ["A", "B"], "both runs' rows must survive"
 
     def test_a_spool_that_could_not_be_renamed_is_not_deleted_either(self, tmp_path):
         """The rename-failure branch leaves the spool in place and says so — so
