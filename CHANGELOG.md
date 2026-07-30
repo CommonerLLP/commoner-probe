@@ -4,6 +4,23 @@
 
 ### Fixed
 
+- **`prs --surface mp-track --house rs` wrote nothing and exited 0.** REQ-0044
+  (zero-hour). The Rajya Sabha CSV names its identity column `mp_index`; the
+  adapter read `mp_election_index`, which exists only in the Lok Sabha CSV — so
+  all 828 RS rows were dropped for want of a key, and the command created no
+  file, no directory, no log line, and exited 0 while `--dry-run` resolved the
+  CSV URL correctly. The adapter was built and tested against the LS surface
+  only, and the fixture inherited its column names, so no test could see it.
+  13 of the 27 columns diverge (the activity counts carry an `ag_` prefix and
+  attendance is `avg_attendance`), and every one of them is read when building a
+  record — an index-only fix would still have emitted null metrics. RS names are
+  now normalized on read. Live: **0 records before, 828 after** (727 with
+  non-zero debate counts), LS unchanged at 544, all 1,372 pass `validate`.
+- **A parsed MP Track CSV that yields no identity on any row now raises.** This
+  is the generalizable half: exiting 0 with no output is what made the above
+  invisible for a day. A resume run that writes nothing because every key is
+  already terminal stays quiet, as it should — the guard fires only when every
+  parsed row lacked an identity, which is a changed source contract.
 - **Each preserved spool gets its own recovery path.** The recovery file was a
   fixed `manifest.recover.jsonl`, and `rename()` replaces its destination on
   POSIX — so a second failed append silently destroyed the first invocation's

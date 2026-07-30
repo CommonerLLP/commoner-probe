@@ -90,8 +90,43 @@ def _int(value: str | None) -> int | None:
     return parsed if isinstance(parsed, int) else None
 
 
+#: The Rajya Sabha MP Track CSV names 13 of its 27 columns differently from the
+#: Lok Sabha one. Measured live 2026-07-29: RS 828 rows, LS-18 544 rows, only 14
+#: column names shared. The identity column is ``mp_index`` rather than
+#: ``mp_election_index``, the activity counts carry an ``ag_`` prefix, and
+#: attendance is ``avg_attendance``. Mapped RS -> LS so one record builder serves
+#: both houses; the names are disjoint, so the map is safe to apply either way.
+_RS_COLUMN_ALIASES = {
+    "mp_index": "mp_election_index",
+    "ag_debates": "debates",
+    "ag_private_member_bills": "private_member_bills",
+    "ag_questions": "questions",
+    "avg_attendance": "attendance",
+    "ag_national_average_debate": "national_average_debate",
+    "ag_national_average_pmb": "national_average_pmb",
+    "ag_national_average_questions": "national_average_questions",
+    "avg_attendance_national_average": "attendance_national_average",
+    "ag_state_average_debate": "state_average_debate",
+    "ag_state_average_pmb": "state_average_pmb",
+    "ag_state_average_questions": "state_average_questions",
+    "avg_attendance_state_average": "attendance_state_average",
+}
+
+
 def parse_mptrack_csv(text: str) -> list[dict[str, str]]:
-    return list(csv.DictReader(StringIO(text)))
+    """Parse an MP Track CSV, normalizing the Rajya Sabha column names.
+
+    Without the normalization the RS surface is a **silent no-op**: every row
+    lacks ``mp_election_index``, so all 828 are dropped for want of a key and the
+    command writes nothing and exits 0 (REQ-0044, zero-hour). The adapter was
+    built and tested against the Lok Sabha CSV only, and the fixture inherited
+    its column names, so no test could see it.
+    """
+    rows = list(csv.DictReader(StringIO(text)))
+    return [
+        {_RS_COLUMN_ALIASES.get(key, key): value for key, value in row.items()}
+        for row in rows
+    ]
 
 
 def parse_bill_track(page_html: str, *, base_url: str = BASE_URL) -> list[dict[str, str]]:
@@ -506,9 +541,12 @@ class PrsProbe:
                 csv_rel = str(dest.relative_to(self.out_dir))
             text = body.decode("utf-8-sig")
             status = "downloaded" if download else "metadata_only"
-            for row in parse_mptrack_csv(text):
+            parsed = parse_mptrack_csv(text)
+            dropped_no_index = 0
+            for row in parsed:
                 mp_index = _clean(row.get("mp_election_index"))
                 if not mp_index:
+                    dropped_no_index += 1
                     continue
                 key = f"PRS_MP_TRACK|{house}|{loksabha or 'rs'}|{mp_index}"
                 prior_status = seen.get(key)
@@ -530,6 +568,20 @@ class PrsProbe:
                 seen[key] = status
                 if max_records is not None and len(records) >= max_records:
                     return records
+            # A CSV that parsed rows and yielded no usable identity on ANY of
+            # them is a changed source contract, not an empty result. Exiting 0
+            # with no output is what made REQ-0044 invisible for a day. This is
+            # deliberately not "no records were written" — a resume run
+            # legitimately writes nothing because every key is already terminal,
+            # and that must stay quiet.
+            if parsed and dropped_no_index == len(parsed):
+                raise ValueError(
+                    f"PRS MP Track ({house}{loksabha or ''}): parsed {len(parsed)} rows "
+                    f"and none carried an identity column. Expected "
+                    f"'mp_election_index' (Lok Sabha) or 'mp_index' (Rajya Sabha); "
+                    f"got {sorted(parsed[0])[:6]}... The source contract may have "
+                    "changed — see _RS_COLUMN_ALIASES."
+                )
             if self.sleep:
                 time.sleep(self.sleep)
         return records
