@@ -285,3 +285,122 @@ def test_to_record_shape():
     assert rec["kind"] == "neva_qa_response"
     assert rec["question_subject"] == "s"
     assert rec["question_ref"] == "15/8/1"
+
+
+class TestExtractionResumes:
+    """A full Gujarat --ocr pass is ~2.5 hours and used to be all-or-nothing.
+
+    Records accumulated in a list written once at the very end, so a kill, a
+    sleep, or the external volume blinking out cost the ENTIRE pass. Three
+    consecutive runs were lost that way on 2026-07-29/30 — at 14 min, at 100
+    min, and the third at 2h34m, on the final write itself.
+    """
+
+    SUBJECT = "રાજયમાં ભૂ-રાસાયણિક સંશોધન બાબત"
+    BODY = "પ્રશ્ન                જવાબ\n (1) પ્રશ્ન લખાણ            (1) હા,\n"
+
+    def _corpus(self, tmp_path, n=4):
+        import json
+
+        for i in range(n):
+            (tmp_path / f"q{i}.pdf").write_bytes(b"%PDF-1.4 fake")
+        (tmp_path / "questions.jsonl").write_text(
+            "".join(
+                json.dumps({"key": f"GJ|{i}", "pdf_path": f"q{i}.pdf", "subject": self.SUBJECT}) + "\n"
+                for i in range(n)
+            ),
+            encoding="utf-8",
+        )
+        return tmp_path
+
+    def _records(self, tmp_path):
+        import json
+
+        text = (tmp_path / "answers.jsonl").read_text()
+        return [json.loads(x) for x in text.splitlines() if x.strip()]
+
+    def test_an_interrupted_run_keeps_its_records_and_resumes(self, monkeypatch, tmp_path):
+        from commoner_probe import neva_text as mod
+
+        corpus = self._corpus(tmp_path, n=4)
+        seen: list[str] = []
+
+        def dies_on_the_third(pdf):
+            seen.append(pdf.name)
+            if len(seen) == 3:
+                raise KeyboardInterrupt("simulated kill mid-pass")
+            return self.SUBJECT + "\n" + self.BODY
+
+        monkeypatch.setattr("commoner_probe.textparse.extract_pdf_text", dies_on_the_third)
+        with pytest.raises(KeyboardInterrupt):
+            mod.extract_neva_answers(corpus, log_fn=lambda *_: None)
+
+        # The interrupted run left its work on disk, not in a lost list.
+        progress = corpus / ".neva_extract_progress"
+        assert progress.exists(), "an interrupted run must be resumable"
+        assert len(progress.read_text().split()) == 2, "two documents completed"
+        assert (corpus / "answers.jsonl.partial").exists()
+
+        # Resume: the finished documents are not re-read, and the corpus is whole.
+        seen.clear()
+        monkeypatch.setattr(
+            "commoner_probe.textparse.extract_pdf_text",
+            lambda pdf: seen.append(pdf.name) or (self.SUBJECT + "\n" + self.BODY),
+        )
+        stats = mod.extract_neva_answers(corpus, log_fn=lambda *_: None)
+
+        assert seen == ["q2.pdf", "q3.pdf"], "the first two must not be re-read"
+        assert stats.questions_processed == 2, "stats cover this invocation only"
+        assert len(self._records(corpus)) == 4, "the artefact holds every document"
+        assert not progress.exists(), "a completed run is not resumable"
+        assert not (corpus / "answers.jsonl.partial").exists()
+
+    def test_a_completed_run_leaves_no_partial_or_progress_file(self, monkeypatch, tmp_path):
+        from commoner_probe import neva_text as mod
+
+        monkeypatch.setattr(
+            "commoner_probe.textparse.extract_pdf_text",
+            lambda pdf: self.SUBJECT + "\n" + self.BODY,
+        )
+        corpus = self._corpus(tmp_path, n=2)
+        mod.extract_neva_answers(corpus, log_fn=lambda *_: None)
+
+        assert len(self._records(corpus)) == 2
+        assert list(corpus.glob("*.partial")) == []
+        assert not (corpus / ".neva_extract_progress").exists()
+
+    def test_a_stale_partial_without_progress_is_not_appended_to(self, monkeypatch, tmp_path):
+        """No progress file means no run to resume — whatever left that .partial
+        behind, its rows are not this corpus's and must not be adopted."""
+        from commoner_probe import neva_text as mod
+
+        monkeypatch.setattr(
+            "commoner_probe.textparse.extract_pdf_text",
+            lambda pdf: self.SUBJECT + "\n" + self.BODY,
+        )
+        corpus = self._corpus(tmp_path, n=2)
+        (corpus / "answers.jsonl.partial").write_text(
+            '{"key": "GJ|junk", "note": "not from this corpus"}\n', encoding="utf-8"
+        )
+        mod.extract_neva_answers(corpus, log_fn=lambda *_: None)
+
+        keys = [r["key"] for r in self._records(corpus)]
+        assert "GJ|junk" not in keys
+        assert len(keys) == 2
+
+    def test_records_land_on_disk_as_they_are_produced(self, monkeypatch, tmp_path):
+        """The property the whole change exists for: nothing waits for the end."""
+        from commoner_probe import neva_text as mod
+
+        corpus = self._corpus(tmp_path, n=3)
+        depths: list[int] = []
+        partial = corpus / "answers.jsonl.partial"
+
+        def note_depth(pdf):
+            depths.append(len(partial.read_text().splitlines()) if partial.exists() else 0)
+            return self.SUBJECT + "\n" + self.BODY
+
+        monkeypatch.setattr("commoner_probe.textparse.extract_pdf_text", note_depth)
+        mod.extract_neva_answers(corpus, log_fn=lambda *_: None)
+
+        assert depths == [0, 1, 2], "each document's record was on disk before the next was read"
