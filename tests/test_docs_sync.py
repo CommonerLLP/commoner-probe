@@ -39,6 +39,7 @@ class CliCommandSyncTests(unittest.TestCase):
                 "sansad",
                 "census",
                 "nada",
+                "dchb-town",
                 "niti-annual-report",
                 "committees",
                 "extract-answers",

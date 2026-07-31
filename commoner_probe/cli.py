@@ -575,6 +575,33 @@ def _nada_network_exit(exc: Exception) -> "SystemExit":
     return SystemExit(f"nada: {type(exc).__name__}: {text}{hint}")
 
 
+def dchb_town_cmd(args: argparse.Namespace) -> None:
+    from .dchb_town import DchbTownError, DchbTownProbe
+
+    out = Path(args.out)
+    probe = DchbTownProbe(out)
+    total_towns = 0
+    total_lib = 0
+    for path in args.xlsx:
+        try:
+            rows = probe.ingest(Path(path))
+        except (DchbTownError, OSError) as exc:
+            raise SystemExit(f"dchb-town: {path}: {exc}") from None
+        libs = sum(r["public_library_total"] for r in rows)
+        rooms = sum(r["reading_room_total"] for r in rows)
+        total_towns += len(rows)
+        total_lib += libs
+        state = rows[0]["state_code"] if rows else "?"
+        print(
+            f"state {state}: {len(rows)} towns, {libs} public libraries, "
+            f"{rooms} reading rooms (SEPARATE — never summed with libraries)",
+            file=sys.stderr,
+        )
+    if not total_towns:
+        raise SystemExit("dchb-town: no town rows produced")
+    print(f"DCHB town amenities: {total_towns} towns, {total_lib} libraries", file=sys.stderr)
+
+
 def nada_cmd(args: argparse.Namespace) -> None:
     from .nada import DEFAULT_MAX_DOCS_PER_STUDY, NadaApiError, NadaClient, NadaProbe
 
@@ -1382,6 +1409,38 @@ def build_parser() -> argparse.ArgumentParser:
         "--dry-run", action="store_true", help="List reports without downloading"
     )
     niti_ar.set_defaults(func=niti_annual_report_cmd)
+
+    dchb_town = sub.add_parser(
+        "dchb-town",
+        help="Read DCHB Town Release spreadsheets into urban amenity rows (public libraries).",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=(
+            "Read one or more District Census Handbook Town Release spreadsheets\n"
+            "(DH_2011_DCHB_Town_Release_<statecode>00.xlsx) into typed town rows.\n\n"
+            "These files are STATE-level and ship inside every DCHB record in ORGI's\n"
+            "NADA catalogue, so acquire them with `commoner-probe nada` first. About 36\n"
+            "files cover India — the ~640 district PDFs are not needed for this.\n\n"
+            "The values are COUNTS of facilities. The rural Village Amenities equivalent\n"
+            "is an availability FLAG per village. Adding the two gives the widely-cited\n"
+            "and wrong '~75,000 public libraries', because the rural figure counts\n"
+            "villages that HAVE a library rather than libraries. Every row emitted here\n"
+            "declares measure=count so the two cannot be confused silently."
+        ),
+        epilog=(
+            "Examples:\n"
+            "  # 1. Acquire a state's DCHB record (any district of that state will do)\n"
+            "  commoner-probe nada --base-url https://censusindia.gov.in/nada \\\n"
+            "      --out data/dchb --study DH_2011_2725_PART_A_DCHB_PUNE\n\n"
+            "  # 2. Read the Town Release it shipped\n"
+            "  commoner-probe dchb-town --out data/census-towns \\\n"
+            "      data/dchb/docs/DH_2011_2725_PART_A_DCHB_PUNE/DH_2011_DCHB_Town_Release_2700.xlsx\n\n"
+            "  # 3. Several states at once\n"
+            "  commoner-probe dchb-town --out data/census-towns data/dchb/**/DH_2011_DCHB_Town_Release_*.xlsx\n"
+        ),
+    )
+    dchb_town.add_argument("--out", required=True, help="Output directory")
+    dchb_town.add_argument("xlsx", nargs="+", help="One or more Town Release .xlsx files")
+    dchb_town.set_defaults(func=dchb_town_cmd)
 
     nada = sub.add_parser(
         "nada",

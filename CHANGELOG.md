@@ -12,6 +12,36 @@ both `microdata.gov.in/NADA` (187 studies) and `censusindia.gov.in/nada`
 (40,254) — the second being the acquisition surface REQ-0045's urban half was
 waiting on.
 
+**`commoner-probe dchb-town` closes REQ-0045's urban half — without the PDF
+route.** The urban public-library COUNT was believed to live only inside ~640
+District Census Handbook PDFs at ~18 MB each, which is why a Statement V PDF
+parser was attempted and removed at 4-of-24 town recall. It does not: every DCHB
+record in ORGI's NADA catalogue ships a **state-level**
+`DH_2011_DCHB_Town_Release_<statecode>00.xlsx` carrying the counts as ordinary
+columns. Present in 10 of 10 sampled records across 8 states. ~36 files instead
+of ~640, and no table extraction.
+
+Rows declare `measure: "count"`, pinned by a schema `const`, because the rural
+Village Amenities equivalent is an availability FLAG per village. Adding the two
+gives the widely-cited and wrong "~75,000 public libraries" — the rural figure
+counts villages that HAVE a library, not libraries. Reading rooms are a separate
+facility and get no combined field at all.
+
+**A key collision found by running it, not by the suite:** Greater Mumbai is one
+municipal corporation split across Mumbai and Mumbai Suburban, sharing town code
+802794. Keying on state+town collapsed them — the parser produced 535 Maharashtra
+towns and the corpus held 534, losing 11 libraries and 9.36 million people, while
+the CLI printed the correct total because it summed the in-memory list rather
+than what it had written. The district is now in the key, and `ingest()` refuses
+to persist fewer rows than it parsed, which catches the next collision whatever
+causes it.
+
+XLSX parsing is stdlib `zipfile` + `ElementTree` (this package declares
+`dependencies = []`, so `defusedxml` is unavailable). Since these files arrive
+over the network from a government portal, parts declaring a DTD are refused and
+uncompressed size is capped before reading — the entity-expansion and
+decompression-bomb vectors.
+
 **The HTTP client had been ignoring 429 entirely** — the one status that means
 *slow down*, returned to the caller as though the portal had said yes. That is
 the more consequential half of this release; it was found while building the

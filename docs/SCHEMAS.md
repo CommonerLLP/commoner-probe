@@ -815,6 +815,43 @@ manifest (kind=committee_report, report_type=demands_for_grants | bill | subject
 `pdf_path` values are relative to the corpus `out_dir`. To get an absolute path,
 join with the directory that contains `manifest.jsonl`.
 
+## `town_amenity_rows.jsonl` — DCHB town amenity (`kind = "dchb_town_amenity"`)
+
+One TOWN from a District Census Handbook Town Release, written by
+`commoner-probe dchb-town`. Schema: `dchb_town_amenity.schema.json`.
+
+| Field | Type | Required | Notes | Provenance |
+|---|---|---|---|---|
+| `key` | string | yes | `DCHB\|{state}\|{district}\|{town}` — **the district is load-bearing** | dchb_town.py |
+| `measure` | string | yes | `const: "count"`. The anti-conflation guard — see below | dchb_town.py |
+| `public_library_govt` / `_private` | int\|null | yes | Counts of facilities | dchb_town.py |
+| `public_library_total` | int | yes | govt + private — a legitimate sum, same facility | dchb_town.py |
+| `reading_room_govt` / `_private` / `_total` | int\|null | no | A **separate facility**; never added to libraries | dchb_town.py |
+| `*_status` | enum | no | `available` / `not_available`, from the source's A(1)/NA(2) | dchb_town.py |
+| `state_code` / `district_code` / `town_code` | string\|null | cond | The join key back to the rural corpus | dchb_town.py |
+| `source_filename` / `source_sha256` | string | yes | Which spreadsheet, and its hash | dchb_town.py |
+
+**`measure` exists because the rural and urban values are differently typed.**
+Village Amenities records `public_library` as an availability FLAG per village
+(A=1/NA=2), so summing it counts *villages that have a library*. This is a COUNT
+of libraries per town. Adding them yields the widely-cited and wrong "~75,000
+public libraries" (70,817 + 4,580). The schema pins `measure` to a `const`, so a
+flag cannot be written into this file and a consumer combining the two must
+override an explicit field.
+
+**A town code is not unique within a state.** Greater Mumbai is one municipal
+corporation split across Mumbai and Mumbai Suburban, both carrying town code
+`802794`. The district is therefore part of the key; without it the two collapse
+and 9.36 million people vanish from the corpus. `ingest()` additionally refuses
+to persist fewer rows than it parsed.
+
+## `manifest.jsonl` — DCHB Town Release (`kind = "dchb_town_release"`)
+
+One spreadsheet ingested. Schema: `manifest_dchb_town_release.schema.json`.
+The file is **state-level** despite arriving attached to a per-district DCHB
+record, so ~36 files cover India. Carries `state_code`, `sha256`, `towns` and
+`districts`; the rows themselves live in `town_amenity_rows.jsonl`.
+
 ## `manifest.jsonl` — NADA study (`kind = "nada_study"`)
 
 One record per study acquired from a NADA (National Data Archive) instance,
