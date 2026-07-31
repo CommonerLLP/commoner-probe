@@ -587,14 +587,20 @@ def dchb_town_cmd(args: argparse.Namespace) -> None:
             rows = probe.ingest(Path(path))
         except (DchbTownError, OSError) as exc:
             raise SystemExit(f"dchb-town: {path}: {exc}") from None
-        libs = sum(r["public_library_total"] for r in rows)
-        rooms = sum(r["reading_room_total"] for r in rows)
+        # A None total means the source did not record the value for that town.
+        # Counting it as zero is the conflation this adapter exists to prevent,
+        # so unrecorded towns are excluded from the sum and reported separately.
+        libs = sum(r["public_library_total"] or 0 for r in rows)
+        rooms = sum(r["reading_room_total"] or 0 for r in rows)
+        unknown = sum(1 for r in rows if r["public_library_total"] is None)
         total_towns += len(rows)
         total_lib += libs
         state = rows[0]["state_code"] if rows else "?"
+        gap = f", {unknown} towns not recorded" if unknown else ""
         print(
             f"state {state}: {len(rows)} towns, {libs} public libraries, "
-            f"{rooms} reading rooms (SEPARATE — never summed with libraries)",
+            f"{rooms} reading rooms (SEPARATE — never summed with libraries)"
+            f"{gap}",
             file=sys.stderr,
         )
     if not total_towns:

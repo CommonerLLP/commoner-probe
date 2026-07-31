@@ -309,7 +309,7 @@ class DchbTownAmenityRecord:
     town_name: str | None
     public_library_govt: int | None
     public_library_private: int | None
-    public_library_total: int
+    public_library_total: int | None
     source_filename: str
     source_sha256: str
     extracted_at: str

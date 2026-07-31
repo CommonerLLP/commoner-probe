@@ -90,11 +90,16 @@ def test_library_and_reading_room_totals_are_separate_fields(tmp_path):
     valid. Libraries + reading rooms are different facilities and get no
     combined field at all — the absence is the point."""
     row = _rows(tmp_path)[0]
-    assert row["public_library_total"] == (
-        (row["public_library_govt"] or 0) + (row["public_library_private"] or 0)
+
+    def expected(a, b):
+        # None when NEITHER was recorded — "not recorded" is not "zero".
+        return None if a is None and b is None else (a or 0) + (b or 0)
+
+    assert row["public_library_total"] == expected(
+        row["public_library_govt"], row["public_library_private"]
     )
-    assert row["reading_room_total"] == (
-        (row["reading_room_govt"] or 0) + (row["reading_room_private"] or 0)
+    assert row["reading_room_total"] == expected(
+        row["reading_room_govt"], row["reading_room_private"]
     )
     combined = [k for k in row if "library_and_reading" in k or k == "facility_total"]
     assert not combined, f"no field may combine the two facilities: {combined}"
@@ -185,6 +190,128 @@ def test_ingest_refuses_to_persist_fewer_rows_than_it_parsed(tmp_path):
     probe._row = colliding
     with pytest.raises(dchb_town.DchbTownError, match="collid|distinct"):
         probe.ingest(FIX)
+
+
+def test_leading_zeros_survive_numeric_cells(tmp_path):
+    """Census codes are stored as NUMBERS in these sheets (no `t="s"`), so a raw
+    read gives "3" for Punjab (state 03) and "8" for Rajasthan (08). Nine of the
+    35 states have a code below 10, and the rural corpus this is meant to join
+    against uses zero-padded codes — so the join would silently miss a quarter
+    of India (Codex, PR #101).
+
+    Widths verified against both real files: state 2, district 3, subdistrict 5,
+    town 6, uniform across all 561 towns."""
+    probe = dchb_town.DchbTownProbe(tmp_path)
+    cols = {
+        "state_code": "A", "district_code": "C", "subdistrict_code": "E",
+        "town_code": "G", "town_name": "H",
+        "public_library_govt": "OS", "public_library_private": "OU",
+    }
+    row = probe._row(
+        {"A": "3", "C": "31", "E": "412", "G": "80145", "H": "Somewhere",
+         "OS": "1", "OU": "0"},
+        cols, "punjab.xlsx", "0" * 64,
+    )
+    assert row["state_code"] == "03"
+    assert row["district_code"] == "031"
+    assert row["subdistrict_code"] == "00412"
+    assert row["town_code"] == "080145"
+    assert row["key"] == "DCHB|03|031|080145"
+
+
+def test_already_padded_codes_are_left_alone(tmp_path):
+    """Padding must be idempotent — a code that arrives as text is not re-padded."""
+    row = _rows(tmp_path)[0]
+    assert row["state_code"] == "13"
+    assert len(row["district_code"]) == 3
+    assert len(row["town_code"]) == 6
+
+
+def test_absent_reading_room_columns_are_unknown_not_zero(tmp_path):
+    """`(a or 0) + (b or 0)` turned "these columns are not in this file" into
+    "this state has zero reading rooms" — the exact conflation this module
+    exists to prevent, in its own arithmetic (Codex, PR #101)."""
+    probe = dchb_town.DchbTownProbe(tmp_path)
+    cols = {
+        "state_code": "A", "town_code": "G", "town_name": "H",
+        "public_library_govt": "OS", "public_library_private": "OU",
+    }
+    row = probe._row(
+        {"A": "13", "G": "1", "H": "T", "OS": "2", "OU": "1"}, cols, "f.xlsx", "0" * 64
+    )
+    assert row["reading_room_govt"] is None
+    assert row["reading_room_private"] is None
+    assert row["reading_room_total"] is None, "absent columns are unknown, not zero"
+    assert row["public_library_total"] == 3, "present columns still sum"
+
+
+def test_an_empty_count_with_not_available_status_reads_as_zero(tmp_path):
+    """Two states, two conventions — verified against both real files.
+    Maharashtra writes an explicit 0 for an absent facility (535/535 towns carry
+    a number). Nagaland leaves the cell EMPTY and marks the status column
+    `not_available` (21/26 towns). Reading only the count column would make
+    Nagaland's 21 look unknown when the source plainly says the facility is not
+    there. The status column is present in both and is the signal."""
+    probe = dchb_town.DchbTownProbe(tmp_path)
+    cols = {
+        "state_code": "A", "town_code": "G", "town_name": "H",
+        "public_library_govt": "OS", "public_library_govt_status": "OR",
+        "public_library_private": "OU", "public_library_private_status": "OT",
+    }
+    row = probe._row(
+        {"A": "13", "G": "1", "H": "T", "OR": "2", "OT": "2"},  # both NOT available, cells empty
+        cols, "nagaland.xlsx", "0" * 64,
+    )
+    assert row["public_library_govt"] == 0, "status says not_available — that is zero, not unknown"
+    assert row["public_library_private"] == 0
+    assert row["public_library_total"] == 0
+
+
+def test_an_empty_count_with_no_status_at_all_stays_unknown(tmp_path):
+    """The genuinely unrecorded case keeps its None: no count, and no status to
+    say the facility is absent."""
+    probe = dchb_town.DchbTownProbe(tmp_path)
+    cols = {"state_code": "A", "town_code": "G", "town_name": "H",
+            "public_library_govt": "OS", "public_library_private": "OU"}
+    row = probe._row({"A": "13", "G": "1", "H": "T"}, cols, "f.xlsx", "0" * 64)
+    assert row["public_library_govt"] is None
+    assert row["public_library_total"] is None
+
+
+def test_the_cli_summary_survives_unrecorded_totals_and_says_how_many(tmp_path, monkeypatch):
+    """Making absent columns `None` instead of 0 broke the CLI's `sum(...)`,
+    which had silently relied on the wrong semantics. A count of towns whose
+    value was never recorded is the honest thing to print — not a crash, and not
+    a total that quietly treats them as zero."""
+    from commoner_probe import cli
+    from commoner_probe import dchb_town as mod
+
+    original = mod.DchbTownProbe.ingest
+
+    def with_a_gap(self, xlsx):
+        rows = original(self, xlsx)
+        rows[0]["public_library_total"] = None
+        rows[0]["reading_room_total"] = None
+        return rows
+
+    monkeypatch.setattr(mod.DchbTownProbe, "ingest", with_a_gap)
+    args = cli.build_parser().parse_args(["dchb-town", "--out", str(tmp_path), str(FIX)])
+    args.func(args)  # must not raise
+
+
+def test_a_dtd_hidden_behind_a_long_prolog_is_still_refused(tmp_path):
+    """The check read only the first 4 KiB, so >4096 bytes of legal comment
+    before the DOCTYPE walked the entity bomb straight past it (Codex, PR #101,
+    who verified the bypass reached the parser)."""
+    bomb = (
+        b'<?xml version="1.0"?><!--' + b"A" * 5000 + b"-->"
+        b'<!DOCTYPE lolz [<!ENTITY lol "lol">]>'
+        b'<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+        b"<sheetData/></worksheet>"
+    )
+    hostile = _xlsx_with(tmp_path, "xl/worksheets/sheet1.xml", bomb)
+    with pytest.raises(dchb_town.DchbTownError, match="DTD"):
+        dchb_town.read_sheet(hostile)
 
 
 # ---------------------------------------------------------------------------

@@ -95,6 +95,19 @@ HEADER_MAP = {
 #: Without these the file is not a Town Release and must not yield rows.
 REQUIRED = ("town_code", "town_name", "public_library_govt", "public_library_private")
 
+#: Census code widths, verified against the Maharashtra and Nagaland files —
+#: uniform across all 561 towns. These cells are stored as NUMBERS (no `t="s"`),
+#: so a raw read drops the leading zero: Punjab's state code 03 arrives as "3".
+#: Nine of the 35 states have a code below 10, and the rural corpus this joins
+#: against is zero-padded, so unpadded codes would silently miss a quarter of
+#: India.
+CODE_WIDTHS = {
+    "state_code": 2,
+    "district_code": 3,
+    "subdistrict_code": 5,
+    "town_code": 6,
+}
+
 
 class DchbTownError(RuntimeError):
     pass
@@ -123,7 +136,9 @@ def _safe_xml(archive: zipfile.ZipFile, member: str) -> ET.Element:
     raw = archive.read(member)
     # A legitimate XLSX part carries no DTD, and the entity-expansion attack
     # needs one. Checked before parsing, on the bytes.
-    if re.search(rb"<!DOCTYPE", raw[:4096], re.I):
+    # The WHOLE buffer, not a prefix: >4 KiB of legal comment before the
+    # DOCTYPE walked the entity bomb past a windowed check (Codex, PR #101).
+    if re.search(rb"<!DOCTYPE", raw, re.I):
         raise DchbTownError(
             f"{member}: declares a DTD, which a spreadsheet part never legitimately "
             "does — refusing to parse (entity-expansion vector)"
@@ -249,14 +264,51 @@ class DchbTownProbe:
         def text(field: str) -> str | None:
             letter = cols.get(field)
             value = raw.get(letter) if letter else None
-            return str(value).strip() if value not in (None, "") else None
+            if value in (None, ""):
+                return None
+            value = str(value).strip()
+            width = CODE_WIDTHS.get(field)
+            # Idempotent: a code already at or above its width is untouched.
+            if width and value.isdigit():
+                value = value.zfill(width)
+            return value
 
         def count(field: str) -> int | None:
             letter = cols.get(field)
             return _int(raw.get(letter)) if letter else None
 
-        gov_lib, priv_lib = count("public_library_govt"), count("public_library_private")
-        gov_rr, priv_rr = count("reading_room_govt"), count("reading_room_private")
+        def counted(value_field: str, status_field: str) -> int | None:
+            """The count, or 0 when the status column says the facility is absent.
+
+            Two states, two conventions, both verified against the real files:
+            Maharashtra writes an explicit 0 for an absent facility (535/535
+            towns carry a number); Nagaland leaves the cell EMPTY and marks the
+            status `not_available` (21/26 towns). Reading only the count column
+            would make Nagaland's 21 look unrecorded when the source plainly
+            says the facility is not there. An empty cell with NO status stays
+            None — that one is genuinely unknown.
+            """
+            value = count(value_field)
+            if value is not None:
+                return value
+            letter = cols.get(status_field)
+            if letter and _status(raw.get(letter)) == "not_available":
+                return 0
+            return None
+
+        gov_lib = counted("public_library_govt", "public_library_govt_status")
+        priv_lib = counted("public_library_private", "public_library_private_status")
+        gov_rr = counted("reading_room_govt", "reading_room_govt_status")
+        priv_rr = counted("reading_room_private", "reading_room_private_status")
+
+        def total(a: int | None, b: int | None) -> int | None:
+            """Sum, or None when neither value was recorded.
+
+            `(a or 0) + (b or 0)` turned "these columns are absent from this
+            file" into "this town has zero facilities" — the conflation this
+            module exists to prevent, in its own arithmetic.
+            """
+            return None if a is None and b is None else (a or 0) + (b or 0)
         state, town = text("state_code"), text("town_code")
         district = text("district_code")
         # The district is IN the key because a town code is not unique within a
@@ -284,7 +336,7 @@ class DchbTownProbe:
             "total_population": count("total_population"),
             "public_library_govt": gov_lib,
             "public_library_private": priv_lib,
-            "public_library_total": (gov_lib or 0) + (priv_lib or 0),
+            "public_library_total": total(gov_lib, priv_lib),
             "public_library_govt_status": _status(raw.get(cols.get("public_library_govt_status"))),
             "public_library_private_status": _status(
                 raw.get(cols.get("public_library_private_status"))
@@ -292,7 +344,7 @@ class DchbTownProbe:
             # A SEPARATE facility. Deliberately no field combining the two.
             "reading_room_govt": gov_rr,
             "reading_room_private": priv_rr,
-            "reading_room_total": (gov_rr or 0) + (priv_rr or 0),
+            "reading_room_total": total(gov_rr, priv_rr),
             "reading_room_govt_status": _status(raw.get(cols.get("reading_room_govt_status"))),
             "reading_room_private_status": _status(
                 raw.get(cols.get("reading_room_private_status"))

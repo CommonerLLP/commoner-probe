@@ -36,6 +36,19 @@ than what it had written. The district is now in the key, and `ingest()` refuses
 to persist fewer rows than it parsed, which catches the next collision whatever
 causes it.
 
+**Two states, two conventions for "no facility here"**, both handled: Maharashtra
+writes an explicit `0` (535/535 towns carry a number), Nagaland leaves the cell
+empty and marks the status column `not_available` (21/26 towns). Reading only the
+count column would have made Nagaland's 21 look unrecorded when the source
+plainly says the facility is absent. The status column is the signal; an empty
+cell with no status at all stays null, because that one genuinely is unknown.
+
+Census codes are stored as numbers in these sheets, so a raw read drops the
+leading zero — Punjab's state code `03` arrives as `3`. Nine of the 35 states
+have a code below 10 and the rural corpus is zero-padded, so codes are padded to
+their census widths (state 2, district 3, subdistrict 5, town 6, verified
+uniform across both files) or the join would silently miss a quarter of India.
+
 XLSX parsing is stdlib `zipfile` + `ElementTree` (this package declares
 `dependencies = []`, so `defusedxml` is unavailable). Since these files arrive
 over the network from a government portal, parts declaring a DTD are refused and
