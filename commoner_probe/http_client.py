@@ -319,12 +319,19 @@ if requests is not None:
                         or resp.status_code in RETRYABLE_STATUSES
                     ):
                         last_exc = RuntimeError(f"HTTP {resp.status_code} {url}")
-                        time.sleep(_retry_delay(attempt, resp))
+                        # Only wait when another attempt remains. Sleeping after
+                        # the last one costs the caller the full delay with no
+                        # request left to make — a persistent 429 with
+                        # Retry-After: 30 burned 30s after the budget was spent
+                        # (Codex, PR #97).
+                        if attempt < MAX_RETRIES - 1:
+                            time.sleep(_retry_delay(attempt, resp))
                         continue
                     return resp
                 except requests.RequestException as exc:
                     last_exc = exc
-                    time.sleep(_retry_delay(attempt, None))
+                    if attempt < MAX_RETRIES - 1:
+                        time.sleep(_retry_delay(attempt, None))
             raise last_exc or RuntimeError(f"max retries exceeded for {url}")
 
         def __getattr__(self, name: str) -> Any:

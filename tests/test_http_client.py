@@ -271,8 +271,13 @@ def test_stdlib_session_supports_post(monkeypatch):
 # crawler becomes a blocked one.
 # ---------------------------------------------------------------------------
 
+# Base the marker on RetrySession itself, NOT on `hc.requests is None`: the
+# stdlib-fallback branch rebinds `requests` to a types.SimpleNamespace, so that
+# condition is False in exactly the environment where RetrySession was never
+# defined (Codex, PR #97).
 requires_requests = pytest.mark.skipif(
-    hc.requests is None, reason="RetrySession only exists when requests is installed"
+    not hasattr(hc, "RetrySession"),
+    reason="RetrySession only exists when requests is installed",
 )
 
 
@@ -376,6 +381,40 @@ def test_persistent_429_raises_after_max_retries(monkeypatch):
     session, _ = _scripted_session(monkeypatch, [429] * hc.MAX_RETRIES)
     with pytest.raises(RuntimeError, match="429"):
         session.get("https://api.example.org/x", respect_robots=False)
+
+
+@requires_requests
+def test_no_sleep_after_the_final_attempt(monkeypatch):
+    """A persistent 429 with Retry-After: 30 made the caller wait an extra 30s
+    after the retry budget was already spent, with no request left to make
+    (Codex, PR #97)."""
+    session, slept = _scripted_session(
+        monkeypatch,
+        [429] * hc.MAX_RETRIES,
+        headers=[{"Retry-After": "5"}] * hc.MAX_RETRIES,
+    )
+    with pytest.raises(RuntimeError):
+        session.get("https://api.example.org/x", respect_robots=False)
+    assert len(slept) == hc.MAX_RETRIES - 1, "the last attempt must not sleep"
+
+
+@requires_requests
+def test_no_sleep_after_the_final_network_error(monkeypatch):
+    slept: list[float] = []
+    monkeypatch.setattr(hc.time, "sleep", lambda s: slept.append(s))
+    monkeypatch.setattr(hc, "is_safe_url", lambda url: True)
+    session = hc.RetrySession(rate_limit_sec=0)
+
+    class _AlwaysFails:
+        headers: dict = {}
+
+        def request(self, *a, **k):
+            raise hc.requests.RequestException("boom")
+
+    session._session = _AlwaysFails()
+    with pytest.raises(hc.requests.RequestException):
+        session.get("https://api.example.org/x", respect_robots=False)
+    assert len(slept) == hc.MAX_RETRIES - 1
 
 
 @requires_requests
