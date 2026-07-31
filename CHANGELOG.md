@@ -4,6 +4,18 @@
 
 ### Fixed
 
+- **The HTTP client ignored 429 entirely.** The retry loop backed off on 5xx and
+  network errors only, so "429 Too Many Requests" was returned to the caller as
+  though it were a successful response and the next request went out on the
+  ordinary schedule — the one status that exists to say *slow down*, treated as
+  if the portal had said yes. `Retry-After` was not read anywhere in the module,
+  and the backoff was a deterministic `2 ** attempt` with no jitter, so parallel
+  clients retried in lockstep. 429 is now retried, `Retry-After` is honoured up
+  to a 30s cap (above which the request raises rather than blocking the process
+  for as long as the portal named), and the backoff carries equal jitter. The
+  zero-dependency stdlib fallback still has no retry and is documented as
+  unsuitable for volume crawling.
+
 - **A resume with no surviving checkpoint left the partials in place.** Skipping
   malformed progress lines was right; doing nothing when *none* survives was
   not. A kill during the very first checkpoint write leaves that document's

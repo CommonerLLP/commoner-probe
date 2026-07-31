@@ -260,3 +260,168 @@ def test_stdlib_session_supports_post(monkeypatch):
     assert captured["method"] == "POST"
     assert captured["auth"] == "Token x"
     assert r.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# Retry policy: 429, Retry-After, and backoff jitter.
+#
+# The loop backed off on 5xx and network errors only, so a 429 returned to the
+# caller like a success and the next request went out on the ordinary schedule.
+# 429 is the portal asking for a slower rate; ignoring it is how a polite
+# crawler becomes a blocked one.
+# ---------------------------------------------------------------------------
+
+# Base the marker on RetrySession itself, NOT on `hc.requests is None`: the
+# stdlib-fallback branch rebinds `requests` to a types.SimpleNamespace, so that
+# condition is False in exactly the environment where RetrySession was never
+# defined (Codex, PR #97).
+requires_requests = pytest.mark.skipif(
+    not hasattr(hc, "RetrySession"),
+    reason="RetrySession only exists when requests is installed",
+)
+
+
+class _StubHttpResp:
+    def __init__(self, status_code: int, headers: dict) -> None:
+        self.status_code = status_code
+        self.headers = headers
+
+
+class _StubTransport:
+    """Returns a scripted sequence of responses and counts the calls."""
+
+    def __init__(self, statuses, headers=None) -> None:
+        self._statuses = list(statuses)
+        self._headers = list(headers or [{}] * len(statuses))
+        self.calls = 0
+        self.headers: dict = {}
+
+    def request(self, method, url, **kwargs):
+        i = self.calls
+        self.calls += 1
+        return _StubHttpResp(self._statuses[i], self._headers[i])
+
+
+def _scripted_session(monkeypatch, statuses, headers=None):
+    """A RetrySession with a scripted transport and recorded sleeps.
+
+    The SSRF guard resolves hostnames for real, so it is stubbed here — these
+    tests are about the retry loop, and the guard has its own tests above.
+    """
+    slept: list[float] = []
+    monkeypatch.setattr(hc.time, "sleep", lambda s: slept.append(s))
+    monkeypatch.setattr(hc, "is_safe_url", lambda url: True)
+    session = hc.RetrySession(rate_limit_sec=0)
+    session._session = _StubTransport(statuses, headers)
+    return session, slept
+
+
+@requires_requests
+def test_429_is_retried_not_returned_as_success(monkeypatch):
+    session, slept = _scripted_session(monkeypatch, [429, 200])
+    resp = session.get("https://api.example.org/x", respect_robots=False)
+    assert resp.status_code == 200
+    assert session._session.calls == 2
+    assert slept, "a 429 must back off before retrying"
+
+
+@requires_requests
+def test_retry_after_seconds_is_honoured(monkeypatch):
+    session, slept = _scripted_session(
+        monkeypatch, [429, 200], headers=[{"Retry-After": "7"}, {}]
+    )
+    session.get("https://api.example.org/x", respect_robots=False)
+    assert slept[0] == 7.0
+
+
+@requires_requests
+def test_retry_after_beyond_the_cap_raises_instead_of_blocking(monkeypatch):
+    """A portal asking for ten minutes is telling us to stop, not to sleep
+    through it holding the process."""
+    session, slept = _scripted_session(
+        monkeypatch, [429], headers=[{"Retry-After": "600"}]
+    )
+    with pytest.raises(RuntimeError, match="Retry-After"):
+        session.get("https://api.example.org/x", respect_robots=False)
+    assert not slept
+
+
+@requires_requests
+def test_retry_after_http_date_form_falls_back_to_backoff(monkeypatch):
+    """Retry-After may be an HTTP-date. Unparseable as seconds must degrade to
+    the ordinary backoff, not crash the request."""
+    session, slept = _scripted_session(
+        monkeypatch,
+        [429, 200],
+        headers=[{"Retry-After": "Wed, 21 Oct 2026 07:28:00 GMT"}, {}],
+    )
+    resp = session.get("https://api.example.org/x", respect_robots=False)
+    assert resp.status_code == 200
+    assert slept and 0.5 <= slept[0] <= 1.0
+
+
+def test_backoff_is_jittered():
+    """Deterministic 2**attempt makes every client retry in lockstep."""
+    delays = {hc._retry_delay(2, None) for _ in range(50)}
+    assert len(delays) > 1, "backoff must be jittered"
+    assert all(2.0 <= d <= 4.0 for d in delays), delays
+
+
+@requires_requests
+def test_non_429_client_errors_are_not_retried(monkeypatch):
+    """Regression guard: a 404 must still come straight back to the caller."""
+    session, _ = _scripted_session(monkeypatch, [404, 200])
+    resp = session.get("https://api.example.org/x", respect_robots=False)
+    assert resp.status_code == 404
+    assert session._session.calls == 1
+
+
+@requires_requests
+def test_persistent_429_raises_after_max_retries(monkeypatch):
+    session, _ = _scripted_session(monkeypatch, [429] * hc.MAX_RETRIES)
+    with pytest.raises(RuntimeError, match="429"):
+        session.get("https://api.example.org/x", respect_robots=False)
+
+
+@requires_requests
+def test_no_sleep_after_the_final_attempt(monkeypatch):
+    """A persistent 429 with Retry-After: 30 made the caller wait an extra 30s
+    after the retry budget was already spent, with no request left to make
+    (Codex, PR #97)."""
+    session, slept = _scripted_session(
+        monkeypatch,
+        [429] * hc.MAX_RETRIES,
+        headers=[{"Retry-After": "5"}] * hc.MAX_RETRIES,
+    )
+    with pytest.raises(RuntimeError):
+        session.get("https://api.example.org/x", respect_robots=False)
+    assert len(slept) == hc.MAX_RETRIES - 1, "the last attempt must not sleep"
+
+
+@requires_requests
+def test_no_sleep_after_the_final_network_error(monkeypatch):
+    slept: list[float] = []
+    monkeypatch.setattr(hc.time, "sleep", lambda s: slept.append(s))
+    monkeypatch.setattr(hc, "is_safe_url", lambda url: True)
+    session = hc.RetrySession(rate_limit_sec=0)
+
+    class _AlwaysFails:
+        headers: dict = {}
+
+        def request(self, *a, **k):
+            raise hc.requests.RequestException("boom")
+
+    session._session = _AlwaysFails()
+    with pytest.raises(hc.requests.RequestException):
+        session.get("https://api.example.org/x", respect_robots=False)
+    assert len(slept) == hc.MAX_RETRIES - 1
+
+
+@requires_requests
+def test_5xx_backoff_still_works(monkeypatch):
+    """The behaviour that already existed must survive the change."""
+    session, slept = _scripted_session(monkeypatch, [503, 200])
+    resp = session.get("https://api.example.org/x", respect_robots=False)
+    assert resp.status_code == 200
+    assert session._session.calls == 2
+    assert slept
