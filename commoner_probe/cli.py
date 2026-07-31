@@ -553,12 +553,40 @@ def census_cmd(args: argparse.Namespace) -> None:
         )
 
 
+def _nada_network_exit(exc: Exception) -> "SystemExit":
+    """Turn a transport failure into something an operator can act on.
+
+    Some government hosts serve an INCOMPLETE certificate chain — the leaf with
+    no intermediate. curl succeeds because it chases the AIA extension; Python
+    does not, so requests fails verification. Verified 2026-07-31:
+    censusindia.gov.in presents only `CN=censusindia.gov.in` and openssl reports
+    "unable to verify the first certificate".
+    """
+    text = str(exc)
+    hint = ""
+    if "certificate" in text.lower() or "ssl" in text.lower():
+        hint = (
+            "\nThe host's TLS chain does not verify. Some government hosts serve the "
+            "leaf certificate without its intermediate; curl follows the AIA extension "
+            "to fetch it but Python does not. Build a bundle containing the missing "
+            "intermediate and point REQUESTS_CA_BUNDLE at it. Do not disable "
+            "verification."
+        )
+    return SystemExit(f"nada: {type(exc).__name__}: {text}{hint}")
+
+
 def nada_cmd(args: argparse.Namespace) -> None:
     from .nada import DEFAULT_MAX_DOCS_PER_STUDY, NadaApiError, NadaClient, NadaProbe
 
     if args.list_collections:
         client = NadaClient(args.base_url, sleep=args.sleep)
-        for collection in client.collections():
+        try:
+            collections = client.collections()
+        except NadaApiError as exc:
+            raise SystemExit(f"nada: {exc}") from None
+        except OSError as exc:
+            raise _nada_network_exit(exc) from None
+        for collection in collections:
             print(json.dumps(collection, ensure_ascii=False))
         return
 
@@ -596,7 +624,9 @@ def nada_cmd(args: argparse.Namespace) -> None:
             )
             remaining = max(0, found - len(targets))
     except NadaApiError as exc:
-        raise SystemExit(str(exc)) from None
+        raise SystemExit(f"nada: {exc}") from None
+    except OSError as exc:
+        raise _nada_network_exit(exc) from None
 
     if args.dry_run:
         for target in targets:
@@ -622,6 +652,8 @@ def nada_cmd(args: argparse.Namespace) -> None:
         except NadaApiError as exc:
             print(f"nada: {idno}: {exc}", file=sys.stderr)
             continue
+        except OSError as exc:
+            raise _nada_network_exit(exc) from None
         acquired += 1
         if result["study"]["resources_status"] == "unavailable":
             counts["unavailable"] += 1
@@ -648,7 +680,12 @@ def nada_cmd(args: argparse.Namespace) -> None:
             continue_cmd.append(f"--collection {args.collection}")
         if args.query:
             continue_cmd.append(f"--query {args.query}")
-        continue_cmd.append(f"--max-studies {args.max_studies + remaining}")
+        # Suggest the NEXT STEP, not the whole catalogue. Against censusindia's
+        # 40,254 studies the naive "current + remaining" suggested
+        # `--max-studies 40254`, i.e. the brake politely recommending the
+        # unbounded run it exists to prevent.
+        next_step = min(args.max_studies * 2, args.max_studies + remaining)
+        continue_cmd.append(f"--max-studies {next_step}")
         print(
             f"Stopped at the --max-studies bound: {acquired} acquired, "
             f"{remaining} more available.\nContinue with:  " + " ".join(continue_cmd),

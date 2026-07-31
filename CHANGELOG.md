@@ -26,8 +26,24 @@
 
   Bounded by construction: `--max-studies` is required for an enumeration run,
   there is no `--all`, downloads are capped per study at 25, and hitting a bound
-  prints how many remain plus the exact command that continues. Microdata files
-  are login-gated and deliberately out of scope.
+  prints how many remain plus the next-step command that continues. Microdata
+  files are login-gated and deliberately out of scope.
+
+  Three defects were found by running it live rather than by the mocked suite,
+  which was green throughout: a re-run appended a second row for every study and
+  document, so a consumer streaming the corpus counted each artefact twice (the
+  manifest is now one row per artefact, upserted by key, following the
+  `load_seen()` convention seven other adapters here use); against a
+  40,254-study catalogue the brake helpfully suggested `--max-studies 40254`,
+  i.e. the bound recommending the unbounded run it exists to prevent (it now
+  suggests the next step and names the total separately); and a TLS failure
+  printed a urllib3 traceback instead of telling the operator what to do.
+
+  `censusindia.gov.in` serves its leaf certificate without the intermediate, so
+  Python cannot verify the chain even though curl can — curl chases the AIA
+  extension, Python does not. The CLI now says so and names the fix
+  (`REQUESTS_CA_BUNDLE` with the missing intermediate) rather than suggesting
+  verification be turned off.
 
 ### Fixed
 

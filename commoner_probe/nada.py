@@ -47,6 +47,13 @@ India relay required):
     "July 2011 - June 2012" while its ``time_method`` reads "July 2007-June
     2008". Both are recorded as found; neither is corrected.
 
+**TLS on censusindia.gov.in**: that host serves the leaf certificate with no
+intermediate (verified 2026-07-31 — openssl reports "unable to verify the first
+certificate"). ``curl`` succeeds because it chases the AIA extension to fetch
+the missing intermediate; Python does not, so ``requests`` fails verification.
+Build a bundle carrying ``emSign SSL CA - G1`` and point ``REQUESTS_CA_BUNDLE``
+at it. Do not disable verification.
+
 **Microdata files themselves are login-gated** (``/catalog/{id}/get-microdata``
 redirects to a login form) and are deliberately out of scope: this module
 acquires no credentials and implements no login. That is a posture, not an
@@ -337,6 +344,49 @@ class NadaProbe:
         with self.manifest.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(record, ensure_ascii=False) + "\n")
 
+    def load_seen(self) -> dict[str, dict]:
+        """Rows already in the manifest, keyed by `key`.
+
+        One row per artefact: a re-run updates a row in place rather than
+        appending a second one, or a consumer streaming the corpus counts every
+        study and document twice. `listed` is deliberately NOT terminal — that
+        is what lets a small --max-docs-per-study be raised later and pick up
+        the rest instead of freezing them.
+        """
+        if not self.manifest.exists():
+            return {}
+        rows: dict[str, dict] = {}
+        for line in self.manifest.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if row.get("key"):
+                rows[row["key"]] = row
+        return rows
+
+    def _rewrite(self, rows: list[dict]) -> None:
+        tmp = self.manifest.with_suffix(".jsonl.tmp")
+        tmp.write_text(
+            "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows), encoding="utf-8"
+        )
+        tmp.replace(self.manifest)
+
+    def _upsert(self, record: dict) -> None:
+        """Append a new row, or replace the existing row with this key."""
+        existing = self.load_seen()
+        if record["key"] not in existing:
+            self._append(record)
+            return
+        rows = [
+            json.loads(line)
+            for line in self.manifest.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        self._rewrite([record if r.get("key") == record["key"] else r for r in rows])
+
     def _write_json(self, rel: Path, payload: Any) -> str:
         path = self.out_dir / rel
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -409,16 +459,26 @@ class NadaProbe:
             "fetched_at": _now(),
             "error": resources_error,
         }
-        self._append(study_record)
+        self._upsert(study_record)
 
+        seen = self.load_seen()
         resource_records = []
         downloaded = 0
         for resource in resources:
+            key = f"NADA|{self.source}|{idno}|{resource['resource_id']}"
+            prior = seen.get(key)
+            if prior and prior.get("fetch_status") in ("downloaded", "skipped_exists"):
+                # Already acquired. Report it so the caller's counts are right,
+                # but do not touch the manifest — one row per artefact.
+                resource_records.append(
+                    {**prior, "fetch_status": "skipped_exists", "checked_at": _now()}
+                )
+                continue
             allow = download_docs and downloaded < max_docs
             record = self._acquire_resource(idno, slug, catalog_id, resource, allow)
             if record["fetch_status"] == "downloaded":
                 downloaded += 1
-            self._append(record)
+            self._upsert(record)
             resource_records.append(record)
             if allow:
                 time.sleep(self.client.sleep)

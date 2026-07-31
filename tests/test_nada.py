@@ -248,15 +248,61 @@ def test_filename_comes_from_the_attribute_not_the_content_type(tmp_path):
     assert res["sha256"] and res["bytes"] == len(PDF)
 
 
-def test_skipped_exists_carries_checked_at_and_no_fetched_at(tmp_path):
-    """Nine adapters here write fetched_at on skipped_exists rows, where it
-    means 'when we looked'. This one does not become the tenth."""
+def test_a_re_run_refreshes_checked_at_but_keeps_when_the_bytes_arrived(tmp_path):
+    """checked_at moves, fetched_at does not: the bytes were retrieved in the
+    first run and that is when they were retrieved. Nine adapters here overwrite
+    fetched_at on a re-run, where it silently comes to mean 'when we looked'."""
+    first = _acquire_one(tmp_path)["resources"][0]
+    again = _acquire_one(tmp_path)["resources"][0]
+    assert again["fetch_status"] == "skipped_exists"
+    assert again["fetched_at"] == first["fetched_at"]
+    assert again["checked_at"] >= first["checked_at"]
+
+
+def test_a_file_on_disk_with_no_manifest_row_is_skipped_without_a_fetch_time(tmp_path):
+    """The other skipped_exists case: bytes are present but this tool has no
+    record of fetching them, so fetched_at stays null rather than asserting a
+    time nobody observed."""
+    _acquire_one(tmp_path)
+    (Path(tmp_path) / "manifest.jsonl").unlink()
+    again = _acquire_one(tmp_path)["resources"][0]
+    assert again["fetch_status"] == "skipped_exists"
+    assert again["fetched_at"] is None
+    assert again["checked_at"]
+
+
+def test_re_running_acquisition_does_not_duplicate_manifest_rows(tmp_path):
+    """Found by running it live: a second pass appended a second row for every
+    study and every document, so a consumer streaming the corpus counted each
+    artefact twice. Seven other adapters here use load_seen() for exactly this."""
+    _acquire_one(tmp_path)
+    first = len(_manifest_rows(tmp_path))
+    _acquire_one(tmp_path)
+    assert len(_manifest_rows(tmp_path)) == first
+
+
+def test_a_re_run_still_reports_the_documents_as_skipped(tmp_path):
+    """Not appending a row must not mean the caller loses the count."""
     _acquire_one(tmp_path)
     again = _acquire_one(tmp_path)
-    res = again["resources"][0]
-    assert res["fetch_status"] == "skipped_exists"
-    assert res["fetched_at"] is None
-    assert res["checked_at"]
+    assert again["resources"]
+    assert all(r["fetch_status"] == "skipped_exists" for r in again["resources"])
+
+
+def test_listed_is_not_terminal_so_a_bigger_bound_fetches_the_rest(tmp_path):
+    """This is what makes a small --max-docs-per-study safe rather than
+    punitive: documents left `listed` by the bound are picked up on a re-run
+    with a larger one, while `downloaded` ones are not re-fetched."""
+    _acquire_one(tmp_path, max_docs=1)
+    first = [r for r in _manifest_rows(tmp_path) if r["kind"] == "nada_resource"]
+    assert sum(r["fetch_status"] == "downloaded" for r in first) == 1
+    assert sum(r["fetch_status"] == "listed" for r in first) >= 1
+
+    _acquire_one(tmp_path, max_docs=3)
+    second = [r for r in _manifest_rows(tmp_path) if r["kind"] == "nada_resource"]
+    assert len(second) == len(first), "still one row per document"
+    # 1 from the first run plus 3 more: the bound is per run, not a running total.
+    assert sum(r["fetch_status"] == "downloaded" for r in second) == 4
 
 
 def test_a_downloaded_row_does_carry_fetched_at(tmp_path):
@@ -459,8 +505,28 @@ def test_hitting_the_brake_reports_what_remains_and_how_to_continue(tmp_path, fa
     """A bound that stops silently teaches nothing."""
     _run_cli(["nada", "--out", str(tmp_path), "--query", "NSS", "--max-studies", "2"])
     err = capsys.readouterr().err
-    assert "2" in err and "--max-studies" in err
-    assert "commoner-probe nada" in err
+    assert "3 more" in err
+    assert "commoner-probe nada" in err and "--max-studies" in err
+
+
+def test_the_continue_command_suggests_a_step_not_the_whole_catalogue(
+    tmp_path, monkeypatch, capsys
+):
+    """Found live: against a 40,254-study catalogue the brake helpfully
+    suggested `--max-studies 40254`, which is the opposite of the point. The
+    suggestion must be the next step, with the total named separately."""
+
+    class _BigCatalogue(_FakeProbe):
+        def search(self, *, collection=None, query=None, max_studies):
+            rows = [{"idno": f"S-{i}", "id": str(i)} for i in range(max_studies)]
+            return rows, 40254
+
+    monkeypatch.setattr(nada, "NadaProbe", _BigCatalogue)
+    _run_cli(["nada", "--out", str(tmp_path), "--query", "NSS", "--max-studies", "2"])
+    err = capsys.readouterr().err
+    assert "40252 more" in err
+    assert "--max-studies 40254" not in err
+    assert "--max-studies 4" in err, "suggest the next step: double what was asked"
 
 
 def test_help_carries_worked_examples():
@@ -477,6 +543,37 @@ def test_help_states_that_microdata_is_login_gated():
 def test_help_shows_the_sleep_default():
     text = _nada_subparser().format_help()
     assert "--sleep" in text and "2.0" in text
+
+
+def test_a_tls_failure_is_a_message_not_a_traceback(tmp_path, monkeypatch):
+    """Found live against censusindia.gov.in, which serves an incomplete
+    certificate chain: the CLI dumped a urllib3 traceback. An operator needs to
+    be told what to do, not shown a stack."""
+
+    class _TlsFails(_FakeProbe):
+        def acquire_study(self, *a, **k):
+            raise OSError(
+                "HTTPSConnectionPool(host='censusindia.gov.in', port=443): "
+                "certificate verify failed: unable to get local issuer certificate"
+            )
+
+    monkeypatch.setattr(nada, "NadaProbe", _TlsFails)
+    with pytest.raises(SystemExit) as exc:
+        _run_cli(["nada", "--out", str(tmp_path), "--study", IDNO])
+    message = str(exc.value)
+    assert "certificate" in message
+    assert "REQUESTS_CA_BUNDLE" in message, "say how to fix it, not just that it broke"
+
+
+def test_a_plain_network_failure_is_also_a_message(tmp_path, monkeypatch):
+    class _NetFails(_FakeProbe):
+        def acquire_study(self, *a, **k):
+            raise OSError("Connection timed out")
+
+    monkeypatch.setattr(nada, "NadaProbe", _NetFails)
+    with pytest.raises(SystemExit) as exc:
+        _run_cli(["nada", "--out", str(tmp_path), "--study", IDNO])
+    assert "REQUESTS_CA_BUNDLE" not in str(exc.value), "do not suggest an irrelevant fix"
 
 
 def test_out_is_required_for_anything_that_writes(fake_probe):

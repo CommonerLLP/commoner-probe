@@ -683,6 +683,21 @@ can list 60+ documents.
 tool holds no credentials and implements no login. That is a deliberate posture,
 not a missing flag.
 
+**TLS note for `censusindia.gov.in`:** that host serves its leaf certificate
+without the intermediate, so Python cannot verify the chain (curl can — it
+chases the AIA extension to fetch the missing certificate). Build a bundle that
+carries `emSign SSL CA - G1` and point `REQUESTS_CA_BUNDLE` at it:
+
+```bash
+curl -s -o inter.crt http://repository.emsign.com/certs/emSignSSLCAG1.crt
+openssl x509 -inform DER -in inter.crt -out inter.pem
+cat "$(python -c 'import certifi;print(certifi.where())')" inter.pem > bundle.pem
+export REQUESTS_CA_BUNDLE=$PWD/bundle.pem
+```
+
+Do not disable verification. The CLI detects this failure and prints the same
+guidance rather than a traceback.
+
 ### `commoner-probe courts` — India court records
 
 ```bash
