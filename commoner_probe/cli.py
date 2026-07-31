@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 
 from .academia import AcademicJobsProbe
@@ -513,6 +514,42 @@ def mca_csr_cmd(args: argparse.Namespace) -> None:
     records = probe.probe_years(years, dry_run=args.dry_run)
     for record in records:
         print(json.dumps(record, ensure_ascii=False))
+
+
+def niti_annual_report_cmd(args: argparse.Namespace) -> None:
+    from .niti import NitiAnnualReportProbe
+
+    out = Path(args.out)
+    probe = NitiAnnualReportProbe(out, sleep=args.sleep)
+    records = probe.probe(years=_split_csv(args.years), dry_run=args.dry_run)
+    for record in records:
+        print(json.dumps(record, ensure_ascii=False))
+
+
+def census_cmd(args: argparse.Namespace) -> None:
+    from .census import CensusApiError, CensusProbe
+
+    out = Path(args.out)
+    try:
+        probe = CensusProbe(out, sleep=args.sleep, api_key=args.api_key)
+        records = probe.probe(
+            args.surface,
+            year=args.year,
+            max_resources=args.max_resources,
+            max_rows=args.max_rows,
+            dry_run=args.dry_run,
+        )
+    except CensusApiError as exc:
+        raise SystemExit(str(exc)) from None
+    for record in records:
+        print(json.dumps(record, ensure_ascii=False))
+    if not args.dry_run:
+        total = sum(r.get("rows") or 0 for r in records)
+        year_note = f", {args.year}" if args.year else ""
+        print(
+            f"ORGI census: {len(records)} resources, {total} rows [{args.surface}{year_note}]",
+            file=sys.stderr,
+        )
 
 
 def mines_dmft_cmd(args: argparse.Namespace) -> None:
@@ -1174,6 +1211,58 @@ def build_parser() -> argparse.ArgumentParser:
         help="Print manifest records without opening a network session or writing manifest.jsonl.",
     )
     mca_csr.set_defaults(func=mca_csr_cmd)
+
+    niti_ar = sub.add_parser(
+        "niti-annual-report",
+        help="Download NITI Aayog Annual Reports (English) with a provenance manifest.",
+    )
+    niti_ar.add_argument("--out", required=True, help="Output directory")
+    niti_ar.add_argument(
+        "--years",
+        help="Comma-separated fiscal years, e.g. 2024-25,2023-24. Default: all available",
+    )
+    niti_ar.add_argument("--sleep", type=float, default=3.0)
+    niti_ar.add_argument(
+        "--dry-run", action="store_true", help="List reports without downloading"
+    )
+    niti_ar.set_defaults(func=niti_annual_report_cmd)
+
+    census = sub.add_parser(
+        "census",
+        help="Acquire ORGI / Census of India products from the data.gov.in API.",
+    )
+    census.add_argument("--out", required=True, help="Output directory")
+    census.add_argument(
+        "--surface",
+        required=True,
+        choices=("pca", "village-amenities", "town-amenities", "town-directory"),
+        help=(
+            "Census product. `pca` (Primary Census Abstract) carries population, "
+            "households, age 0-6 and Scheduled Caste / Scheduled Tribe counts down to "
+            "ward level; `village-amenities` and `town-amenities` are settlement "
+            "facility tables; `town-directory` is a place INDEX with no amenity columns"
+        ),
+    )
+    census.add_argument("--year", help="Census vintage, e.g. 2011 (the catalogue carries 2001 and 2011)")
+    census.add_argument(
+        "--max-records", dest="max_resources", type=int, help="Stop after N resources"
+    )
+    census.add_argument(
+        "--max-rows", type=int, help="Stop after N rows per resource (smoke-test brake)"
+    )
+    census.add_argument(
+        "--api-key",
+        help=(
+            "data.gov.in key. Defaults to $DATA_GOV_IN_KEY, then the org's shared secrets "
+            "file. The public sample key is refused for real runs: it is shared and "
+            "rate-limited, so a corpus pass would throttle part-way and read as a flaky source"
+        ),
+    )
+    census.add_argument("--sleep", type=float, default=1.0)
+    census.add_argument(
+        "--dry-run", action="store_true", help="List resources without downloading rows"
+    )
+    census.set_defaults(func=census_cmd)
 
     mines_dmft = sub.add_parser(
         "mines-dmft",

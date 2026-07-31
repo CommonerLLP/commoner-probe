@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CommonerLLP/commoner-probe/schemas/v1/manifest_niti_annual_report.json",
+  "title": "manifest.jsonl — NITI Aayog Annual Report",
+  "description": "One NITI Aayog Annual Report acquisition record (REQ-0020 residual). The reports carry the 'Young Professionals' headcount, a named primary source for the contractualisation / consultant face of the outsourcing panel.",
+  "type": "object",
+  "required": [
+    "key",
+    "kind",
+    "record_type",
+    "source_family",
+    "publisher",
+    "report_year",
+    "language",
+    "filename",
+    "dest",
+    "url",
+    "source_page_url",
+    "status",
+    "fetched_at",
+    "probed_at"
+  ],
+  "properties": {
+    "key": {
+      "type": "string",
+      "pattern": "^NITI_AR\\|20\\d{2}-\\d{2}\\|(english|hindi)$"
+    },
+    "kind": { "const": "niti_annual_report" },
+    "record_type": { "const": "niti_annual_report" },
+    "source_family": { "const": "niti-annual-report" },
+    "publisher": { "type": "string" },
+    "report_year": {
+      "type": "string",
+      "pattern": "^20\\d{2}-\\d{2}$",
+      "description": "Fiscal year, read from the FILENAME. Never from the URL path: documents live under /sites/default/files/<YYYY-MM>/, which matches a fiscal-year pattern and invents years like 2020-02. The second half may be printed as two or four digits (2022-2023), which a two-digit tail silently turns into 2022-20."
+    },
+    "language": {
+      "type": "string",
+      "enum": ["english", "hindi"],
+      "description": "Read from the filename, which marks it three different ways — `(English)`, `(Hindi)` with no space, and bare `Hindi_V3`. A parenthesis- or word-boundary-anchored match misses the third and mislabels a Hindi report as English."
+    },
+    "filename": { "type": "string" },
+    "dest": { "type": "string" },
+    "url": { "type": "string", "format": "uri" },
+    "source_page_url": { "type": "string", "format": "uri" },
+    "status": {
+      "type": "string",
+      "enum": ["pending", "dry_run", "downloaded", "skipped_exists"]
+    },
+    "sha256": { "type": ["string", "null"], "pattern": "^[0-9a-f]{64}$" },
+    "bytes": { "type": ["integer", "null"], "minimum": 0 },
+    "text_layer": {
+      "type": ["boolean", "null"],
+      "description": "Whether the PDF reads back as text, so the Young Professionals table can be extracted without OCR. Null means extraction was not attempted or failed — never assume true."
+    },
+    "fetched_at": { "type": "string" },
+    "probed_at": { "type": "string" }
+  },
+  "additionalProperties": true
+}

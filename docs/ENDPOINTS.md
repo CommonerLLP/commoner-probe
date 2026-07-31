@@ -333,3 +333,78 @@ Outputs:
   `downloaded` only when the assertion passed, `shell_only` otherwise
 - snapshots under `rendered/`, and failed captures under `rendered_shells/` —
   separate directories, because downstream tools glob directories
+
+## ORGI / Census of India (`census`)
+
+Publisher: Office of the Registrar General & Census Commissioner, via the
+data.gov.in (OGD) API. Contract verified 2026-07-30.
+
+Source contract:
+
+- catalogue: `GET https://api.data.gov.in/lists?filters[title]=<q>&limit&offset`
+- resource:  `GET https://api.data.gov.in/resource/<id>?limit&offset`
+
+Auth: `api-key` in the query string. Read from `$DATA_GOV_IN_KEY`, else the
+org's shared secrets file. **Because the key is a query parameter, the request
+URL is a credential** — manifest rows and error text carry a key-free form.
+
+Surfaces:
+
+| surface | resources | one resource covers | note |
+|---|---:|---|---|
+| `pca` | 2,225 | a state (rows to ward level) | Primary Census Abstract — population, households, age 0-6, SC and ST counts by person/male/female. 2001 and 2011 |
+| `village-amenities` | 1,128 | a district | 396 fields; `public_library` and `public_reading_room` are SEPARATE availability flags (A=1/NA=2) plus distance-range codes |
+| `town-amenities` | per district | a district | 232 fields: demographics, health, education. **No Statement V** |
+| `town-directory` | 380 | a state | a place INDEX — 8 fields, codes and names, no amenities |
+
+Traps, all measured:
+
+- Title filters match **loosely** — `town amenities` returns "Digital Payments
+  Data: New Town Kolkata". Every hit is re-checked against the surface pattern.
+- Titles carry two formats: `Abstract, 2001 - Delhi` and `Abstract 2011 -
+  Rajasthan`. The year is read as a token, not by position.
+- The API is slow and intermittent: a 100-row page took 11.8 s, a 100-item
+  listing timed out, and one query errored then succeeded moments later.
+- **The urban public-library COUNT is not on this API.** Town Directory
+  Statement V lives only in the DCHB Part A PDFs. Never sum it with the rural
+  availability flag — that is the wrong "~75,000 libraries".
+- 2011 vintage: districts created since (all of Telangana, splits elsewhere) do
+  not exist in these codes.
+
+Outputs: `manifest.jsonl` (`kind: orgi_census_resource`) + `rows/<surface>__<id>.jsonl`.
+
+## NITI Aayog Annual Reports (`niti-annual-report`)
+
+Publisher: NITI Aayog. Contract verified live 2026-07-30. Carries the "Young
+Professionals" headcount (REQ-0020) — the 2024-25 report states 26 Consultant
+Grade II, 71 Consultant Grade I and 116 Young Professionals.
+
+- listing: `GET https://www.niti.gov.in/publication/annual-report`
+- documents: `/sites/default/files/<YYYY-MM>/<name>.pdf`
+
+**English only** — the Hindi editions are detected and skipped. Detection is
+load-bearing, not decorative: one Hindi edition is named
+`Annual Report 2024-25 Hindi_V3 LOWRES.pdf`, which neither a parenthesis-anchored
+nor a `\b`-anchored match catches, so without it a caller asking for English
+receives a Hindi PDF.
+
+Traps, each measured:
+
+- **Every PDF link appears twice** — an undeduped parse doubles the corpus.
+- **The upload directory looks like a fiscal year.** Files live under
+  `/sites/default/files/2025-02/`, which matches a year pattern and invents
+  `2020-02` and `2023-02`. Parse the year from the FILENAME.
+- **The second year may be two or four digits** — `Annual-Report-2022-2023-…`
+  becomes `2022-20` under a two-digit tail.
+- **`/annual-reports` and `/documents/annual-report` return 404 with a 41 KB
+  body**, which passes a "did we get bytes" check.
+- **The WAF 403s our default user-agent** because it carries a URL fragment.
+  robots.txt itself PERMITS this crawl (`can_fetch` true for `*` and for this
+  tool; no `Disallow: /`) — the 403 is on reading robots.txt, and this repo
+  treats an unreadable robots.txt as disallow-all, so the probe refused itself
+  over a file that says yes. Fixed with a shorter honest UA
+  (`commoner-probe/<ver> (research)`, verified 200). The robots check stays ON,
+  no `respect_robots=False`, and no browser token — that would contradict the
+  standing NAI decision.
+
+Outputs: `manifest.jsonl` (`kind: niti_annual_report`) + one PDF per year.
