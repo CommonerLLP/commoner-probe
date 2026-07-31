@@ -857,22 +857,82 @@ def test_invariant_one_manifest_row_per_key_across_repeated_runs(tmp_path, wired
         assert len(keys) == len(set(keys)), f"duplicate keys: {len(keys)} rows, {len(set(keys))} keys"
 
 
-def test_invariant_every_emitted_row_validates(tmp_path, wired):
+def _fetch_status_enum() -> set[str]:
+    """The values the schema permits — the test's coverage target, read from the
+    contract rather than hand-listed, so adding a status without exercising it
+    fails here."""
+    from commoner_probe import schemas as sc
+
+    return set(sc.load("manifest_nada_resource")["properties"]["fetch_status"]["enum"])
+
+
+def _scenario_rows(tmp_path, name, routes_override=None, argv_extra=(), rerun=False,
+                   drop_manifest=False):
+    """Run one acquisition scenario into its own directory; return its rows.
+
+    ``drop_manifest`` removes the manifest between runs, which is the only
+    state that writes ``skipped_exists`` INTO the manifest: on an ordinary
+    re-run the stored row correctly stays ``downloaded`` (that is the truth
+    about the artefact) and ``skipped_exists`` reaches only the caller's counts.
+    """
+    out = tmp_path / name
+    session = _StubSession(_cli_routes(**(routes_override or {})))
+    probe = nada.NadaProbe(out, sleep=0, session=session)
+    kwargs = dict(argv_extra)
+    probe.acquire_study(IDNO, catalog_id=1, **kwargs)
+    if drop_manifest:
+        (out / "manifest.jsonl").unlink()
+    if rerun or drop_manifest:
+        probe.acquire_study(IDNO, catalog_id=1, **kwargs)
+    return out, _manifest_rows(out)
+
+
+def test_invariant_every_fetch_status_the_schema_permits_is_exercised_and_validates(tmp_path):
     """Not 'the corpus validated once' but 'nothing this adapter can emit is
-    unvalidatable' — including the listed/failed/unavailable branches."""
+    unvalidatable'.
+
+    The first version of this test asserted `{"failed", "listed"} & statuses` —
+    a non-empty intersection — and the fixture produced only `failed`, six
+    times. It claimed three branches and checked one (Codex, PR #99). Coverage
+    is now driven off the schema enum, and each scenario asserts the branch it
+    exists to produce.
+    """
     from commoner_probe.validate import _pick_schema_name, validate_corpus
 
-    wired["install"](**{"/download/": (500, "boom")})
-    _run_cli([
-        "nada", "--out", str(tmp_path), "--study", IDNO,
-        "--max-docs-per-study", "1", "--sleep", "0",
-    ])
-    rows = _manifest_rows(tmp_path)
-    statuses = {r["fetch_status"] for r in rows if r["kind"] == "nada_resource"}
-    assert {"failed", "listed"} & statuses, f"expected failed/listed branches, got {statuses}"
-    for row in rows:
-        assert _pick_schema_name(row) is not None, f"unregistered kind: {row['kind']}"
-    assert validate_corpus(tmp_path, log=lambda _m: None)
+    scenarios = {
+        "downloaded": _scenario_rows(tmp_path, "downloaded"),
+        "skipped_exists": _scenario_rows(tmp_path, "skipped", drop_manifest=True),
+        "listed": _scenario_rows(tmp_path, "listed", argv_extra={"download_docs": False}),
+        "failed": _scenario_rows(tmp_path, "failed", routes_override={"/download/": (500, "boom")}),
+    }
+    seen: set[str] = set()
+    for expected, (out, rows) in scenarios.items():
+        statuses = {r["fetch_status"] for r in rows if r["kind"] == "nada_resource"}
+        assert expected in statuses, (
+            f"the {expected!r} scenario produced {statuses or 'nothing'} — it no longer "
+            "exercises the branch it exists for"
+        )
+        seen |= statuses
+        for row in rows:
+            assert _pick_schema_name(row) is not None, f"unregistered kind: {row['kind']}"
+        assert validate_corpus(out, log=lambda _m: None), f"{expected} corpus failed validation"
+
+    missing = _fetch_status_enum() - seen
+    assert not missing, f"schema permits fetch_status values no scenario produces: {sorted(missing)}"
+
+
+def test_invariant_the_unavailable_study_branch_validates(tmp_path):
+    """The study-level counterpart, which the resource scenarios above cannot
+    reach: a 5xx on the related-materials page."""
+    from commoner_probe.validate import validate_corpus
+
+    out, rows = _scenario_rows(
+        tmp_path, "unavailable", routes_override={"/related-materials": (503, "down")}
+    )
+    study = next(r for r in rows if r["kind"] == "nada_study")
+    assert study["resources_status"] == "unavailable"
+    assert study["error"]
+    assert validate_corpus(out, log=lambda _m: None)
 
 
 def test_invariant_fetched_at_is_set_only_when_bytes_moved(tmp_path, wired):
