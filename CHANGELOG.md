@@ -1,6 +1,26 @@
 # Changelog
 
-## Unreleased
+## 0.11.0 (2026-07-30)
+
+Two new acquisition surfaces, so a minor bump under the pre-1.0 rule — plus the
+change that makes a long corpus pass survivable.
+
+**Two source families the org covered nowhere:** ORGI / Census of India
+(REQ-0045) and NITI Aayog Annual Reports (REQ-0020's residual). Both
+live-verified end to end, and both shipped with the traps encoded rather than
+described: the Census adapter refuses to let a rural availability flag be summed
+with an urban count, and the NITI adapter reads its fiscal year from the filename
+because the upload directory `/2025-02/` matches a year pattern.
+
+**One request is deliberately NOT closed.** REQ-0045 asked for all libraries.
+The rural half is fully served and the urban public-library count is not on the
+API, so it stays in-progress with the remaining route named. Reporting it as
+delivered would hand the requester coverage they do not have.
+
+**NeVA extraction now checkpoints**, after three consecutive corpus passes were
+lost whole — at 14 minutes, at 100 minutes, and at 2h34m on the final write. The
+first run under the new code completed and added **1,325 Q/A records**, inside
+the 961-1,744 band predicted from a 60-document sample before the run.
 
 ### Added
 

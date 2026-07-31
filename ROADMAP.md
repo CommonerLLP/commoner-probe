@@ -16,10 +16,11 @@ record; this file says what ships next and what is deliberately deferred.
 | 0.9.0 | 2026-07-28 | `wayback`, `abhilekh-patal`, `render`, `courts`, `cag`; PRS completed; Wayback provenance on acquisition; the ten-finding Codex sweep |
 | 0.10.0 | 2026-07-29 | OCR fallback (`ocr_pdf_text`, `extract-answers --ocr`); run-level `status` on `_runs.jsonl` + non-zero exit on a failed crawl; corpus-truncation audit recipe; two post-merge Codex waves |
 | 0.10.1 | 2026-07-29 | Fixes only. Two live breakages on shipped code: `mca-csr` dead at the TLS layer since 2026-07-02 (cert SAN vs a hardcoded `www.`), and `prs --surface mp-track --house rs` writing nothing and exiting 0 for its whole life (REQ-0044, RS/LS column divergence). Plus the `--ocr` acceptance gate (16/60 -> 26/60 recovery, no longer destroys records) and five Codex findings |
+| 0.11.0 | 2026-07-30 | Two new source families: `census` (ORGI/Census of India — PCA, village/town amenities, town directory, via the data.gov.in API instead of ~11.5 GB of DCHB PDFs) and `niti-annual-report` (NITI Annual Reports, the REQ-0020 residual). NeVA extraction checkpoints, so an interrupted corpus pass resumes instead of restarting |
 
 ## On master, unreleased
 
-Nothing. 0.10.1 was cut from master with no open PRs and no open issues.
+Nothing. 0.11.0 was cut from master with no open PRs and no open issues.
 
 **Next gate: 1.0.0 — deferred deliberately, and gated on Phase 2.** Declaring
 1.0 promises interface stability, and the package rename to `probe`/`compose`
