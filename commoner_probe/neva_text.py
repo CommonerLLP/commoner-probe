@@ -494,13 +494,18 @@ def extract_neva_answers(
             except ValueError:
                 continue  # a half-written offset is not a checkpoint
         done = {e[0] for e in entries}
-        if entries:
-            a_off, r_off = entries[-1][1], entries[-1][2]
-            with answers_partial.open("r+b") as fh:
-                fh.truncate(a_off)
-            if rows_partial.exists():
-                with rows_partial.open("r+b") as fh:
-                    fh.truncate(r_off)
+        # No surviving checkpoint means zero — NOT "leave the partials alone".
+        # A kill during the very first checkpoint write leaves that document's
+        # records already flushed with no valid line describing them, so
+        # appending from there duplicates it in the published corpus. Truncating
+        # to the last good offset and truncating to zero are the same rule
+        # (Codex, PR #95).
+        a_off, r_off = (entries[-1][1], entries[-1][2]) if entries else (0, 0)
+        with answers_partial.open("r+b") as fh:
+            fh.truncate(a_off)
+        if rows_partial.exists():
+            with rows_partial.open("r+b") as fh:
+                fh.truncate(r_off)
         log_fn(
             f"NeVA extraction: RESUMING — {len(done)} of {len(questions)} documents "
             "already processed by an interrupted run; their records are kept"

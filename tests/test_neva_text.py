@@ -532,3 +532,30 @@ class TestExtractionResumes:
 
         keys = [r["key"] for r in self._records(corpus)]
         assert len(keys) == len(set(keys)) == 3
+
+    def test_no_surviving_checkpoint_truncates_to_zero(self, monkeypatch, tmp_path):
+        """A kill during the FIRST checkpoint write (Codex, PR #95).
+
+        The document's records are already flushed but no valid checkpoint line
+        describes them. Skipping malformed lines was right; leaving the partials
+        untouched when none survives was not — the run appended from there and
+        duplicated the first document in the published corpus.
+        """
+        from commoner_probe import neva_text as mod
+
+        corpus = self._corpus(tmp_path, n=2)
+        (corpus / "answers.jsonl.partial").write_text(
+            '{"key": "GJ|0", "flushed": true}\n', encoding="utf-8"
+        )
+        (corpus / "neva_district_rows.jsonl.partial").write_text("", encoding="utf-8")
+        (corpus / ".neva_extract_progress").write_text("GJ|0\t42", encoding="utf-8")  # torn
+
+        monkeypatch.setattr(
+            "commoner_probe.textparse.extract_pdf_text",
+            lambda pdf: self.SUBJECT + "\n" + self.BODY,
+        )
+        mod.extract_neva_answers(corpus, log_fn=lambda *_: None)
+
+        keys = [r["key"] for r in self._records(corpus)]
+        assert keys == sorted(set(keys)), f"duplicated after a torn first checkpoint: {keys}"
+        assert len(keys) == 2

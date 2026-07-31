@@ -4,6 +4,14 @@
 
 ### Fixed
 
+- **A resume with no surviving checkpoint left the partials in place.** Skipping
+  malformed progress lines was right; doing nothing when *none* survives was
+  not. A kill during the very first checkpoint write leaves that document's
+  records already flushed with no valid line describing them, so the run
+  appended from there and duplicated the first document in the published
+  corpus. Truncating to the last good offset and truncating to zero are the same
+  rule, and the code now treats them that way.
+
 - **`validate` was also skipping `dpe_csr_document`.** Found by generalising the
   census finding rather than waiting for it to be reported: an audit of every
   `kind` this package writes into `manifest.jsonl` turned up one more
