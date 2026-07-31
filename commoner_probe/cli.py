@@ -516,6 +516,16 @@ def mca_csr_cmd(args: argparse.Namespace) -> None:
         print(json.dumps(record, ensure_ascii=False))
 
 
+def niti_annual_report_cmd(args: argparse.Namespace) -> None:
+    from .niti import NitiAnnualReportProbe
+
+    out = Path(args.out)
+    probe = NitiAnnualReportProbe(out, sleep=args.sleep)
+    records = probe.probe(years=_split_csv(args.years), dry_run=args.dry_run)
+    for record in records:
+        print(json.dumps(record, ensure_ascii=False))
+
+
 def census_cmd(args: argparse.Namespace) -> None:
     from .census import CensusApiError, CensusProbe
 
@@ -1201,6 +1211,21 @@ def build_parser() -> argparse.ArgumentParser:
         help="Print manifest records without opening a network session or writing manifest.jsonl.",
     )
     mca_csr.set_defaults(func=mca_csr_cmd)
+
+    niti_ar = sub.add_parser(
+        "niti-annual-report",
+        help="Download NITI Aayog Annual Reports (English) with a provenance manifest.",
+    )
+    niti_ar.add_argument("--out", required=True, help="Output directory")
+    niti_ar.add_argument(
+        "--years",
+        help="Comma-separated fiscal years, e.g. 2024-25,2023-24. Default: all available",
+    )
+    niti_ar.add_argument("--sleep", type=float, default=3.0)
+    niti_ar.add_argument(
+        "--dry-run", action="store_true", help="List reports without downloading"
+    )
+    niti_ar.set_defaults(func=niti_annual_report_cmd)
 
     census = sub.add_parser(
         "census",

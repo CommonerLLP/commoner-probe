@@ -4,6 +4,20 @@
 
 ### Added
 
+- **`commoner-probe niti-annual-report`** — NITI Aayog Annual Reports (REQ-0020
+  residual). English only; the Hindi editions are detected and skipped, which is
+  load-bearing because one is named `Annual Report 2024-25 Hindi_V3 LOWRES.pdf`
+  and neither a parenthesis- nor `\b`-anchored match catches it. Live-verified:
+  the 2024-25 report downloads at 9.35 MB with a text layer and states 26
+  Consultant Grade II, 71 Consultant Grade I and **116 Young Professionals** —
+  the contractualisation headcount the request was filed for.
+  - robots.txt PERMITS this crawl; the probe was refusing itself because NITI's
+    WAF 403s the *fetch of robots.txt* when the UA carries a URL fragment, and an
+    unreadable robots.txt means disallow-all here. Fixed with a shorter honest UA
+    — the check stays on, with no opt-out and no browser token.
+  - Three listing traps encoded: duplicate links, the upload directory
+    `/2025-02/` masquerading as a fiscal year, and four-digit second years.
+
 - **`commoner-probe census` — ORGI / Census of India acquisition** (REQ-0045,
   theright2read). A source family the org covered nowhere. Four surfaces from
   the data.gov.in API: `pca`, `village-amenities`, `town-amenities`,

@@ -372,3 +372,39 @@ Traps, all measured:
   not exist in these codes.
 
 Outputs: `manifest.jsonl` (`kind: orgi_census_resource`) + `rows/<surface>__<id>.jsonl`.
+
+## NITI Aayog Annual Reports (`niti-annual-report`)
+
+Publisher: NITI Aayog. Contract verified live 2026-07-30. Carries the "Young
+Professionals" headcount (REQ-0020) — the 2024-25 report states 26 Consultant
+Grade II, 71 Consultant Grade I and 116 Young Professionals.
+
+- listing: `GET https://www.niti.gov.in/publication/annual-report`
+- documents: `/sites/default/files/<YYYY-MM>/<name>.pdf`
+
+**English only** — the Hindi editions are detected and skipped. Detection is
+load-bearing, not decorative: one Hindi edition is named
+`Annual Report 2024-25 Hindi_V3 LOWRES.pdf`, which neither a parenthesis-anchored
+nor a `\b`-anchored match catches, so without it a caller asking for English
+receives a Hindi PDF.
+
+Traps, each measured:
+
+- **Every PDF link appears twice** — an undeduped parse doubles the corpus.
+- **The upload directory looks like a fiscal year.** Files live under
+  `/sites/default/files/2025-02/`, which matches a year pattern and invents
+  `2020-02` and `2023-02`. Parse the year from the FILENAME.
+- **The second year may be two or four digits** — `Annual-Report-2022-2023-…`
+  becomes `2022-20` under a two-digit tail.
+- **`/annual-reports` and `/documents/annual-report` return 404 with a 41 KB
+  body**, which passes a "did we get bytes" check.
+- **The WAF 403s our default user-agent** because it carries a URL fragment.
+  robots.txt itself PERMITS this crawl (`can_fetch` true for `*` and for this
+  tool; no `Disallow: /`) — the 403 is on reading robots.txt, and this repo
+  treats an unreadable robots.txt as disallow-all, so the probe refused itself
+  over a file that says yes. Fixed with a shorter honest UA
+  (`commoner-probe/<ver> (research)`, verified 200). The robots check stays ON,
+  no `respect_robots=False`, and no browser token — that would contradict the
+  standing NAI decision.
+
+Outputs: `manifest.jsonl` (`kind: niti_annual_report`) + one PDF per year.

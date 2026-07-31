@@ -206,6 +206,33 @@ class ManifestDpeCsrRecord:
 
 
 @dataclass
+class ManifestNitiAnnualReportRecord:
+    """One NITI Aayog Annual Report record from manifest.jsonl."""
+
+    key: str
+    kind: str
+    record_type: str
+    source_family: str
+    publisher: str
+    report_year: str
+    language: str
+    filename: str
+    dest: str
+    url: str
+    source_page_url: str
+    status: str
+    fetched_at: str
+    probed_at: str
+    sha256: str | None = None
+    bytes: int | None = None
+    text_layer: bool | None = None
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "ManifestNitiAnnualReportRecord":
+        return _from_dict(cls, d)
+
+
+@dataclass
 class ManifestOrgiCensusRecord:
     """One ORGI / Census of India resource record from manifest.jsonl.
 

@@ -64,6 +64,7 @@ from .records import (
     ManifestMospiRecord,
     ManifestMynetaRecord,
     ManifestNaiCatalogueRecord,
+    ManifestNitiAnnualReportRecord,
     ManifestOrgiCensusRecord,
     ManifestPrsBillTrackRecord,
     ManifestPrsMpTrackRecord,
@@ -169,6 +170,12 @@ class Corpus:
         for d in _iter_jsonl(self.out_dir / "manifest.jsonl"):
             if d.get("kind") == "mines_dmft_source_file":
                 yield ManifestMinesDmftRecord.from_dict(d)
+
+    def manifest_niti_annual_report(self) -> Iterator[ManifestNitiAnnualReportRecord]:
+        """Stream NITI Aayog Annual Report records from manifest.jsonl."""
+        for d in _iter_jsonl(self.out_dir / "manifest.jsonl"):
+            if d.get("kind") == "niti_annual_report":
+                yield ManifestNitiAnnualReportRecord.from_dict(d)
 
     def manifest_orgi_census(self) -> Iterator[ManifestOrgiCensusRecord]:
         """Stream ORGI / Census of India resource records from manifest.jsonl."""
@@ -458,6 +465,7 @@ class Corpus:
         "manifest_dpe_csr": "manifest_dpe_csr",
         "manifest_mines_dmft": "manifest_mines_dmft",
         "manifest_orgi_census": "manifest_orgi_census",
+        "manifest_niti_annual_report": "manifest_niti_annual_report",
         "manifest_doe_pay_allowances": "manifest_doe_pay_allowances",
         "manifest_budget": "manifest_budget",
         "manifest_academic_jobs": "manifest_academic_jobs",
