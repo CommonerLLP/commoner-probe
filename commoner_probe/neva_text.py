@@ -449,12 +449,40 @@ def extract_neva_answers(
     # so an interrupted run resumes instead of restarting. The atomic replace
     # still happens at the end, so a consumer never sees a half-written corpus.
     done: set[str] = set()
-    if progress_path.exists():
-        done = {
-            line.strip()
+    resumable = progress_path.exists() and answers_partial.exists()
+    if progress_path.exists() and not resumable:
+        # Progress but no partial means a publish was interrupted AFTER the
+        # atomic replace and before the progress file was removed. The work is
+        # already in answers.jsonl. Resuming here would create an empty partial,
+        # skip every checkpointed key, and then replace the good artefact with
+        # that empty file — destroying the whole extraction (Codex, PR #90).
+        log_fn(
+            "NeVA extraction: found a progress file with no partial — a previous "
+            "publish completed and was interrupted before cleanup. Clearing it and "
+            "starting a fresh pass; the published corpus is untouched."
+        )
+        progress_path.unlink(missing_ok=True)
+        rows_partial.unlink(missing_ok=True)
+    if resumable:
+        # Each line is `key\toffset_answers\toffset_rows`, the partial sizes as
+        # they stood AFTER that document was fully written. Truncating back to
+        # the last pair makes resume exactly idempotent: an interruption between
+        # a record write and its checkpoint would otherwise leave the record in
+        # the partial while its key is absent, so the document is reprocessed
+        # and its rows appended twice (Codex, PR #90).
+        entries = [
+            line.split("\t")
             for line in progress_path.read_text(encoding="utf-8").splitlines()
             if line.strip()
-        }
+        ]
+        done = {e[0] for e in entries}
+        if entries and len(entries[-1]) == 3:
+            a_off, r_off = int(entries[-1][1]), int(entries[-1][2])
+            with answers_partial.open("r+b") as fh:
+                fh.truncate(a_off)
+            if rows_partial.exists():
+                with rows_partial.open("r+b") as fh:
+                    fh.truncate(r_off)
         log_fn(
             f"NeVA extraction: RESUMING — {len(done)} of {len(questions)} documents "
             "already processed by an interrupted run; their records are kept"
@@ -476,14 +504,21 @@ def extract_neva_answers(
     ):
 
         def _mark(key) -> None:
-            """Record a document as processed, whatever its outcome.
+            """Record a document as processed, with the partial sizes it left.
 
             Marked at every exit, not at the top of the loop: marking on entry
             would let a crash mid-document silently drop it from the corpus,
             and marking only on success would re-OCR every no-split document on
             resume — at ~1.2s each, most of the run.
+
+            The offsets are what make resume idempotent. Both partials are
+            flushed first, so the recorded sizes describe a complete document;
+            a resume truncates back to the last pair, discarding any bytes
+            written after the final checkpoint.
             """
-            progress_f.write(f"{key}\n")
+            answers_f.flush()
+            rows_f.flush()
+            progress_f.write(f"{key}\t{answers_f.tell()}\t{rows_f.tell()}\n")
             progress_f.flush()
 
         for rec in questions:

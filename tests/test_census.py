@@ -247,3 +247,61 @@ def test_the_urban_library_gap_is_recorded_in_code():
     session note that the next reader never sees."""
     assert "DCHB" in census.URBAN_LIBRARY_COUNT_UNAVAILABLE
     assert "Never sum" in census.URBAN_LIBRARY_COUNT_UNAVAILABLE
+
+
+class TestCodexWave91:
+    def test_a_row_limited_pull_is_not_marked_complete(self, tmp_path):
+        """`--max-rows` is a smoke test. Marking it `downloaded` made
+        load_seen() skip the resource forever, so a later unrestricted run left
+        the subset in place and the corpus looked complete (Codex, PR #91)."""
+        probe = _probe(tmp_path, _listing("Primary Census Abstract 2011 - Goa"), _rows(2, total=99))
+        rec = probe.probe("pca", max_rows=2)[0]
+
+        assert rec["status"] == "partial"
+        again = _probe(tmp_path, _listing("Primary Census Abstract 2011 - Goa"), _rows(2, total=99))
+        assert rec["key"] not in again.load_seen(), "a partial pull must stay refetchable"
+
+    def test_an_unlimited_pull_is_still_terminal(self, tmp_path):
+        probe = _probe(tmp_path, _listing("Primary Census Abstract 2011 - Goa"), _rows(2, total=2))
+        rec = probe.probe("pca")[0]
+        assert rec["status"] == "downloaded"
+
+    def test_the_credential_is_kept_out_of_the_http_cache(self, tmp_path):
+        """requests-cache persists the prepared URL, and the OGD contract puts
+        the key in it. Suppression is DETECTED, not passed as a kwarg —
+        `expire_after=0` reaches requests.Session.request() on a non-caching
+        install and raises TypeError, which the first cut of this fix did."""
+        used = []
+
+        class CachingSession(FakeSession):
+            def cache_disabled(self):
+                from contextlib import contextmanager
+
+                @contextmanager
+                def _cm():
+                    used.append(True)
+                    yield
+
+                return _cm()
+
+        probe = CensusProbe(
+            tmp_path, sleep=0,
+            session=CachingSession(_listing("Primary Census Abstract 2011 - Goa"), _rows(1)),
+            api_key=REGISTERED_KEY,
+        )
+        probe.probe("pca")
+        assert used, "caching must be suppressed for credential-bearing requests"
+
+    def test_a_plain_session_without_cache_support_still_works(self, tmp_path):
+        """The regression the kwarg approach caused: a non-caching session."""
+        probe = _probe(tmp_path, _listing("Primary Census Abstract 2011 - Goa"), _rows(1))
+        assert probe.probe("pca")[0]["status"] == "downloaded"
+
+
+def test_the_new_kinds_are_registered_with_validate():
+    """An unregistered kind makes `validate` silently skip the records — it
+    reported a deliberately corrupted census manifest as "ok" (Codex, PR #91)."""
+    from commoner_probe.validate import _pick_schema_name
+
+    assert _pick_schema_name({"kind": "orgi_census_resource"}) == "manifest_orgi_census"
+    assert _pick_schema_name({"kind": "niti_annual_report"}) == "manifest_niti_annual_report"

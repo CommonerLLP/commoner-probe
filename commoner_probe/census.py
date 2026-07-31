@@ -250,11 +250,28 @@ class CensusProbe:
 
     # ---------- API ----------
 
+    def _no_cache(self):
+        """Suppress on-disk caching for a request that carries the credential."""
+        from contextlib import nullcontext
+
+        disabled = getattr(self.session, "cache_disabled", None)
+        return disabled() if callable(disabled) else nullcontext()
+
     def _get(self, path: str, params: dict[str, Any], *, timeout: int = 90) -> dict:
         query = {**params, "api-key": self.api_key, "format": "json"}
         public = _public_url(path, query)
         try:
-            resp = self.session.get(f"{BASE_URL}/{path}", params=query, timeout=timeout)
+            # `requests-cache`, when installed, persists the prepared request
+            # URL alongside the response under /tmp — and the OGD contract puts
+            # the credential in that URL, so a cached response would write the
+            # key to disk. That is exactly the artefact this module promises to
+            # keep it out of (Codex, PR #91).
+            #
+            # Detected rather than passed as a kwarg: `expire_after=0` reaches
+            # `requests.Session.request()` on a non-caching install and raises
+            # TypeError, which the first cut of this fix did.
+            with self._no_cache():
+                resp = self.session.get(f"{BASE_URL}/{path}", params=query, timeout=timeout)
             resp.raise_for_status()
             body = resp.text
         except Exception as exc:  # noqa: BLE001 — re-raised without the key
@@ -430,7 +447,11 @@ class CensusProbe:
             record["dest"] = str(dest.relative_to(self.out_dir))
             record["rows"] = len(rows)
             record["sha256"] = hashlib.sha256(payload.encode("utf-8")).hexdigest()
-            record["status"] = "downloaded"
+            # A row-limited pull is a smoke test, not an acquisition. Marking it
+            # `downloaded` makes load_seen() skip the resource forever, so a
+            # later unrestricted run leaves the subset in place and the corpus
+            # looks complete while holding a handful of rows (Codex, PR #91).
+            record["status"] = "partial" if max_rows is not None else "downloaded"
             self.append_manifest(record)
             out.append(record)
         return out
