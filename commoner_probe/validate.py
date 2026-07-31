@@ -51,6 +51,10 @@ def _pick_schema_name(rec: dict) -> str | None:
         return "manifest_dpe_csr"
     if kind == "orgi_census_resource":
         return "manifest_orgi_census"
+    if kind == "nada_study":
+        return "manifest_nada_study"
+    if kind == "nada_resource":
+        return "manifest_nada_resource"
     if kind == "niti_annual_report":
         return "manifest_niti_annual_report"
     if kind == "doe_pay_allowances_report":

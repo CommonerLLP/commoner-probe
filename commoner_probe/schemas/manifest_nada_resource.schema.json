@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CommonerLLP/commoner-probe/schemas/v1/manifest_nada_resource.json",
+  "title": "manifest.jsonl — NADA study document",
+  "description": "One document attached to a NADA study: a questionnaire, report, technical document, or whatever else the instance groups under a <legend>. `resource_type` is deliberately an open string and NOT an enum — the legend vocabulary varies per study (study 1 shows Questionnaires/Reports/Technical documents, study 150 shows Reports/Technical documents/Other Materials), and an enum would reject an unseen legend on a corpus that already validates. `fetched_at` is set ONLY when bytes were retrieved; on a `skipped_exists` or `listed` row it is null and `checked_at` carries the time we looked. `content_type` is recorded as served even though it is wrong — NADA sends application/octet-stream for PDFs, which is why the filename comes from data-filename / Content-Disposition instead.",
+  "type": "object",
+  "required": [
+    "key",
+    "kind",
+    "record_type",
+    "source",
+    "base_url",
+    "idno",
+    "catalog_id",
+    "resource_id",
+    "resource_type",
+    "title",
+    "filename",
+    "fetch_status",
+    "checked_at"
+  ],
+  "properties": {
+    "key": {
+      "type": "string",
+      "pattern": "^NADA\\|[^|]+\\|[^|]+\\|.+$"
+    },
+    "kind": { "const": "nada_resource" },
+    "record_type": { "const": "nada_resource" },
+    "source": { "type": "string" },
+    "base_url": { "type": "string" },
+    "idno": { "type": "string", "minLength": 1 },
+    "catalog_id": { "type": "string" },
+    "resource_id": { "type": "string", "minLength": 1 },
+    "resource_type": { "type": "string" },
+    "title": { "type": "string" },
+    "filename": { "type": "string", "minLength": 1 },
+    "url": { "type": ["string", "null"] },
+    "fetch_status": { "enum": ["downloaded", "skipped_exists", "listed", "failed"] },
+    "path": { "type": ["string", "null"] },
+    "sha256": { "type": ["string", "null"], "pattern": "^[0-9a-f]{64}$" },
+    "bytes": { "type": ["integer", "null"], "minimum": 0 },
+    "content_type": { "type": ["string", "null"] },
+    "text_path": { "type": ["string", "null"] },
+    "text_chars": { "type": ["integer", "null"], "minimum": 0 },
+    "text_status": { "enum": ["extracted", "ocr_recovered", "empty", "failed", null] },
+    "ocr_used": { "type": ["boolean", "null"] },
+    "checked_at": { "type": "string" },
+    "fetched_at": { "type": ["string", "null"] },
+    "error": { "type": ["string", "null"] }
+  }
+}

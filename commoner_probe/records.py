@@ -268,6 +268,86 @@ class ManifestOrgiCensusRecord:
 
 
 @dataclass
+class ManifestNadaStudyRecord:
+    """One NADA study record from manifest.jsonl.
+
+    Every field the writer emits is declared here on purpose: `_from_dict`
+    drops unknown keys, so an undeclared field silently vanishes for every
+    typed-API consumer.
+    """
+
+    key: str
+    kind: str
+    record_type: str
+    source: str
+    base_url: str
+    idno: str
+    catalog_id: str
+    title: str
+    metadata_path: str
+    metadata_sha256: str
+    sampling_procedure_chars: int
+    resources_status: str
+    resources_found: int
+    checked_at: str
+    subtitle: str | None = None
+    collection: str | None = None
+    authoring_entity: str | None = None
+    nation: str | None = None
+    year_start: str | None = None
+    year_end: str | None = None
+    study_type: str | None = None
+    variables_path: str | None = None
+    variables_count: int | None = None
+    data_files_path: str | None = None
+    data_files_count: int | None = None
+    fetched_at: str | None = None
+    error: str | None = None
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "ManifestNadaStudyRecord":
+        return _from_dict(cls, d)
+
+
+@dataclass
+class ManifestNadaResourceRecord:
+    """One document attached to a NADA study, from manifest.jsonl.
+
+    `fetched_at` is None unless bytes were actually retrieved; `checked_at` is
+    always set. `resource_type` is a free string read from the page's <legend>.
+    """
+
+    key: str
+    kind: str
+    record_type: str
+    source: str
+    base_url: str
+    idno: str
+    catalog_id: str
+    resource_id: str
+    resource_type: str
+    title: str
+    filename: str
+    fetch_status: str
+    checked_at: str
+    url: str | None = None
+    path: str | None = None
+    sha256: str | None = None
+    bytes: int | None = None
+    content_type: str | None = None
+    text_path: str | None = None
+    text_chars: int | None = None
+    text_status: str | None = None
+    ocr_used: bool | None = None
+    fetched_at: str | None = None
+    error: str | None = None
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "ManifestNadaResourceRecord":
+        return _from_dict(cls, d)
+
+
+@dataclass
 class ManifestMinesDmftRecord:
     """One Ministry of Mines / DMFT raw source-file record from manifest.jsonl."""
 

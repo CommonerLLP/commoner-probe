@@ -2,6 +2,33 @@
 
 ## Unreleased
 
+### Added
+
+- **`commoner-probe nada` — survey documentation from a NADA catalogue.** MoSPI's
+  eSankhyiki API serves aggregated indicator rows; the survey instruments — NSS
+  schedules, the written sample design, technical reports — live in a separate
+  NADA (National Data Archive) instance. NADA is World Bank software, so the
+  adapter is parameterised by `--base-url` rather than written twice:
+  `microdata.gov.in/NADA` (187 studies) and `censusindia.gov.in/nada` (40,254)
+  are both verified. Two manifest kinds, `nada_study` and `nada_resource`, both
+  registered with `validate`. An opt-in `--extract-text` second pass runs the
+  existing pdftotext -> pdfminer -> OCR chain over what was downloaded, making
+  no network calls.
+
+  Four source traps are encoded because each one produces a confident wrong
+  answer: study routes key on the DDI `idno` and a numeric id returns HTTP 400;
+  unknown API subroutes return the *study payload* with HTTP 200 instead of an
+  error, so a body whose `idno` is not the one requested is refused; the
+  related-materials page 5xxs for some studies, so `resources_status` separates
+  "the page failed" from "no documents"; and downloads serve
+  `application/octet-stream` for PDFs, so the filename comes from
+  `data-filename`, never the content type.
+
+  Bounded by construction: `--max-studies` is required for an enumeration run,
+  there is no `--all`, downloads are capped per study at 25, and hitting a bound
+  prints how many remain plus the exact command that continues. Microdata files
+  are login-gated and deliberately out of scope.
+
 ### Fixed
 
 - **The HTTP client ignored 429 entirely.** The retry loop backed off on 5xx and

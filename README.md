@@ -648,6 +648,41 @@ chain uses a government CA missing from Python's default `certifi`
 bundle; point `REQUESTS_CA_BUNDLE` at a system bundle that carries it
 (e.g. `/etc/ssl/cert.pem` on macOS).
 
+### `commoner-probe nada` — survey documentation from a NADA catalogue
+
+MoSPI's eSankhyiki API (above) serves aggregated indicator rows. The survey
+*instruments* — the NSS schedules, the written sample design, the technical
+reports — live in a separate NADA (National Data Archive) instance. NADA is
+World Bank software, so one adapter serves many catalogues; pick one with
+`--base-url`. Two are verified: `https://microdata.gov.in/NADA` (MoSPI, 187
+studies) and `https://censusindia.gov.in/nada` (ORGI, 40,254 studies).
+
+```bash
+commoner-probe nada --list-collections
+commoner-probe nada --out data/nada --query NSS --max-studies 3 --dry-run
+commoner-probe nada --out data/nada --query NSS --max-studies 3
+commoner-probe nada --out data/nada --extract-text
+```
+
+Each study yields its DDI metadata (which carries
+`study_desc.method.data_collection.sampling_procedure`, the written sample
+design), the questionnaire and report PDFs with sha256, and the variable and
+data-file listings. `--extract-text` is a separate pass over what is already on
+disk and makes no network calls; `--ocr` adds the OCR rung for documents whose
+text layer yields nothing.
+
+**`--max-studies` is required for an enumeration run.** It has no default
+meaning "all" and there is no `--all` flag: walking a whole government catalogue
+should be a number you chose, not one you inherited. Start small and raise it —
+documents already on disk are recorded `skipped_exists` and are not re-fetched,
+so a bigger bound resumes rather than restarts. Downloads are additionally
+capped per study by `--max-docs-per-study` (default 25), because a single study
+can list 60+ documents.
+
+**Microdata files themselves are not acquired.** They are login-gated; this
+tool holds no credentials and implements no login. That is a deliberate posture,
+not a missing flag.
+
 ### `commoner-probe courts` — India court records
 
 ```bash

@@ -99,8 +99,9 @@ def test_a_body_that_is_not_json_raises_rather_than_reading_as_empty():
 
 def test_search_is_bounded_by_max_studies():
     session = _StubSession({"/api/catalog/search": (200, _fx("search_nss.json"))})
-    rows = nada.NadaClient(sleep=0, session=session).search(query="NSS", max_studies=1)
+    rows, found = nada.NadaClient(sleep=0, session=session).search(query="NSS", max_studies=1)
     assert len(rows) == 1
+    assert found == 129, "the total is what lets a bound say how much is left"
 
 
 def test_search_passes_the_collection_and_query_filters():
@@ -202,3 +203,379 @@ def test_base_url_selects_the_instance():
     client = nada.NadaClient("https://censusindia.gov.in/nada", sleep=0, session=_StubSession({}))
     assert client.api.startswith("https://censusindia.gov.in/nada/index.php/api/catalog")
     assert client.pages.startswith("https://censusindia.gov.in/nada/index.php/catalog")
+
+
+# ---------------------------------------------------------------------------
+# Probe
+# ---------------------------------------------------------------------------
+
+PDF = b"%PDF-1.5\n%stub payload\n"
+
+
+def _routes(*, docs: bool = True, rm_status: int = 200):
+    routes = {
+        f"/api/catalog/{IDNO}/variables": (200, json.dumps({"total": 2, "variables": []})),
+        f"/api/catalog/{IDNO}/data_files": (200, json.dumps({"datafiles": {}})),
+        f"/api/catalog/{IDNO}": (200, _fx("study_1.json")),
+        "/related-materials": (rm_status, _fx("related_materials_1.html")),
+    }
+    if docs:
+        routes["/download/"] = (200, PDF)
+    return routes
+
+
+def _acquire_one(tmp_path, **kwargs):
+    """Acquire study 1 into tmp_path through the stubbed transport."""
+    session = _StubSession(_routes())
+    probe = nada.NadaProbe(tmp_path, sleep=0, session=session)
+    return probe.acquire_study(IDNO, catalog_id=1, **kwargs)
+
+
+def _manifest_rows(tmp_path) -> list[dict]:
+    path = Path(tmp_path) / "manifest.jsonl"
+    if not path.exists():
+        return []
+    return [json.loads(ln) for ln in path.read_text().splitlines() if ln.strip()]
+
+
+def test_filename_comes_from_the_attribute_not_the_content_type(tmp_path):
+    """Downloads serve Content-Type: application/octet-stream even for PDFs, so
+    the extension must come from data-filename / Content-Disposition."""
+    out = _acquire_one(tmp_path)
+    res = out["resources"][0]
+    assert res["filename"].endswith(".pdf")
+    assert (Path(tmp_path) / res["path"]).read_bytes().startswith(b"%PDF")
+    assert res["sha256"] and res["bytes"] == len(PDF)
+
+
+def test_skipped_exists_carries_checked_at_and_no_fetched_at(tmp_path):
+    """Nine adapters here write fetched_at on skipped_exists rows, where it
+    means 'when we looked'. This one does not become the tenth."""
+    _acquire_one(tmp_path)
+    again = _acquire_one(tmp_path)
+    res = again["resources"][0]
+    assert res["fetch_status"] == "skipped_exists"
+    assert res["fetched_at"] is None
+    assert res["checked_at"]
+
+
+def test_a_downloaded_row_does_carry_fetched_at(tmp_path):
+    res = _acquire_one(tmp_path)["resources"][0]
+    assert res["fetch_status"] == "downloaded"
+    assert res["fetched_at"] and res["checked_at"]
+
+
+def test_a_failed_download_does_not_stop_the_run(tmp_path):
+    session = _StubSession({**_routes(docs=False), "/download/": (500, "boom")})
+    probe = nada.NadaProbe(tmp_path, sleep=0, session=session)
+    out = probe.acquire_study(IDNO, catalog_id=1)
+    assert out["resources"], "the resources were still listed"
+    assert all(r["fetch_status"] == "failed" for r in out["resources"])
+    assert all(r["error"] for r in out["resources"])
+    assert out["study"]["resources_found"] == len(out["resources"])
+
+
+def test_max_docs_per_study_bounds_the_downloads(tmp_path):
+    out = _acquire_one(tmp_path, max_docs=1)
+    downloaded = [r for r in out["resources"] if r["fetch_status"] == "downloaded"]
+    assert len(downloaded) == 1
+    assert len(out["resources"]) > 1, "the rest are still listed, just not fetched"
+
+
+def test_no_download_docs_lists_without_fetching(tmp_path):
+    session = _StubSession(_routes(docs=False))
+    probe = nada.NadaProbe(tmp_path, sleep=0, session=session)
+    out = probe.acquire_study(IDNO, catalog_id=1, download_docs=False)
+    assert all(r["fetch_status"] == "listed" for r in out["resources"])
+    assert all(r["path"] is None and r["sha256"] is None for r in out["resources"])
+    assert not any("/download/" in u for u in session.urls)
+
+
+def test_an_unavailable_resource_page_still_writes_a_study_row(tmp_path):
+    session = _StubSession(_routes(rm_status=500))
+    probe = nada.NadaProbe(tmp_path, sleep=0, session=session)
+    out = probe.acquire_study(IDNO, catalog_id=1)
+    assert out["study"]["resources_status"] == "unavailable"
+    assert out["study"]["error"]
+    assert out["resources"] == []
+    assert any(r["kind"] == "nada_study" for r in _manifest_rows(tmp_path))
+
+
+def test_methodology_length_is_recorded_on_the_study_row(tmp_path):
+    study = _acquire_one(tmp_path)["study"]
+    assert study["sampling_procedure_chars"] > 500
+
+
+def test_volatile_source_counters_are_not_recorded(tmp_path):
+    study = _acquire_one(tmp_path)["study"]
+    assert "total_views" not in study
+    assert "total_downloads" not in study
+
+
+def test_both_kinds_are_registered_with_validate():
+    """An unregistered kind makes `validate` abstain and print "ok" — how
+    `census` and `niti-annual-report` shipped with vacuous validation."""
+    from commoner_probe.validate import _pick_schema_name
+
+    assert _pick_schema_name({"kind": "nada_study"}) == "manifest_nada_study"
+    assert _pick_schema_name({"kind": "nada_resource"}) == "manifest_nada_resource"
+
+
+def test_the_written_corpus_validates(tmp_path):
+    from commoner_probe.validate import validate_corpus
+
+    _acquire_one(tmp_path)
+    assert validate_corpus(tmp_path, log=lambda _m: None)
+
+
+def test_a_corrupted_row_fails_validation(tmp_path):
+    """The check census and niti lacked: prove the schema can actually reject.
+    A validator that cannot fail is not a validator."""
+    from commoner_probe.validate import validate_corpus
+
+    _acquire_one(tmp_path)
+    manifest = Path(tmp_path) / "manifest.jsonl"
+    rows = _manifest_rows(tmp_path)
+    for row in rows:
+        if row["kind"] == "nada_resource":
+            row["fetch_status"] = "teleported"
+            break
+    manifest.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+    assert not validate_corpus(tmp_path, log=lambda _m: None)
+
+
+def test_an_unseen_resource_type_still_validates(tmp_path):
+    """resource_type is an open set by design — a new <legend> must not fail a
+    corpus that was valid yesterday."""
+    from commoner_probe.validate import validate_corpus
+
+    _acquire_one(tmp_path)
+    manifest = Path(tmp_path) / "manifest.jsonl"
+    rows = _manifest_rows(tmp_path)
+    for row in rows:
+        if row["kind"] == "nada_resource":
+            row["resource_type"] = "Some Legend Nobody Has Seen"
+    manifest.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+    assert validate_corpus(tmp_path, log=lambda _m: None)
+
+
+def test_records_round_trip_through_the_corpus_streams(tmp_path):
+    from commoner_probe.corpus import Corpus
+
+    _acquire_one(tmp_path)
+    studies = list(Corpus(tmp_path).manifest_nada_studies())
+    resources = list(Corpus(tmp_path).manifest_nada_resources())
+    assert len(studies) == 1
+    assert studies[0].idno == IDNO
+    assert resources and resources[0].resource_type
+    assert resources[0].checked_at
+
+
+def test_every_written_field_survives_the_typed_api(tmp_path):
+    """_from_dict drops unknown keys, so a field the writer emits but the
+    dataclass omits vanishes for typed consumers. That has shipped three times
+    in this package (user_agent, then status, then text_source)."""
+    from commoner_probe.corpus import Corpus
+
+    raw = _acquire_one(tmp_path)
+    typed_study = next(iter(Corpus(tmp_path).manifest_nada_studies()))
+    typed_resource = next(iter(Corpus(tmp_path).manifest_nada_resources()))
+    assert not set(raw["study"]) - set(vars(typed_study))
+    assert not set(raw["resources"][0]) - set(vars(typed_resource))
+
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+
+
+def _run_cli(argv: list[str]):
+    from commoner_probe import cli
+
+    args = cli.build_parser().parse_args(argv)
+    return args.func(args)
+
+
+def _nada_subparser():
+    from commoner_probe import cli
+
+    parser = cli.build_parser()
+    actions = [a for a in parser._actions if hasattr(a, "choices") and a.choices]
+    return actions[0].choices["nada"]
+
+
+class _FakeProbe:
+    """Stands in for NadaProbe so the CLI can be exercised without a network."""
+
+    last: "_FakeProbe | None" = None
+
+    def __init__(self, out_dir, **kwargs):
+        self.out_dir = out_dir
+        self.kwargs = kwargs
+        self.acquired: list[str] = []
+        self.client = self
+        self.sleep = 0
+        _FakeProbe.last = self
+
+    # NadaClient surface the CLI uses
+    def collections(self):
+        return [{"repositoryid": "ASI", "title": "Annual Survey of Industries"}]
+
+    def search(self, *, collection=None, query=None, max_studies):
+        rows = [{"idno": f"STUDY-{i}", "id": str(i), "title": f"Study {i}"} for i in range(1, 6)]
+        return rows[:max_studies], len(rows)
+
+    def resources(self, catalog_id):
+        return [], "ok", None
+
+    def acquire_study(self, idno, *, catalog_id, download_docs=True, max_docs=25):
+        self.acquired.append(idno)
+        return {
+            "study": {"idno": idno, "resources_status": "ok", "resources_found": 0},
+            "resources": [],
+        }
+
+
+@pytest.fixture()
+def fake_probe(monkeypatch):
+    monkeypatch.setattr(nada, "NadaProbe", _FakeProbe)
+    monkeypatch.setattr(nada, "NadaClient", lambda *a, **k: _FakeProbe("x"))
+    return _FakeProbe
+
+
+def test_enumeration_without_max_studies_is_refused(tmp_path, fake_probe):
+    """No invocation walks a government catalogue because a flag was forgotten."""
+    with pytest.raises(SystemExit) as exc:
+        _run_cli(["nada", "--out", str(tmp_path), "--query", "NSS"])
+    assert "--max-studies" in str(exc.value)
+
+
+def test_study_mode_does_not_require_max_studies(tmp_path, fake_probe):
+    _run_cli(["nada", "--out", str(tmp_path), "--study", IDNO])
+    assert _FakeProbe.last.acquired == [IDNO]
+
+
+def test_hitting_the_brake_reports_what_remains_and_how_to_continue(tmp_path, fake_probe, capsys):
+    """A bound that stops silently teaches nothing."""
+    _run_cli(["nada", "--out", str(tmp_path), "--query", "NSS", "--max-studies", "2"])
+    err = capsys.readouterr().err
+    assert "2" in err and "--max-studies" in err
+    assert "commoner-probe nada" in err
+
+
+def test_help_carries_worked_examples():
+    epilog = _nada_subparser().epilog or ""
+    assert epilog.count("commoner-probe nada") >= 4
+
+
+def test_help_states_that_microdata_is_login_gated():
+    """So nobody hunts for a flag that deliberately does not exist."""
+    text = _nada_subparser().format_help().lower()
+    assert "login" in text
+
+
+def test_help_shows_the_sleep_default():
+    text = _nada_subparser().format_help()
+    assert "--sleep" in text and "2.0" in text
+
+
+def test_out_is_required_for_anything_that_writes(fake_probe):
+    with pytest.raises(SystemExit) as exc:
+        _run_cli(["nada", "--study", IDNO])
+    assert "--out" in str(exc.value)
+
+
+# ---------------------------------------------------------------------------
+# Extraction pass
+# ---------------------------------------------------------------------------
+
+
+def _probe_for(tmp_path):
+    return nada.NadaProbe(tmp_path, sleep=0, session=_StubSession({}))
+
+
+def test_extraction_records_empty_not_a_zero_char_success(tmp_path, monkeypatch):
+    """extract_pdf_text returns "" both for 'no text in this PDF' and for
+    'every extractor failed'. A bare character count would print like success."""
+    _acquire_one(tmp_path)
+    monkeypatch.setattr(nada.textparse, "extract_pdf_text", lambda p: "")
+    _probe_for(tmp_path).extract_text(ocr=False)
+    row = next(r for r in _manifest_rows(tmp_path) if r["kind"] == "nada_resource")
+    assert row["text_status"] == "empty"
+    assert row["ocr_used"] is False
+
+
+def test_ocr_rung_marks_recovered_and_records_that_it_was_used(tmp_path, monkeypatch):
+    _acquire_one(tmp_path)
+    monkeypatch.setattr(nada.textparse, "extract_pdf_text", lambda p: "")
+    monkeypatch.setattr(nada.textparse, "ocr_pdf_text", lambda p, **k: "recovered text")
+    _probe_for(tmp_path).extract_text(ocr=True)
+    row = next(r for r in _manifest_rows(tmp_path) if r["kind"] == "nada_resource")
+    assert row["text_status"] == "ocr_recovered"
+    assert row["ocr_used"] is True
+    assert row["text_chars"] == len("recovered text")
+
+
+def test_ocr_that_also_returns_nothing_is_failed(tmp_path, monkeypatch):
+    _acquire_one(tmp_path)
+    monkeypatch.setattr(nada.textparse, "extract_pdf_text", lambda p: "")
+    monkeypatch.setattr(nada.textparse, "ocr_pdf_text", lambda p, **k: "")
+    _probe_for(tmp_path).extract_text(ocr=True)
+    row = next(r for r in _manifest_rows(tmp_path) if r["kind"] == "nada_resource")
+    assert row["text_status"] == "failed"
+
+
+def test_a_successful_extraction_writes_the_text_and_its_path(tmp_path, monkeypatch):
+    _acquire_one(tmp_path)
+    monkeypatch.setattr(nada.textparse, "extract_pdf_text", lambda p: "questionnaire text")
+    _probe_for(tmp_path).extract_text()
+    row = next(r for r in _manifest_rows(tmp_path) if r["kind"] == "nada_resource")
+    assert row["text_status"] == "extracted"
+    assert row["text_chars"] == len("questionnaire text")
+    assert (Path(tmp_path) / row["text_path"]).read_text() == "questionnaire text"
+
+
+def test_extraction_makes_no_network_calls(tmp_path, monkeypatch):
+    _acquire_one(tmp_path)
+    monkeypatch.setattr(nada.textparse, "extract_pdf_text", lambda p: "some text")
+    session = _StubSession({})  # any request raises AssertionError
+    nada.NadaProbe(tmp_path, sleep=0, session=session).extract_text()
+    assert session.urls == []
+
+
+def test_extraction_is_rerunnable_without_duplicating_rows(tmp_path, monkeypatch):
+    """Rows are updated in place by key. Appending would double the manifest on
+    every re-run."""
+    _acquire_one(tmp_path)
+    monkeypatch.setattr(nada.textparse, "extract_pdf_text", lambda p: "some text")
+    probe = _probe_for(tmp_path)
+    probe.extract_text()
+    before = len(_manifest_rows(tmp_path))
+    probe.extract_text()
+    assert len(_manifest_rows(tmp_path)) == before
+
+
+def test_extraction_leaves_the_study_rows_untouched(tmp_path, monkeypatch):
+    _acquire_one(tmp_path)
+    before = [r for r in _manifest_rows(tmp_path) if r["kind"] == "nada_study"]
+    monkeypatch.setattr(nada.textparse, "extract_pdf_text", lambda p: "some text")
+    _probe_for(tmp_path).extract_text()
+    after = [r for r in _manifest_rows(tmp_path) if r["kind"] == "nada_study"]
+    assert before == after
+
+
+def test_the_extracted_corpus_still_validates(tmp_path, monkeypatch):
+    from commoner_probe.validate import validate_corpus
+
+    _acquire_one(tmp_path)
+    monkeypatch.setattr(nada.textparse, "extract_pdf_text", lambda p: "some text")
+    _probe_for(tmp_path).extract_text()
+    assert validate_corpus(tmp_path, log=lambda _m: None)
+
+
+def test_the_ddi_metadata_is_stored_on_disk_with_its_hash(tmp_path):
+    study = _acquire_one(tmp_path)["study"]
+    stored = Path(tmp_path) / study["metadata_path"]
+    assert stored.exists()
+    assert json.loads(stored.read_text())["idno"] == IDNO
+    assert study["metadata_sha256"]

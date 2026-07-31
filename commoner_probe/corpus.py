@@ -63,6 +63,8 @@ from .records import (
     ManifestMinesDmftRecord,
     ManifestMospiRecord,
     ManifestMynetaRecord,
+    ManifestNadaResourceRecord,
+    ManifestNadaStudyRecord,
     ManifestNaiCatalogueRecord,
     ManifestNitiAnnualReportRecord,
     ManifestOrgiCensusRecord,
@@ -176,6 +178,18 @@ class Corpus:
         for d in _iter_jsonl(self.out_dir / "manifest.jsonl"):
             if d.get("kind") == "niti_annual_report":
                 yield ManifestNitiAnnualReportRecord.from_dict(d)
+
+    def manifest_nada_studies(self) -> Iterator[ManifestNadaStudyRecord]:
+        """Stream NADA study records from manifest.jsonl."""
+        for d in _iter_jsonl(self.out_dir / "manifest.jsonl"):
+            if d.get("kind") == "nada_study":
+                yield ManifestNadaStudyRecord.from_dict(d)
+
+    def manifest_nada_resources(self) -> Iterator[ManifestNadaResourceRecord]:
+        """Stream NADA study-document records from manifest.jsonl."""
+        for d in _iter_jsonl(self.out_dir / "manifest.jsonl"):
+            if d.get("kind") == "nada_resource":
+                yield ManifestNadaResourceRecord.from_dict(d)
 
     def manifest_orgi_census(self) -> Iterator[ManifestOrgiCensusRecord]:
         """Stream ORGI / Census of India resource records from manifest.jsonl."""

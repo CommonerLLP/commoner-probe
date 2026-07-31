@@ -55,13 +55,31 @@ unfinished feature — do not "fix" it by adding one.
 
 from __future__ import annotations
 
+import hashlib
+import json
+import re
+import time
+from datetime import datetime
 from html.parser import HTMLParser
+from pathlib import Path
 from typing import Any
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
+from . import textparse
 from .http_client import make_session
 
 DEFAULT_BASE_URL = "https://microdata.gov.in/NADA"
+#: Per-study download bound. Study 150 alone lists 63 resources, so ten studies
+#: would mean 600 files nobody asked for.
+DEFAULT_MAX_DOCS_PER_STUDY = 25
+
+
+def _now() -> str:
+    return datetime.now().isoformat(timespec="seconds")
+
+
+def _slug(value: str) -> str:
+    return re.sub(r"[^A-Za-z0-9._-]+", "_", value).strip("_")
 
 
 class NadaApiError(RuntimeError):
@@ -107,14 +125,19 @@ class NadaClient:
         collection: str | None = None,
         query: str | None = None,
         max_studies: int,
-    ) -> list[dict]:
+    ) -> tuple[list[dict], int]:
         """Enumerate studies, stopping at *max_studies*.
+
+        Returns ``(rows, total_found)``. The total is what makes a bound
+        teachable — without it the caller can only say "stopped", not "3 more
+        available, continue with this command".
 
         Bounded by construction: there is no "fetch everything" call, because
         an unbounded walk of a government catalogue should be something an
         operator asked for rather than something they inherited from a default.
         """
         rows: list[dict] = []
+        found = 0
         page = 1
         while len(rows) < max_studies:
             params: dict[str, Any] = {"ps": min(50, max_studies - len(rows)), "page": page}
@@ -124,12 +147,18 @@ class NadaClient:
                 params["sk"] = query
             payload = self._get_json(f"{self.api}/search", params)
             result = payload.get("result") or {}
+            try:
+                found = int(result.get("found") or 0)
+            except (TypeError, ValueError):
+                found = 0
             batch = result.get("rows") or []
             if not batch:
                 break
             rows.extend(batch)
             page += 1
-        return rows[:max_studies]
+            if len(rows) < max_studies:
+                time.sleep(self.sleep)
+        return rows[:max_studies], found
 
     def study(self, idno: str) -> dict:
         payload = self._get_json(f"{self.api}/{idno}")
@@ -275,3 +304,273 @@ def parse_resources(html: str) -> list[dict]:
 
 def absolute_url(base_url: str, url: str) -> str:
     return urljoin(base_url.rstrip("/") + "/", url)
+
+
+class NadaProbe:
+    """Acquire NADA studies and their documents into a manifested corpus.
+
+    Two manifest kinds, one row per acquired artefact: ``nada_study`` and
+    ``nada_resource``. One row per file is what the provenance contract wants
+    — sha256, fetch status, URL and filename are per-file properties — and it
+    matches the question a consumer asks ("every questionnaire across all NSS
+    rounds"), which a nested list would force them to flatten first.
+    """
+
+    def __init__(
+        self,
+        out_dir: Path,
+        *,
+        base_url: str = DEFAULT_BASE_URL,
+        sleep: float = 2.0,
+        session: Any = None,
+    ) -> None:
+        self.out_dir = Path(out_dir)
+        self.base_url = base_url.rstrip("/")
+        self.client = NadaClient(self.base_url, sleep=sleep, session=session)
+        self.manifest = self.out_dir / "manifest.jsonl"
+        self.source = urlparse(self.base_url).netloc
+
+    # -- writing -----------------------------------------------------------
+
+    def _append(self, record: dict) -> None:
+        self.out_dir.mkdir(parents=True, exist_ok=True)
+        with self.manifest.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+    def _write_json(self, rel: Path, payload: Any) -> str:
+        path = self.out_dir / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        blob = json.dumps(payload, ensure_ascii=False, indent=1).encode("utf-8")
+        tmp = path.with_suffix(path.suffix + ".tmp")
+        tmp.write_bytes(blob)
+        tmp.replace(path)
+        return hashlib.sha256(blob).hexdigest()
+
+    # -- acquisition -------------------------------------------------------
+
+    def acquire_study(
+        self,
+        idno: str,
+        *,
+        catalog_id: Any,
+        download_docs: bool = True,
+        max_docs: int = DEFAULT_MAX_DOCS_PER_STUDY,
+    ) -> dict:
+        slug = _slug(idno)
+        dataset = self.client.study(idno)
+        metadata_rel = Path("metadata") / f"{slug}.json"
+        metadata_sha = self._write_json(metadata_rel, dataset)
+
+        variables = self.client.variables(idno)
+        data_files = self.client.data_files(idno)
+        variables_rel = Path("variables") / f"{slug}.json"
+        data_files_rel = Path("data_files") / f"{slug}.json"
+        self._write_json(variables_rel, variables)
+        self._write_json(data_files_rel, data_files)
+
+        method = (
+            dataset.get("metadata", {})
+            .get("study_desc", {})
+            .get("method", {})
+            .get("data_collection", {})
+        )
+        sampling = method.get("sampling_procedure") or ""
+
+        resources, resources_status, resources_error = self.client.resources(catalog_id)
+
+        study_record = {
+            "key": f"NADA|{self.source}|{idno}",
+            "kind": "nada_study",
+            "record_type": "nada_study",
+            "source": self.source,
+            "base_url": self.base_url,
+            "idno": idno,
+            "catalog_id": str(catalog_id),
+            "title": dataset.get("title") or "",
+            "subtitle": dataset.get("subtitle"),
+            "collection": dataset.get("repositoryid"),
+            "authoring_entity": dataset.get("authoring_entity"),
+            "nation": dataset.get("nation"),
+            "year_start": dataset.get("year_start"),
+            "year_end": dataset.get("year_end"),
+            "study_type": dataset.get("type"),
+            "metadata_path": str(metadata_rel),
+            "metadata_sha256": metadata_sha,
+            # A cheap, honest signal that the written sample design is present.
+            # The prose itself lives in the stored DDI payload.
+            "sampling_procedure_chars": len(sampling),
+            "resources_status": resources_status,
+            "resources_found": len(resources),
+            "variables_path": str(variables_rel),
+            "variables_count": _count(variables, "variables", "total"),
+            "data_files_path": str(data_files_rel),
+            "data_files_count": _count(data_files, "datafiles", None),
+            "checked_at": _now(),
+            "fetched_at": _now(),
+            "error": resources_error,
+        }
+        self._append(study_record)
+
+        resource_records = []
+        downloaded = 0
+        for resource in resources:
+            allow = download_docs and downloaded < max_docs
+            record = self._acquire_resource(idno, slug, catalog_id, resource, allow)
+            if record["fetch_status"] == "downloaded":
+                downloaded += 1
+            self._append(record)
+            resource_records.append(record)
+            if allow:
+                time.sleep(self.client.sleep)
+
+        return {"study": study_record, "resources": resource_records}
+
+    def _acquire_resource(
+        self, idno: str, slug: str, catalog_id: Any, resource: dict, allow_download: bool
+    ) -> dict:
+        filename = resource.get("filename") or f"{resource['resource_id']}.bin"
+        rel = Path("docs") / slug / _slug(filename)
+        record = {
+            "key": f"NADA|{self.source}|{idno}|{resource['resource_id']}",
+            "kind": "nada_resource",
+            "record_type": "nada_resource",
+            "source": self.source,
+            "base_url": self.base_url,
+            "idno": idno,
+            "catalog_id": str(catalog_id),
+            "resource_id": str(resource["resource_id"]),
+            "resource_type": resource.get("resource_type") or "",
+            "title": resource.get("title") or "",
+            "filename": filename,
+            "url": resource.get("url"),
+            "fetch_status": "listed",
+            "path": None,
+            "sha256": None,
+            "bytes": None,
+            "content_type": None,
+            "text_path": None,
+            "text_chars": None,
+            "text_status": None,
+            "ocr_used": None,
+            # fetched_at is set ONLY when bytes were actually retrieved. Nine
+            # adapters here write it on skipped_exists rows, where it means
+            # "when we looked" rather than "when we fetched".
+            "checked_at": _now(),
+            "fetched_at": None,
+            "error": None,
+        }
+        if not allow_download or not record["url"]:
+            return record
+
+        target = self.out_dir / rel
+        if target.exists():
+            blob = target.read_bytes()
+            record.update(
+                fetch_status="skipped_exists",
+                path=str(rel),
+                sha256=hashlib.sha256(blob).hexdigest(),
+                bytes=len(blob),
+            )
+            return record
+
+        try:
+            resp = self.client.session.get(record["url"], timeout=120, stream=True)
+            resp.raise_for_status()
+            blob = b"".join(resp.iter_content(8192))
+            target.parent.mkdir(parents=True, exist_ok=True)
+            tmp = target.with_suffix(target.suffix + ".tmp")
+            tmp.write_bytes(blob)
+            tmp.replace(target)
+        except Exception as exc:  # noqa: BLE001 - one bad file must not end the run
+            record["fetch_status"] = "failed"
+            record["error"] = f"{type(exc).__name__}: {exc}"
+            return record
+
+        record.update(
+            fetch_status="downloaded",
+            path=str(rel),
+            sha256=hashlib.sha256(blob).hexdigest(),
+            bytes=len(blob),
+            content_type=(getattr(resp, "headers", {}) or {}).get("Content-Type"),
+            fetched_at=_now(),
+        )
+        return record
+
+
+    # -- extraction --------------------------------------------------------
+
+    def extract_text(self, *, ocr: bool = False) -> dict:
+        """Extract text from documents already on disk. Makes no network calls.
+
+        Deliberately a second pass rather than part of acquisition: extraction
+        is slow and OCR slower, so coupling them means an extraction failure
+        costs the fetch progress and a re-run re-hits the portal.
+
+        `extract_pdf_text` returns "" both for "this PDF holds no text" and for
+        "every extractor failed", so a bare character count would print like
+        success. `text_status` separates them, and `ocr_used` is recorded only
+        because this method calls that rung itself. Which extractor *inside*
+        `extract_pdf_text` succeeded is not recorded: it returns a bare string,
+        so the fact is not observable, and a label must not assert more than
+        was checked.
+        """
+        rows = [
+            json.loads(line)
+            for line in self.manifest.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        counts = {"extracted": 0, "ocr_recovered": 0, "empty": 0, "failed": 0, "skipped": 0}
+        for row in rows:
+            if row.get("kind") != "nada_resource":
+                continue
+            if row.get("fetch_status") not in ("downloaded", "skipped_exists"):
+                counts["skipped"] += 1
+                continue
+            pdf = self.out_dir / (row.get("path") or "")
+            if not row.get("path") or not pdf.exists():
+                counts["skipped"] += 1
+                continue
+
+            text = textparse.extract_pdf_text(pdf) or ""
+            used_ocr = False
+            if not text.strip() and ocr:
+                used_ocr = True
+                text = textparse.ocr_pdf_text(pdf) or ""
+
+            if text.strip():
+                status = "ocr_recovered" if used_ocr else "extracted"
+            elif used_ocr:
+                status = "failed"
+            else:
+                status = "empty"
+
+            if text.strip():
+                rel = Path("text") / _slug(row["idno"]) / f"{row['resource_id']}.txt"
+                path = self.out_dir / rel
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(text, encoding="utf-8")
+                row["text_path"] = str(rel)
+            row["text_chars"] = len(text)
+            row["text_status"] = status
+            row["ocr_used"] = used_ocr
+            counts[status] += 1
+
+        # Rewritten in place, never appended: an append would double the
+        # manifest on every re-run.
+        tmp = self.manifest.with_suffix(".jsonl.tmp")
+        tmp.write_text(
+            "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows), encoding="utf-8"
+        )
+        tmp.replace(self.manifest)
+        return counts
+
+
+def _count(payload: dict, list_key: str, total_key: str | None) -> int | None:
+    if not payload:
+        return None
+    if total_key and isinstance(payload.get(total_key), int):
+        return payload[total_key]
+    value = payload.get(list_key)
+    if isinstance(value, (list, dict)):
+        return len(value)
+    return None

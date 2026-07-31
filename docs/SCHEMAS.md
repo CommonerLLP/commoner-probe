@@ -815,6 +815,75 @@ manifest (kind=committee_report, report_type=demands_for_grants | bill | subject
 `pdf_path` values are relative to the corpus `out_dir`. To get an absolute path,
 join with the directory that contains `manifest.jsonl`.
 
+## `manifest.jsonl` — NADA study (`kind = "nada_study"`)
+
+One record per study acquired from a NADA (National Data Archive) instance,
+written by `commoner-probe nada`. Schema: `manifest_nada_study.schema.json`.
+
+| Field | Type | Required | Notes | Provenance |
+|---|---|---|---|---|
+| `key` | string | yes | `NADA\|{host}\|{idno}` | nada.py |
+| `idno` | string | yes | The DDI id. **Study routes key on this, not `catalog_id`** — a numeric id returns HTTP 400 `IDNO-NOT-FOUND` | nada.py |
+| `catalog_id` | string | yes | Numeric id, used only to build the HTML page URLs | nada.py |
+| `collection` | string\|null | no | NADA `repositoryid`, e.g. `ASI`, `PLFS` | nada.py |
+| `metadata_path` / `metadata_sha256` | string | yes | The stored DDI payload, which holds the methodology prose | nada.py |
+| `sampling_procedure_chars` | integer | yes | Length of `study_desc.method.data_collection.sampling_procedure`. A presence signal only; 0 means the written sample design is absent | nada.py |
+| `resources_status` | string | yes | `ok` \| `unavailable` — see below | nada.py |
+| `resources_found` | integer | yes | Documents listed. **Meaningful only when `resources_status` is `ok`** | nada.py |
+| `variables_count` / `data_files_count` | integer\|null | no | Listing sizes; the data itself is not acquired | nada.py |
+| `checked_at` | string | yes | When the adapter looked | nada.py |
+| `fetched_at` | string\|null | no | When bytes were retrieved | nada.py |
+
+**`resources_status` exists because a failed page and an empty page are
+different facts.** The related-materials page 5xxs for some studies (study 40 on
+microdata.gov.in, while 1, 2 and 150 answered 200). Reporting that as
+`resources_found: 0` would assert the study has no documents when the check
+merely failed.
+
+**Volatile source counters are deliberately not recorded.** NADA publishes
+`total_views` and `total_downloads`; they change on every re-fetch and would
+make every corpus diff noisy without telling a consumer anything about the
+artefact.
+
+## `manifest.jsonl` — NADA study document (`kind = "nada_resource"`)
+
+One record per document attached to a study — questionnaire, report, technical
+document. Schema: `manifest_nada_resource.schema.json`.
+
+| Field | Type | Required | Notes | Provenance |
+|---|---|---|---|---|
+| `key` | string | yes | `NADA\|{host}\|{idno}\|{resource_id}` | nada.py |
+| `idno` | string | yes | Join key back to the study row | nada.py |
+| `resource_type` | string | yes | Read from the page's `<legend>`. **An open set, not an enum** | nada.py |
+| `filename` | string | yes | From `data-filename` / `Content-Disposition`, **never from `content_type`** | nada.py |
+| `fetch_status` | string | yes | `downloaded` \| `skipped_exists` \| `listed` \| `failed` | nada.py |
+| `content_type` | string\|null | no | As served — NADA sends `application/octet-stream` for PDFs | nada.py |
+| `path` / `sha256` / `bytes` | | cond | Present once downloaded | nada.py |
+| `text_path` / `text_chars` / `text_status` / `ocr_used` | | cond | Written by `--extract-text` only | nada.py |
+| `checked_at` | string | yes | Always set | nada.py |
+| `fetched_at` | string\|null | no | **Set ONLY when bytes were retrieved** | nada.py |
+
+**`resource_type` is an open string on purpose.** The legend vocabulary varies
+per study — study 1 shows Questionnaires / Reports / Technical documents, study
+150 shows Reports / Technical documents / Other Materials. An enum would reject
+the next legend nobody has seen yet, on a corpus that validated yesterday.
+
+**`checked_at` vs `fetched_at`.** Nine other adapters in this package write
+`fetched_at` on `skipped_exists` rows, where it means "when we looked" rather
+than "when we fetched" (open provenance debt in `TODO.md`). This adapter keeps
+them separate: `fetched_at` is null unless bytes moved.
+
+**`text_status` distinguishes empty from failed.** `textparse.extract_pdf_text`
+returns `""` both for "this PDF holds no text" and for "every extractor failed",
+so a bare `text_chars: 0` would read like success. `extracted` and
+`ocr_recovered` mean text was obtained; `empty` means the chain returned nothing
+and OCR was not attempted; `failed` means OCR was attempted and also returned
+nothing. Which extractor *inside* `extract_pdf_text` succeeded is not recorded —
+it returns a bare string, so the fact is not observable.
+
+**Microdata files are not acquired.** They are login-gated; this adapter holds
+no credentials and implements no login.
+
 ## `manifest.jsonl` — ORGI Census resource (`kind = "orgi_census_resource"`)
 
 One record per acquired Census catalogue resource, written by
