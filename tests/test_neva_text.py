@@ -338,7 +338,11 @@ class TestExtractionResumes:
         # The interrupted run left its work on disk, not in a lost list.
         progress = corpus / ".neva_extract_progress"
         assert progress.exists(), "an interrupted run must be resumable"
-        assert len(progress.read_text().split()) == 2, "two documents completed"
+        checkpoints = [ln for ln in progress.read_text().splitlines() if ln.strip()]
+        assert len(checkpoints) == 2, "two documents completed"
+        # Each checkpoint carries the partial sizes as of that document, which is
+        # what lets a resume truncate back and stay idempotent.
+        assert all(len(ln.split("\t")) == 3 for ln in checkpoints)
         assert (corpus / "answers.jsonl.partial").exists()
 
         # Resume: the finished documents are not re-read, and the corpus is whole.
@@ -404,3 +408,65 @@ class TestExtractionResumes:
         mod.extract_neva_answers(corpus, log_fn=lambda *_: None)
 
         assert depths == [0, 1, 2], "each document's record was on disk before the next was read"
+
+    def test_a_publish_interrupted_before_cleanup_does_not_wipe_the_corpus(
+        self, monkeypatch, tmp_path
+    ):
+        """The worst failure the checkpointing could cause (Codex, PR #90).
+
+        If the process stops after the atomic replace but before the progress
+        file is removed, the next run used to create an empty partial, skip
+        every checkpointed key, and replace the good `answers.jsonl` with that
+        empty file — destroying the whole extraction.
+        """
+        from commoner_probe import neva_text as mod
+
+        monkeypatch.setattr(
+            "commoner_probe.textparse.extract_pdf_text",
+            lambda pdf: self.SUBJECT + "\n" + self.BODY,
+        )
+        corpus = self._corpus(tmp_path, n=3)
+        mod.extract_neva_answers(corpus, log_fn=lambda *_: None)
+        assert len(self._records(corpus)) == 3
+
+        # Reproduce the interrupted publish: the artefact is there, the progress
+        # file was never cleaned up, the partial is gone.
+        (corpus / ".neva_extract_progress").write_text(
+            "GJ|0\t10\t0\nGJ|1\t20\t0\nGJ|2\t30\t0\n", encoding="utf-8"
+        )
+        mod.extract_neva_answers(corpus, log_fn=lambda *_: None)
+
+        assert len(self._records(corpus)) == 3, "the published corpus must survive"
+
+    def test_a_resume_does_not_duplicate_a_half_written_document(self, monkeypatch, tmp_path):
+        """An interruption between a record write and its checkpoint left the
+        record in the partial with its key absent, so the resume reprocessed the
+        document and appended it twice (Codex, PR #90)."""
+        from commoner_probe import neva_text as mod
+
+        corpus = self._corpus(tmp_path, n=3)
+        seen: list[str] = []
+
+        def dies_after_the_second_write(pdf):
+            seen.append(pdf.name)
+            if len(seen) == 3:
+                raise KeyboardInterrupt("kill between write and checkpoint")
+            return self.SUBJECT + "\n" + self.BODY
+
+        monkeypatch.setattr("commoner_probe.textparse.extract_pdf_text", dies_after_the_second_write)
+        with pytest.raises(KeyboardInterrupt):
+            mod.extract_neva_answers(corpus, log_fn=lambda *_: None)
+
+        # Simulate the dangerous state: bytes past the last checkpoint.
+        partial = corpus / "answers.jsonl.partial"
+        partial.write_text(partial.read_text() + '{"key": "GJ|2", "half": "written"}\n')
+
+        monkeypatch.setattr(
+            "commoner_probe.textparse.extract_pdf_text",
+            lambda pdf: self.SUBJECT + "\n" + self.BODY,
+        )
+        mod.extract_neva_answers(corpus, log_fn=lambda *_: None)
+
+        keys = [r["key"] for r in self._records(corpus)]
+        assert len(keys) == len(set(keys)), f"duplicate records after resume: {keys}"
+        assert len(keys) == 3

@@ -1,5 +1,42 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+Post-merge Codex wave on #90 and #91. Five findings, all verified against the
+tree — two of them data-loss, and one of them invalidated a claim this repo had
+already reported as verified.
+
+- **`validate` was silently skipping both new manifest kinds.** Neither
+  `orgi_census_resource` nor `niti_annual_report` was registered with
+  `_pick_schema_name`, whose unknown-kind path returns `None`. Proved by
+  corrupting a census record (`level: "NOT_A_VALID_ENUM_VALUE"`,
+  `status: "bogus"`) — `validate` still reported "1 records — ok". Every
+  "validate passes" claim made for those adapters was therefore vacuous.
+- **An interrupted publish could destroy the whole NeVA extraction.** If the
+  process stopped after the atomic replace but before the progress file was
+  removed, the next run created an empty partial, skipped every checkpointed
+  key, and replaced the good `answers.jsonl` with that empty file. A resume now
+  requires the partial to exist; a progress file without one means the publish
+  already succeeded, so it is cleared and the corpus left alone.
+- **A resume could duplicate a half-written document.** An interruption between
+  a record write and its checkpoint left the record in the partial with its key
+  absent, so the document was reprocessed and appended twice. Each checkpoint
+  now records both partials' byte offsets, and a resume truncates back to the
+  last pair — exactly idempotent.
+- **A `--max-rows` pull marked the resource complete.** `load_seen()` then
+  skipped it forever, so a later unrestricted run left a smoke-test subset in a
+  corpus that looked whole. Row-limited pulls are now `partial`, which is
+  deliberately not terminal.
+- **The API key could reach the on-disk HTTP cache.** `requests-cache` persists
+  the prepared request URL, and the OGD contract puts the credential in it.
+  Caching is now suppressed for those calls by *detecting* `cache_disabled()`
+  rather than passing `expire_after=0`, which reaches
+  `requests.Session.request()` on a non-caching install and raises TypeError —
+  as the first cut of this fix did.
+
+
 ## 0.11.0 (2026-07-30)
 
 Two new acquisition surfaces, so a minor bump under the pre-1.0 rule — plus the
