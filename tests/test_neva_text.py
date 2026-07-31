@@ -470,3 +470,65 @@ class TestExtractionResumes:
         keys = [r["key"] for r in self._records(corpus)]
         assert len(keys) == len(set(keys)), f"duplicate records after resume: {keys}"
         assert len(keys) == 3
+
+    def test_a_lost_district_rows_partial_does_not_publish_over_real_rows(
+        self, monkeypatch, tmp_path
+    ):
+        """The external-volume blip this recovery path exists for could take one
+        partial and not the other (Codex, PR #93). Resuming on the survivor
+        skipped every completed key and published an empty rows file over the
+        real district rows."""
+        from commoner_probe import neva_text as mod
+
+        corpus = self._corpus(tmp_path, n=3)
+        seen: list[str] = []
+
+        def dies_on_the_third(pdf):
+            seen.append(pdf.name)
+            if len(seen) == 3:
+                raise KeyboardInterrupt("simulated kill")
+            return self.SUBJECT + "\n" + self.BODY
+
+        monkeypatch.setattr("commoner_probe.textparse.extract_pdf_text", dies_on_the_third)
+        with pytest.raises(KeyboardInterrupt):
+            mod.extract_neva_answers(corpus, log_fn=lambda *_: None)
+
+        (corpus / "neva_district_rows.jsonl.partial").unlink()   # the volume blip
+
+        monkeypatch.setattr(
+            "commoner_probe.textparse.extract_pdf_text",
+            lambda pdf: self.SUBJECT + "\n" + self.BODY,
+        )
+        mod.extract_neva_answers(corpus, log_fn=lambda *_: None)
+
+        assert len(self._records(corpus)) == 3, "every document must be reprocessed"
+
+    def test_a_torn_checkpoint_line_is_ignored_not_trusted(self, monkeypatch, tmp_path):
+        """A process killed mid-write leaves a partial offset. Trusting it either
+        raises forever or truncates through an earlier record (Codex, PR #93)."""
+        from commoner_probe import neva_text as mod
+
+        corpus = self._corpus(tmp_path, n=3)
+        seen: list[str] = []
+
+        def dies_on_the_third(pdf):
+            seen.append(pdf.name)
+            if len(seen) == 3:
+                raise KeyboardInterrupt("simulated kill")
+            return self.SUBJECT + "\n" + self.BODY
+
+        monkeypatch.setattr("commoner_probe.textparse.extract_pdf_text", dies_on_the_third)
+        with pytest.raises(KeyboardInterrupt):
+            mod.extract_neva_answers(corpus, log_fn=lambda *_: None)
+
+        progress = corpus / ".neva_extract_progress"
+        progress.write_text(progress.read_text() + "GJ|2\t99")   # torn: no third field
+
+        monkeypatch.setattr(
+            "commoner_probe.textparse.extract_pdf_text",
+            lambda pdf: self.SUBJECT + "\n" + self.BODY,
+        )
+        mod.extract_neva_answers(corpus, log_fn=lambda *_: None)   # must not raise
+
+        keys = [r["key"] for r in self._records(corpus)]
+        assert len(keys) == len(set(keys)) == 3

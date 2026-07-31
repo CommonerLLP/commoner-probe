@@ -305,3 +305,36 @@ def test_the_new_kinds_are_registered_with_validate():
 
     assert _pick_schema_name({"kind": "orgi_census_resource"}) == "manifest_orgi_census"
     assert _pick_schema_name({"kind": "niti_annual_report"}) == "manifest_niti_annual_report"
+
+
+def test_every_manifest_kind_this_package_emits_is_registered_with_validate():
+    """The generalised form of the census finding.
+
+    An unregistered kind makes `validate` abstain and print "ok". This walks the
+    kinds actually emitted into manifest.jsonl and asserts each resolves to a
+    schema, so the next adapter cannot ship the same hole. Kinds validated by
+    their own per-file path (answers.jsonl, vacancy_rows.jsonl, ...) are covered
+    elsewhere and are not manifest kinds.
+    """
+    import re
+    from pathlib import Path
+
+    from commoner_probe.validate import _pick_schema_name
+
+    manifest_kinds = set()
+    for src in Path("commoner_probe").rglob("*.py"):
+        text = src.read_text(encoding="utf-8")
+        if "append_manifest" not in text and "manifest.jsonl" not in text:
+            continue
+        for m in re.finditer(r'"kind":\s*"([a-z0-9_]+)"', text):
+            manifest_kinds.add(m.group(1))
+
+    # Kinds that live in their own artefact file, not in manifest.jsonl.
+    per_file = {
+        "qa_response", "atr_response", "dfg_recommendation", "neva_qa_response",
+        "neva_district_row", "outsourcing_signal", "question_list_row", "vacancy_row",
+    }
+    unregistered = sorted(
+        k for k in manifest_kinds - per_file if _pick_schema_name({"kind": k}) is None
+    )
+    assert not unregistered, f"validate will silently skip these manifest kinds: {unregistered}"
