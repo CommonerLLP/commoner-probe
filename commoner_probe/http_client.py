@@ -15,8 +15,11 @@ Design (after academiaindia/scraper/fetch.py)
   session (Codex review, PR #41).
 - Per-domain rate limiting: 1 req/s default, enforced globally across all
   sessions via a module-level last-request dict.
-- Exponential backoff on 5xx and network errors: up to MAX_RETRIES attempts,
-  sleep capped at 30s. Government portals 429/503 without warning.
+- Exponential backoff with equal jitter on 5xx, 429 and network errors: up to
+  MAX_RETRIES attempts, sleep capped at 30s. `Retry-After` is honoured when the
+  server sends one; a value above RETRY_AFTER_MAX_SEC raises rather than
+  blocking the process. Government portals 429/503 without warning, and a 429
+  returned to the caller unretried is how a polite crawler gets blocked.
 - requests_cache (optional, 6h TTL, stale_if_error=True): if the upstream
   returns 5xx or raises a network error AND a stale cached copy exists, the
   stale copy is served — corpora must survive portal downtime.
@@ -25,6 +28,8 @@ Design (after academiaindia/scraper/fetch.py)
 - User-Agent identifies the library so portal operators can reach us.
 - Stdlib fallback: if requests is not installed at all, a minimal urllib-based
   implementation is used (no retry, no cache) for zero-dependency environments.
+  No retry means no 429 or `Retry-After` handling either — the fallback exists
+  for zero-dependency installs, not for crawling government portals at volume.
 
 Call-site contract
 ------------------
@@ -40,6 +45,7 @@ from __future__ import annotations
 
 import json
 import os
+import random
 import time
 import types
 import urllib.error
@@ -65,6 +71,13 @@ USER_AGENT = (
 DEFAULT_RATE_LIMIT_SEC = 1.0
 CACHE_TTL_SEC = 6 * 3600
 MAX_RETRIES = 3
+# Statuses worth retrying beyond 5xx. A 429 is the portal asking for a slower
+# rate; returning it to the caller unretried, and then continuing at the normal
+# cadence, is how a polite crawler becomes a blocked one.
+RETRYABLE_STATUSES = frozenset({429})
+# Longest `Retry-After` this client will wait out. A portal asking for more than
+# this is telling us to stop, not to sleep through it holding the process.
+RETRY_AFTER_MAX_SEC = 30.0
 # Bound on the robots.txt fetch. urllib.robotparser.RobotFileParser.read()
 # calls urlopen() with no timeout and will hang indefinitely against a host
 # that accepts the connection but never responds (observed against some
@@ -132,6 +145,38 @@ def _cache_dir() -> Path:
     p = Path(override) if override else Path(os.environ.get("TMPDIR", "/tmp")) / "commoner_probe_http_cache"
     p.mkdir(parents=True, exist_ok=True)
     return p
+
+
+def _retry_delay(attempt: int, resp: Any) -> float:
+    """Seconds to wait before retry *attempt*.
+
+    Honours ``Retry-After`` when the server sends one, capped at
+    ``RETRY_AFTER_MAX_SEC`` — above that this raises rather than blocking the
+    process for however long the portal named.
+
+    Otherwise exponential backoff with *equal* jitter: half the window fixed,
+    half random, so concurrent clients do not retry in lockstep. Full jitter
+    (``uniform(0, base)``) is deliberately not used — a delay that can round to
+    zero is not a backoff.
+    """
+    after = None
+    if resp is not None:
+        headers = getattr(resp, "headers", None) or {}
+        after = headers.get("Retry-After") or headers.get("retry-after")
+    if after is not None:
+        try:
+            seconds = float(str(after).strip())
+        except ValueError:
+            seconds = None  # HTTP-date form; fall through to plain backoff
+        if seconds is not None:
+            if seconds > RETRY_AFTER_MAX_SEC:
+                raise RuntimeError(
+                    f"server asked for Retry-After: {seconds:g}s, above the "
+                    f"{RETRY_AFTER_MAX_SEC:g}s cap — stopping rather than blocking"
+                )
+            return max(0.0, seconds)
+    base = min(30.0, 2.0 ** attempt)
+    return base / 2 + random.uniform(0, base / 2)
 
 
 def _rate_limit(domain: str, min_interval_sec: float) -> None:
@@ -269,14 +314,17 @@ if requests is not None:
             for attempt in range(MAX_RETRIES):
                 try:
                     resp = self._session.request(method, url, **kwargs)
-                    if 500 <= resp.status_code < 600:
+                    if (
+                        500 <= resp.status_code < 600
+                        or resp.status_code in RETRYABLE_STATUSES
+                    ):
                         last_exc = RuntimeError(f"HTTP {resp.status_code} {url}")
-                        time.sleep(min(30, 2 ** attempt))
+                        time.sleep(_retry_delay(attempt, resp))
                         continue
                     return resp
                 except requests.RequestException as exc:
                     last_exc = exc
-                    time.sleep(min(30, 2 ** attempt))
+                    time.sleep(_retry_delay(attempt, None))
             raise last_exc or RuntimeError(f"max retries exceeded for {url}")
 
         def __getattr__(self, name: str) -> Any:
