@@ -449,7 +449,14 @@ def extract_neva_answers(
     # so an interrupted run resumes instead of restarting. The atomic replace
     # still happens at the end, so a consumer never sees a half-written corpus.
     done: set[str] = set()
-    resumable = progress_path.exists() and answers_partial.exists()
+    # BOTH partials, not just the answers one. If the district-rows partial is
+    # lost while the others survive — exactly what an external-volume blip does,
+    # which is the failure this recovery path exists for — resuming skips every
+    # completed key, recreates an empty rows partial, and publishes it over the
+    # real district rows (Codex, PR #93).
+    resumable = (
+        progress_path.exists() and answers_partial.exists() and rows_partial.exists()
+    )
     if progress_path.exists() and not resumable:
         # Progress but no partial means a publish was interrupted AFTER the
         # atomic replace and before the progress file was removed. The work is
@@ -470,14 +477,25 @@ def extract_neva_answers(
         # a record write and its checkpoint would otherwise leave the record in
         # the partial while its key is absent, so the document is reprocessed
         # and its rows appended twice (Codex, PR #90).
-        entries = [
-            line.split("\t")
-            for line in progress_path.read_text(encoding="utf-8").splitlines()
-            if line.strip()
-        ]
+        # A checkpoint line can be torn: the process may die mid-write, leaving
+        # three fields with a truncated offset, or two fields, or trailing junk.
+        # Trusting it either raises forever on every resume or truncates a
+        # partial through the middle of an earlier record while still treating
+        # its key as done — silent corruption (Codex, PR #93). Only lines that
+        # parse completely count; the last good one wins, and its keys are the
+        # only ones considered finished.
+        entries: list[tuple[str, int, int]] = []
+        for line in progress_path.read_text(encoding="utf-8").splitlines():
+            parts = line.split("\t")
+            if len(parts) != 3 or not parts[0]:
+                continue
+            try:
+                entries.append((parts[0], int(parts[1]), int(parts[2])))
+            except ValueError:
+                continue  # a half-written offset is not a checkpoint
         done = {e[0] for e in entries}
-        if entries and len(entries[-1]) == 3:
-            a_off, r_off = int(entries[-1][1]), int(entries[-1][2])
+        if entries:
+            a_off, r_off = entries[-1][1], entries[-1][2]
             with answers_partial.open("r+b") as fh:
                 fh.truncate(a_off)
             if rows_partial.exists():

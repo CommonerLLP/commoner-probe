@@ -4,6 +4,23 @@
 
 ### Fixed
 
+- **`validate` was also skipping `dpe_csr_document`.** Found by generalising the
+  census finding rather than waiting for it to be reported: an audit of every
+  `kind` this package writes into `manifest.jsonl` turned up one more
+  unregistered, with a schema that had existed all along. A nonsense DPE record
+  (`status: "NONSENSE_STATUS"`) validated as "ok" before, and fails now. A test
+  now walks the emitted kinds and asserts each resolves, so the next adapter
+  cannot ship the same hole.
+- **A resume required only one of the two partials.** If the district-rows
+  partial was lost while the answers partial survived — precisely what an
+  external-volume blip does, which is the failure this path exists for — the
+  resume skipped every completed key and published an empty rows file over the
+  real district rows. Both partials are now required.
+- **A torn checkpoint line was trusted.** A process killed mid-write leaves an
+  incomplete offset; parsing it either raised on every subsequent resume or
+  truncated a partial through the middle of an earlier record while still
+  treating its key as done. Only fully-parsing lines count now.
+
 Post-merge Codex wave on #90 and #91. Five findings, all verified against the
 tree — two of them data-loss, and one of them invalidated a claim this repo had
 already reported as verified.
