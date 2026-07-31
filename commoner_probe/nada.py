@@ -408,6 +408,12 @@ class NadaProbe:
     ) -> dict:
         slug = _slug(idno)
         dataset = self.client.study(idno)
+        # `--study IDNO` has no numeric id, and the resource page is addressed
+        # by the numeric id — not the idno. The study payload carries it, so
+        # take it from there rather than building /catalog/None/... and
+        # recording every document page as unavailable (Codex, PR #98).
+        if catalog_id is None:
+            catalog_id = dataset.get("id")
         metadata_rel = Path("metadata") / f"{slug}.json"
         metadata_sha = self._write_json(metadata_rel, dataset)
 
@@ -467,7 +473,11 @@ class NadaProbe:
         for resource in resources:
             key = f"NADA|{self.source}|{idno}|{resource['resource_id']}"
             prior = seen.get(key)
-            if prior and prior.get("fetch_status") in ("downloaded", "skipped_exists"):
+            # A terminal status is not proof the bytes are still there: a
+            # deleted file or a partial corpus copy would otherwise be skipped
+            # forever while the manifest pointed at nothing (Codex, PR #98).
+            on_disk = bool(prior and prior.get("path") and (self.out_dir / prior["path"]).exists())
+            if prior and on_disk and prior.get("fetch_status") in ("downloaded", "skipped_exists"):
                 # Already acquired. Report it so the caller's counts are right,
                 # but do not touch the manifest — one row per artefact.
                 resource_records.append(

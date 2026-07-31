@@ -305,6 +305,31 @@ def test_listed_is_not_terminal_so_a_bigger_bound_fetches_the_rest(tmp_path):
     assert sum(r["fetch_status"] == "downloaded" for r in second) == 4
 
 
+def test_a_prior_row_whose_file_is_gone_is_re_fetched(tmp_path):
+    """A terminal manifest status is not proof the bytes are still on disk — a
+    partial corpus copy or a deleted file would otherwise be skipped forever
+    while the manifest pointed at nothing (Codex, PR #98)."""
+    first = _acquire_one(tmp_path)["resources"][0]
+    (Path(tmp_path) / first["path"]).unlink()
+    again = _acquire_one(tmp_path)["resources"][0]
+    assert again["fetch_status"] == "downloaded"
+    assert (Path(tmp_path) / again["path"]).exists()
+
+
+def test_study_mode_resolves_the_numeric_catalog_id(tmp_path):
+    """`--study IDNO` has no numeric id, and the resource page is addressed by
+    the numeric id. Passing None built /catalog/None/related-materials, so the
+    documented single-study mode recorded every study as `unavailable` and
+    downloaded nothing (Codex, PR #98)."""
+    session = _StubSession(_routes())
+    probe = nada.NadaProbe(tmp_path, sleep=0, session=session)
+    out = probe.acquire_study(IDNO, catalog_id=None)
+    assert out["study"]["resources_status"] == "ok"
+    assert out["study"]["catalog_id"] == "1", "taken from the study payload"
+    assert out["resources"], "documents must be found in --study mode"
+    assert not any("/catalog/None/" in u for u in session.urls)
+
+
 def test_a_downloaded_row_does_carry_fetched_at(tmp_path):
     res = _acquire_one(tmp_path)["resources"][0]
     assert res["fetch_status"] == "downloaded"
@@ -527,6 +552,24 @@ def test_the_continue_command_suggests_a_step_not_the_whole_catalogue(
     assert "40252 more" in err
     assert "--max-studies 40254" not in err
     assert "--max-studies 4" in err, "suggest the next step: double what was asked"
+
+
+def test_the_continue_command_keeps_a_non_default_base_url(tmp_path, monkeypatch, capsys):
+    """Without --base-url the suggested command silently switches back to the
+    default catalogue while keeping the same --out, mixing two instances into
+    one corpus and overwriting same-slug metadata (Codex, PR #98)."""
+
+    class _BigCatalogue(_FakeProbe):
+        def search(self, *, collection=None, query=None, max_studies):
+            return [{"idno": f"S-{i}", "id": str(i)} for i in range(max_studies)], 99
+
+    monkeypatch.setattr(nada, "NadaProbe", _BigCatalogue)
+    _run_cli([
+        "nada", "--base-url", "https://censusindia.gov.in/nada",
+        "--out", str(tmp_path), "--max-studies", "2",
+    ])
+    err = capsys.readouterr().err
+    assert "--base-url https://censusindia.gov.in/nada" in err
 
 
 def test_help_carries_worked_examples():

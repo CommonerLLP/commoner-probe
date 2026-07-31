@@ -676,6 +676,11 @@ def nada_cmd(args: argparse.Namespace) -> None:
         # A bound that stops silently teaches nothing; say what is left and
         # give the exact command that continues from here.
         continue_cmd = ["commoner-probe nada", f"--out {args.out}"]
+        if args.base_url != nada_mod.DEFAULT_BASE_URL:
+            # Without this the suggestion silently switches back to the default
+            # catalogue while keeping the same --out, mixing two instances into
+            # one corpus and overwriting same-slug metadata (Codex, PR #98).
+            continue_cmd.append(f"--base-url {args.base_url}")
         if args.collection:
             continue_cmd.append(f"--collection {args.collection}")
         if args.query:
