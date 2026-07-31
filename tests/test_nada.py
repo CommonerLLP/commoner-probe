@@ -115,6 +115,75 @@ def test_search_passes_the_collection_and_query_filters():
     assert sent["ps"] == 2, "page size must not exceed the caller's bound"
 
 
+class _PagingSession:
+    """A catalogue that caps its page size, so the client must page.
+
+    NADA's offset is (page - 1) * ps — verified live: ps=2&page=2 returned
+    offset 2. Any client that VARIES ps between pages while incrementing page
+    therefore addresses inconsistent windows.
+    """
+
+    def __init__(self, size: int = 20, cap: int = 3) -> None:
+        self.catalog = [{"idno": f"S{i:02d}", "id": str(i)} for i in range(size)]
+        self.cap = cap
+        self.page_sizes: list[int] = []
+
+    def get(self, url, **kwargs):
+        params = kwargs.get("params") or {}
+        ps, page = int(params.get("ps", 15)), int(params.get("page", 1))
+        self.page_sizes.append(ps)
+        offset = (page - 1) * ps
+        rows = self.catalog[offset:offset + min(ps, self.cap)]
+        body = json.dumps({
+            "result": {"found": str(len(self.catalog)), "offset": offset,
+                       "limit": ps, "rows": rows},
+        })
+        return _StubResp(200, body)
+
+
+def test_a_short_page_stops_the_walk_rather_than_skipping_studies():
+    """The original walk shrank `ps` as the bound filled while incrementing
+    `page`, so with a server returning short pages the offsets went 0 -> 4 -> 2:
+    one study skipped entirely, another returned twice, and the caller told
+    nothing. Page-based paging cannot be repaired against short pages — the
+    offset is (page-1)*ps either way — so the honest contract is to stop, never
+    to stride into a window that skips records.
+
+    NADA itself honours `ps` (verified live at 1, 2, 3 and 200), so this path is
+    defensive rather than routine.
+    """
+    session = _PagingSession()
+    rows, found = nada.NadaClient(sleep=0, session=session).search(max_studies=7)
+    idnos = [r["idno"] for r in rows]
+    assert len(set(idnos)) == len(idnos), f"duplicates: {idnos}"
+    assert idnos == [f"S{i:02d}" for i in range(len(idnos))], f"gap or reorder: {idnos}"
+    assert found == 20
+
+
+def test_a_server_that_honours_page_size_delivers_the_full_bound():
+    """The routine case, and the one both live instances exhibit."""
+    session = _PagingSession(size=20, cap=50)  # cap above ps: ps is honoured
+    rows, _ = nada.NadaClient(sleep=0, session=session).search(max_studies=7)
+    assert [r["idno"] for r in rows] == [f"S{i:02d}" for i in range(7)]
+
+
+def test_page_size_is_constant_across_the_walk():
+    """The invariant behind the fix, asserted directly so a later change that
+    reintroduces a shrinking window fails here and not in a corpus."""
+    session = _PagingSession()
+    nada.NadaClient(sleep=0, session=session).search(max_studies=7)
+    assert len(set(session.page_sizes)) == 1, (
+        f"page size varied across the walk: {session.page_sizes}"
+    )
+
+
+def test_paging_stops_at_the_end_of_a_short_catalogue():
+    session = _PagingSession(size=4, cap=50)  # ps honoured; the catalogue is just small
+    rows, found = nada.NadaClient(sleep=0, session=session).search(max_studies=50)
+    assert [r["idno"] for r in rows] == ["S00", "S01", "S02", "S03"]
+    assert found == 4
+
+
 def test_collections_are_listed():
     session = _StubSession({
         "/api/catalog/collections": (200, _fx("collections_trimmed.json")),
@@ -330,6 +399,67 @@ def test_study_mode_resolves_the_numeric_catalog_id(tmp_path):
     assert not any("/catalog/None/" in u for u in session.urls)
 
 
+def test_a_failed_variables_fetch_is_not_recorded_as_no_variables(tmp_path):
+    """`variables()` swallowed its error and returned {}, which was then written
+    to disk and pointed at by `variables_path` — so 'the endpoint failed' and
+    'this study has no variables' produced an identical, confident record."""
+    routes = dict(_routes())
+    routes[f"/api/catalog/{IDNO}/variables"] = (200, "<html>gateway error</html>")
+    probe = nada.NadaProbe(tmp_path, sleep=0, session=_StubSession(routes))
+    study = probe.acquire_study(IDNO, catalog_id=1)["study"]
+    assert study["variables_path"] is None, "no path may point at a fabricated empty listing"
+    assert study["variables_count"] is None
+    assert not (Path(tmp_path) / "variables").exists()
+
+
+def test_a_successful_variables_fetch_is_recorded(tmp_path):
+    """The other half — the null above must mean something."""
+    study = _acquire_one(tmp_path)["study"]
+    assert study["variables_path"]
+    assert (Path(tmp_path) / study["variables_path"]).exists()
+
+
+def test_a_parser_bug_is_not_reported_as_the_source_being_unavailable(tmp_path, monkeypatch):
+    """`resources()` caught bare Exception, so any defect inside the parser
+    would be reported forever as 'the portal failed' — unfalsifiable, and it
+    would send the next reader to the wrong place."""
+    def _boom(_html):
+        raise AttributeError("parser bug, not a portal problem")
+
+    monkeypatch.setattr(nada, "parse_resources", _boom)
+    client = nada.NadaClient(sleep=0, session=_StubSession(_routes()))
+    with pytest.raises(AttributeError):
+        client.resources(1)
+
+
+def test_a_real_source_failure_is_still_unavailable(tmp_path):
+    """Narrowing the catch must not lose the behaviour it exists for."""
+    session = _StubSession({"/related-materials": (503, "<html>maintenance</html>")})
+    rows, status, error = nada.NadaClient(sleep=0, session=session).resources(1)
+    assert (rows, status) == ([], "unavailable")
+    assert error
+
+
+def test_the_manifest_is_not_re_read_once_per_row(tmp_path, monkeypatch):
+    """`_upsert` called `load_seen()` for every row, so writing N rows read the
+    whole manifest N times — quadratic byte traffic as a corpus grows. Bounded
+    here so a later change cannot quietly reintroduce it."""
+    calls = {"n": 0}
+    original = nada.NadaProbe.load_seen
+
+    def counting(self):
+        calls["n"] += 1
+        return original(self)
+
+    monkeypatch.setattr(nada.NadaProbe, "load_seen", counting)
+    out = _acquire_one(tmp_path)
+    rows = 1 + len(out["resources"])
+    assert rows >= 5, "fixture must exercise several rows for this to mean anything"
+    assert calls["n"] <= 2, (
+        f"read the whole manifest {calls['n']} times to write {rows} rows"
+    )
+
+
 def test_a_downloaded_row_does_carry_fetched_at(tmp_path):
     res = _acquire_one(tmp_path)["resources"][0]
     assert res["fetch_status"] == "downloaded"
@@ -521,7 +651,16 @@ def test_enumeration_without_max_studies_is_refused(tmp_path, fake_probe):
     assert "--max-studies" in str(exc.value)
 
 
-def test_study_mode_does_not_require_max_studies(tmp_path, fake_probe):
+def test_argparse_accepts_study_mode_without_max_studies(tmp_path, fake_probe):
+    """Argparse-level only: --study is a valid invocation without --max-studies.
+
+    Named narrowly on purpose. This stubs NadaProbe wholesale, so it proves
+    nothing about what --study actually does — an earlier version of it was
+    called `test_study_mode_does_not_require_max_studies` and read like
+    coverage of the mode while a P1 sat in the code it never executed. The real
+    behaviour is covered by test_study_mode_downloads_documents_end_to_end,
+    which stubs only the transport.
+    """
     _run_cli(["nada", "--out", str(tmp_path), "--study", IDNO])
     assert _FakeProbe.last.acquired == [IDNO]
 
@@ -617,6 +756,246 @@ def test_a_plain_network_failure_is_also_a_message(tmp_path, monkeypatch):
     with pytest.raises(SystemExit) as exc:
         _run_cli(["nada", "--out", str(tmp_path), "--study", IDNO])
     assert "REQUESTS_CA_BUNDLE" not in str(exc.value), "do not suggest an irrelevant fix"
+
+
+# ---------------------------------------------------------------------------
+# CLI through the REAL probe, stubbing only the transport.
+#
+# The tests above stub `NadaProbe` itself, which is how a P1 shipped: the
+# "--study works" test asserted only that the CLI called a fake with the right
+# idno, while the real code built `id=None` and requested
+# /catalog/None/related-materials. Nothing between argparse and the socket was
+# ever executed. These tests replace `make_session` instead — the only faked
+# thing is the network.
+# ---------------------------------------------------------------------------
+
+
+def _cli_routes(**overrides):
+    routes = {
+        "/api/catalog/search": (200, _fx("search_nss.json")),
+        f"/api/catalog/{IDNO}/variables": (200, json.dumps({"total": 2, "variables": []})),
+        f"/api/catalog/{IDNO}/data_files": (200, json.dumps({"datafiles": {}})),
+        f"/api/catalog/{IDNO}": (200, _fx("study_1.json")),
+        "/related-materials": (200, _fx("related_materials_1.html")),
+        "/download/": (200, PDF),
+    }
+    routes.update(overrides)
+    return routes
+
+
+@pytest.fixture()
+def wired(monkeypatch):
+    """Run the real NadaClient/NadaProbe over a scripted transport."""
+    holder = {}
+
+    def _install(**overrides):
+        session = _StubSession(_cli_routes(**overrides))
+        monkeypatch.setattr(nada, "make_session", lambda *a, **k: session)
+        holder["session"] = session
+        return session
+
+    holder["install"] = _install
+    return holder
+
+
+def test_study_mode_downloads_documents_end_to_end(tmp_path, wired):
+    """The P1 that the stubbed-probe test could not see: --study had no numeric
+    id, the resource page is addressed by the numeric id, so every single-study
+    run recorded `unavailable` and downloaded nothing."""
+    session = wired["install"]()
+    _run_cli(["nada", "--out", str(tmp_path), "--study", IDNO, "--sleep", "0"])
+
+    assert not any("/catalog/None/" in u for u in session.urls), (
+        "the numeric catalog id must be resolved from the study payload"
+    )
+    rows = _manifest_rows(tmp_path)
+    study = next(r for r in rows if r["kind"] == "nada_study")
+    assert study["resources_status"] == "ok"
+    assert study["resources_found"] > 0
+    downloaded = [
+        r for r in rows if r["kind"] == "nada_resource" and r["fetch_status"] == "downloaded"
+    ]
+    assert downloaded, "--study mode must actually acquire documents"
+    assert (Path(tmp_path) / downloaded[0]["path"]).read_bytes().startswith(b"%PDF")
+
+
+def test_enumeration_mode_writes_a_valid_corpus_end_to_end(tmp_path, wired):
+    from commoner_probe.validate import validate_corpus
+
+    wired["install"]()
+    _run_cli([
+        "nada", "--out", str(tmp_path), "--query", "NSS",
+        "--max-studies", "1", "--sleep", "0",
+    ])
+    assert validate_corpus(tmp_path, log=lambda _m: None)
+    assert _manifest_rows(tmp_path)
+
+
+def test_dry_run_writes_nothing_and_fetches_no_document(tmp_path, wired):
+    session = wired["install"]()
+    _run_cli([
+        "nada", "--out", str(tmp_path), "--query", "NSS",
+        "--max-studies", "1", "--dry-run", "--sleep", "0",
+    ])
+    assert not (Path(tmp_path) / "manifest.jsonl").exists()
+    assert not any("/download/" in u for u in session.urls)
+
+
+# ---------------------------------------------------------------------------
+# Invariants — properties that must hold for ANY run, not one scripted path
+# ---------------------------------------------------------------------------
+
+
+def test_invariant_one_manifest_row_per_key_across_repeated_runs(tmp_path, wired):
+    """The re-run duplication bug stated as a property. Rows may change; the
+    number of DISTINCT keys is the number of rows, always."""
+    wired["install"]()
+    for _ in range(3):
+        _run_cli(["nada", "--out", str(tmp_path), "--study", IDNO, "--sleep", "0"])
+        rows = _manifest_rows(tmp_path)
+        keys = [r["key"] for r in rows]
+        assert len(keys) == len(set(keys)), f"duplicate keys: {len(keys)} rows, {len(set(keys))} keys"
+
+
+def _fetch_status_enum() -> set[str]:
+    """The values the schema permits — the test's coverage target, read from the
+    contract rather than hand-listed, so adding a status without exercising it
+    fails here."""
+    from commoner_probe import schemas as sc
+
+    return set(sc.load("manifest_nada_resource")["properties"]["fetch_status"]["enum"])
+
+
+def _scenario_rows(tmp_path, name, routes_override=None, argv_extra=(), rerun=False,
+                   drop_manifest=False):
+    """Run one acquisition scenario into its own directory; return its rows.
+
+    ``drop_manifest`` removes the manifest between runs, which is the only
+    state that writes ``skipped_exists`` INTO the manifest: on an ordinary
+    re-run the stored row correctly stays ``downloaded`` (that is the truth
+    about the artefact) and ``skipped_exists`` reaches only the caller's counts.
+    """
+    out = tmp_path / name
+    session = _StubSession(_cli_routes(**(routes_override or {})))
+    probe = nada.NadaProbe(out, sleep=0, session=session)
+    kwargs = dict(argv_extra)
+    probe.acquire_study(IDNO, catalog_id=1, **kwargs)
+    if drop_manifest:
+        (out / "manifest.jsonl").unlink()
+    if rerun or drop_manifest:
+        probe.acquire_study(IDNO, catalog_id=1, **kwargs)
+    return out, _manifest_rows(out)
+
+
+def test_invariant_every_fetch_status_the_schema_permits_is_exercised_and_validates(tmp_path):
+    """Not 'the corpus validated once' but 'nothing this adapter can emit is
+    unvalidatable'.
+
+    The first version of this test asserted `{"failed", "listed"} & statuses` —
+    a non-empty intersection — and the fixture produced only `failed`, six
+    times. It claimed three branches and checked one (Codex, PR #99). Coverage
+    is now driven off the schema enum, and each scenario asserts the branch it
+    exists to produce.
+    """
+    from commoner_probe.validate import _pick_schema_name, validate_corpus
+
+    scenarios = {
+        "downloaded": _scenario_rows(tmp_path, "downloaded"),
+        "skipped_exists": _scenario_rows(tmp_path, "skipped", drop_manifest=True),
+        "listed": _scenario_rows(tmp_path, "listed", argv_extra={"download_docs": False}),
+        "failed": _scenario_rows(tmp_path, "failed", routes_override={"/download/": (500, "boom")}),
+    }
+    seen: set[str] = set()
+    for expected, (out, rows) in scenarios.items():
+        statuses = {r["fetch_status"] for r in rows if r["kind"] == "nada_resource"}
+        assert expected in statuses, (
+            f"the {expected!r} scenario produced {statuses or 'nothing'} — it no longer "
+            "exercises the branch it exists for"
+        )
+        seen |= statuses
+        for row in rows:
+            assert _pick_schema_name(row) is not None, f"unregistered kind: {row['kind']}"
+        assert validate_corpus(out, log=lambda _m: None), f"{expected} corpus failed validation"
+
+    missing = _fetch_status_enum() - seen
+    assert not missing, f"schema permits fetch_status values no scenario produces: {sorted(missing)}"
+
+
+def test_invariant_the_unavailable_study_branch_validates(tmp_path):
+    """The study-level counterpart, which the resource scenarios above cannot
+    reach: a 5xx on the related-materials page."""
+    from commoner_probe.validate import validate_corpus
+
+    out, rows = _scenario_rows(
+        tmp_path, "unavailable", routes_override={"/related-materials": (503, "down")}
+    )
+    study = next(r for r in rows if r["kind"] == "nada_study")
+    assert study["resources_status"] == "unavailable"
+    assert study["error"]
+    assert validate_corpus(out, log=lambda _m: None)
+
+
+def test_invariant_fetched_at_is_set_only_when_bytes_moved(tmp_path, wired):
+    """Stated as a property over every row rather than one scripted case."""
+    wired["install"]()
+    _run_cli(["nada", "--out", str(tmp_path), "--study", IDNO, "--sleep", "0"])
+    for row in _manifest_rows(tmp_path):
+        if row["kind"] != "nada_resource":
+            continue
+        assert row["checked_at"], "checked_at is always set"
+        if row["fetch_status"] in ("listed", "failed"):
+            assert row["fetched_at"] is None, f"{row['fetch_status']} must not claim a fetch time"
+        if row["fetch_status"] == "downloaded":
+            assert row["fetched_at"], "a real fetch must record when"
+
+
+@pytest.mark.parametrize(
+    "argv, must_appear",
+    [
+        (["--base-url", "https://censusindia.gov.in/nada"], "--base-url https://censusindia.gov.in/nada"),
+        (["--collection", "PLFS"], "--collection PLFS"),
+        (["--query", "NSS"], "--query NSS"),
+    ],
+)
+def test_invariant_the_continue_command_preserves_every_scoping_flag(
+    tmp_path, monkeypatch, capsys, argv, must_appear
+):
+    """Generic form of the --base-url P1: any flag that scopes WHICH studies are
+    enumerated must survive into the suggested continuation, or following it
+    silently changes the scope. Parametrised so a new scoping flag added without
+    a case here is a visible omission rather than a silent one."""
+
+    class _Big(_FakeProbe):
+        def search(self, *, collection=None, query=None, max_studies):
+            return [{"idno": f"S-{i}", "id": str(i)} for i in range(max_studies)], 99
+
+    monkeypatch.setattr(nada, "NadaProbe", _Big)
+    _run_cli(["nada", "--out", str(tmp_path), "--max-studies", "1", *argv])
+    err = capsys.readouterr().err
+    assert "Continue with:" in err
+    assert must_appear in err
+
+
+def test_the_suggested_continue_command_actually_parses(tmp_path, monkeypatch, capsys):
+    """A suggestion that does not round-trip through the parser is worse than
+    none — it teaches an invocation that fails."""
+    from commoner_probe import cli
+
+    class _Big(_FakeProbe):
+        def search(self, *, collection=None, query=None, max_studies):
+            return [{"idno": f"S-{i}", "id": str(i)} for i in range(max_studies)], 99
+
+    monkeypatch.setattr(nada, "NadaProbe", _Big)
+    _run_cli([
+        "nada", "--out", str(tmp_path), "--query", "NSS",
+        "--collection", "PLFS", "--max-studies", "2",
+    ])
+    line = [ln for ln in capsys.readouterr().err.splitlines() if "Continue with:" in ln][0]
+    suggested = line.split("Continue with:", 1)[1].strip().split()
+    assert suggested[:2] == ["commoner-probe", "nada"]
+    parsed = cli.build_parser().parse_args(suggested[1:])  # drop the program name
+    assert parsed.max_studies > 2, "the suggestion must advance, not repeat"
+    assert parsed.query == "NSS" and parsed.collection == "PLFS"
 
 
 def test_out_is_required_for_anything_that_writes(fake_probe):
