@@ -1,6 +1,28 @@
 # Changelog
 
-## Unreleased
+## 0.12.0 (2026-07-31)
+
+A new acquisition surface, so a minor bump under the pre-1.0 rule in
+`ROADMAP.md` — and a Layer 0 fix that every existing adapter inherits.
+
+**`commoner-probe nada`** reaches the survey *instruments* the statistics APIs
+do not carry: NSS questionnaires, the written sample design, technical reports.
+NADA is World Bank software, so one adapter parameterised by `--base-url` serves
+both `microdata.gov.in/NADA` (187 studies) and `censusindia.gov.in/nada`
+(40,254) — the second being the acquisition surface REQ-0045's urban half was
+waiting on.
+
+**The HTTP client had been ignoring 429 entirely** — the one status that means
+*slow down*, returned to the caller as though the portal had said yes. That is
+the more consequential half of this release; it was found while building the
+adapter, not by looking for it.
+
+**Verified against the live source, not only fixtures.** Three NSS studies
+acquired from microdata.gov.in: four `Questionnaires` PDFs with hashes matching
+disk, `sampling_procedure_chars` 7306 on NSS 68, extraction reading 76,469
+characters, 32 records validating. Both NADA hosts serve an incomplete TLS chain
+(leaf without intermediate) — documented, with the fix, and verification is
+never disabled.
 
 ### Added
 
