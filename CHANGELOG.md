@@ -2,6 +2,49 @@
 
 ## Unreleased
 
+### Added
+
+- **`commoner-probe nada` — survey documentation from a NADA catalogue.** MoSPI's
+  eSankhyiki API serves aggregated indicator rows; the survey instruments — NSS
+  schedules, the written sample design, technical reports — live in a separate
+  NADA (National Data Archive) instance. NADA is World Bank software, so the
+  adapter is parameterised by `--base-url` rather than written twice:
+  `microdata.gov.in/NADA` (187 studies) and `censusindia.gov.in/nada` (40,254)
+  are both verified. Two manifest kinds, `nada_study` and `nada_resource`, both
+  registered with `validate`. An opt-in `--extract-text` second pass runs the
+  existing pdftotext -> pdfminer -> OCR chain over what was downloaded, making
+  no network calls.
+
+  Four source traps are encoded because each one produces a confident wrong
+  answer: study routes key on the DDI `idno` and a numeric id returns HTTP 400;
+  unknown API subroutes return the *study payload* with HTTP 200 instead of an
+  error, so a body whose `idno` is not the one requested is refused; the
+  related-materials page 5xxs for some studies, so `resources_status` separates
+  "the page failed" from "no documents"; and downloads serve
+  `application/octet-stream` for PDFs, so the filename comes from
+  `data-filename`, never the content type.
+
+  Bounded by construction: `--max-studies` is required for an enumeration run,
+  there is no `--all`, downloads are capped per study at 25, and hitting a bound
+  prints how many remain plus the next-step command that continues. Microdata
+  files are login-gated and deliberately out of scope.
+
+  Three defects were found by running it live rather than by the mocked suite,
+  which was green throughout: a re-run appended a second row for every study and
+  document, so a consumer streaming the corpus counted each artefact twice (the
+  manifest is now one row per artefact, upserted by key, following the
+  `load_seen()` convention seven other adapters here use); against a
+  40,254-study catalogue the brake helpfully suggested `--max-studies 40254`,
+  i.e. the bound recommending the unbounded run it exists to prevent (it now
+  suggests the next step and names the total separately); and a TLS failure
+  printed a urllib3 traceback instead of telling the operator what to do.
+
+  `censusindia.gov.in` serves its leaf certificate without the intermediate, so
+  Python cannot verify the chain even though curl can — curl chases the AIA
+  extension, Python does not. The CLI now says so and names the fix
+  (`REQUESTS_CA_BUNDLE` with the missing intermediate) rather than suggesting
+  verification be turned off.
+
 ### Fixed
 
 - **The HTTP client ignored 429 entirely.** The retry loop backed off on 5xx and

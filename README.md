@@ -648,6 +648,56 @@ chain uses a government CA missing from Python's default `certifi`
 bundle; point `REQUESTS_CA_BUNDLE` at a system bundle that carries it
 (e.g. `/etc/ssl/cert.pem` on macOS).
 
+### `commoner-probe nada` — survey documentation from a NADA catalogue
+
+MoSPI's eSankhyiki API (above) serves aggregated indicator rows. The survey
+*instruments* — the NSS schedules, the written sample design, the technical
+reports — live in a separate NADA (National Data Archive) instance. NADA is
+World Bank software, so one adapter serves many catalogues; pick one with
+`--base-url`. Two are verified: `https://microdata.gov.in/NADA` (MoSPI, 187
+studies) and `https://censusindia.gov.in/nada` (ORGI, 40,254 studies).
+
+```bash
+commoner-probe nada --list-collections
+commoner-probe nada --out data/nada --query NSS --max-studies 3 --dry-run
+commoner-probe nada --out data/nada --query NSS --max-studies 3
+commoner-probe nada --out data/nada --extract-text
+```
+
+Each study yields its DDI metadata (which carries
+`study_desc.method.data_collection.sampling_procedure`, the written sample
+design), the questionnaire and report PDFs with sha256, and the variable and
+data-file listings. `--extract-text` is a separate pass over what is already on
+disk and makes no network calls; `--ocr` adds the OCR rung for documents whose
+text layer yields nothing.
+
+**`--max-studies` is required for an enumeration run.** It has no default
+meaning "all" and there is no `--all` flag: walking a whole government catalogue
+should be a number you chose, not one you inherited. Start small and raise it —
+documents already on disk are recorded `skipped_exists` and are not re-fetched,
+so a bigger bound resumes rather than restarts. Downloads are additionally
+capped per study by `--max-docs-per-study` (default 25), because a single study
+can list 60+ documents.
+
+**Microdata files themselves are not acquired.** They are login-gated; this
+tool holds no credentials and implements no login. That is a deliberate posture,
+not a missing flag.
+
+**TLS note for `censusindia.gov.in`:** that host serves its leaf certificate
+without the intermediate, so Python cannot verify the chain (curl can — it
+chases the AIA extension to fetch the missing certificate). Build a bundle that
+carries `emSign SSL CA - G1` and point `REQUESTS_CA_BUNDLE` at it:
+
+```bash
+curl -s -o inter.crt http://repository.emsign.com/certs/emSignSSLCAG1.crt
+openssl x509 -inform DER -in inter.crt -out inter.pem
+cat "$(python -c 'import certifi;print(certifi.where())')" inter.pem > bundle.pem
+export REQUESTS_CA_BUNDLE=$PWD/bundle.pem
+```
+
+Do not disable verification. The CLI detects this failure and prints the same
+guidance rather than a traceback.
+
 ### `commoner-probe courts` — India court records
 
 ```bash

@@ -6,6 +6,7 @@ import json
 import sys
 from pathlib import Path
 
+from . import nada as nada_mod
 from .academia import AcademicJobsProbe
 from .answers import extract_answers
 from .atr_linkage import extract_atr_linkages
@@ -548,6 +549,161 @@ def census_cmd(args: argparse.Namespace) -> None:
         year_note = f", {args.year}" if args.year else ""
         print(
             f"ORGI census: {len(records)} resources, {total} rows [{args.surface}{year_note}]",
+            file=sys.stderr,
+        )
+
+
+def _nada_network_exit(exc: Exception) -> "SystemExit":
+    """Turn a transport failure into something an operator can act on.
+
+    Some government hosts serve an INCOMPLETE certificate chain — the leaf with
+    no intermediate. curl succeeds because it chases the AIA extension; Python
+    does not, so requests fails verification. Verified 2026-07-31:
+    censusindia.gov.in presents only `CN=censusindia.gov.in` and openssl reports
+    "unable to verify the first certificate".
+    """
+    text = str(exc)
+    hint = ""
+    if "certificate" in text.lower() or "ssl" in text.lower():
+        hint = (
+            "\nThe host's TLS chain does not verify. Some government hosts serve the "
+            "leaf certificate without its intermediate; curl follows the AIA extension "
+            "to fetch it but Python does not. Build a bundle containing the missing "
+            "intermediate and point REQUESTS_CA_BUNDLE at it. Do not disable "
+            "verification."
+        )
+    return SystemExit(f"nada: {type(exc).__name__}: {text}{hint}")
+
+
+def nada_cmd(args: argparse.Namespace) -> None:
+    from .nada import DEFAULT_MAX_DOCS_PER_STUDY, NadaApiError, NadaClient, NadaProbe
+
+    if args.list_collections:
+        client = NadaClient(args.base_url, sleep=args.sleep)
+        try:
+            collections = client.collections()
+        except NadaApiError as exc:
+            raise SystemExit(f"nada: {exc}") from None
+        except OSError as exc:
+            raise _nada_network_exit(exc) from None
+        for collection in collections:
+            print(json.dumps(collection, ensure_ascii=False))
+        return
+
+    if not args.out:
+        raise SystemExit("nada: --out is required for anything that writes a corpus")
+    out = Path(args.out)
+    probe = NadaProbe(out, base_url=args.base_url, sleep=args.sleep)
+
+    if args.extract_text:
+        counts = probe.extract_text(ocr=args.ocr)
+        print(
+            "NADA extraction: "
+            + ", ".join(f"{k}={v}" for k, v in sorted(counts.items())),
+            file=sys.stderr,
+        )
+        return
+
+    try:
+        if args.study:
+            targets = [{"idno": idno, "id": None} for idno in args.study]
+            remaining = 0
+        else:
+            if args.max_studies is None:
+                raise SystemExit(
+                    "nada: --max-studies is required for an enumeration run. It has no "
+                    "default that means 'all': an unbounded walk of a government "
+                    "catalogue should be something you asked for, not something you "
+                    "inherited. Start small — `--max-studies 3` — and raise it; "
+                    "documents already on disk are not re-fetched."
+                )
+            targets, found = probe.client.search(
+                collection=args.collection,
+                query=args.query,
+                max_studies=args.max_studies,
+            )
+            remaining = max(0, found - len(targets))
+    except NadaApiError as exc:
+        raise SystemExit(f"nada: {exc}") from None
+    except OSError as exc:
+        raise _nada_network_exit(exc) from None
+
+    if args.dry_run:
+        for target in targets:
+            print(json.dumps(target, ensure_ascii=False))
+        print(
+            f"NADA dry run: {len(targets)} studies would be acquired "
+            f"(documents per study capped at {args.max_docs_per_study})",
+            file=sys.stderr,
+        )
+        return
+
+    acquired = 0
+    counts = {"resources": 0, "downloaded": 0, "skipped": 0, "failed": 0, "unavailable": 0}
+    for target in targets:
+        idno = target.get("idno")
+        try:
+            result = probe.acquire_study(
+                idno,
+                catalog_id=target.get("id"),
+                download_docs=not args.no_download_docs,
+                max_docs=args.max_docs_per_study,
+            )
+        except NadaApiError as exc:
+            print(f"nada: {idno}: {exc}", file=sys.stderr)
+            continue
+        except OSError as exc:
+            raise _nada_network_exit(exc) from None
+        acquired += 1
+        if result["study"]["resources_status"] == "unavailable":
+            counts["unavailable"] += 1
+        for record in result["resources"]:
+            counts["resources"] += 1
+            status = record["fetch_status"]
+            if status == "downloaded":
+                counts["downloaded"] += 1
+            elif status == "skipped_exists":
+                counts["skipped"] += 1
+            elif status == "failed":
+                counts["failed"] += 1
+
+    print(
+        f"NADA: {acquired} studies, "
+        + ", ".join(f"{k}={v}" for k, v in sorted(counts.items())),
+        file=sys.stderr,
+    )
+    if remaining:
+        # A bound that stops silently teaches nothing; say what is left and
+        # give the exact command that continues from here.
+        continue_cmd = ["commoner-probe nada", f"--out {args.out}"]
+        if args.base_url != nada_mod.DEFAULT_BASE_URL:
+            # Without this the suggestion silently switches back to the default
+            # catalogue while keeping the same --out, mixing two instances into
+            # one corpus and overwriting same-slug metadata (Codex, PR #98).
+            continue_cmd.append(f"--base-url {args.base_url}")
+        if args.collection:
+            continue_cmd.append(f"--collection {args.collection}")
+        if args.query:
+            continue_cmd.append(f"--query {args.query}")
+        # Suggest the NEXT STEP, not the whole catalogue. Against censusindia's
+        # 40,254 studies the naive "current + remaining" suggested
+        # `--max-studies 40254`, i.e. the brake politely recommending the
+        # unbounded run it exists to prevent.
+        next_step = min(args.max_studies * 2, args.max_studies + remaining)
+        continue_cmd.append(f"--max-studies {next_step}")
+        print(
+            f"Stopped at the --max-studies bound: {acquired} acquired, "
+            f"{remaining} more available.\nContinue with:  " + " ".join(continue_cmd),
+            file=sys.stderr,
+        )
+    if targets and acquired == 0:
+        raise SystemExit("nada: every study failed; nothing was acquired")
+    if args.max_docs_per_study == DEFAULT_MAX_DOCS_PER_STUDY and counts["resources"] > (
+        acquired * DEFAULT_MAX_DOCS_PER_STUDY
+    ):
+        print(
+            "nada: some studies list more documents than --max-docs-per-study "
+            f"({DEFAULT_MAX_DOCS_PER_STUDY}); the rest are listed, not fetched",
             file=sys.stderr,
         )
 
@@ -1226,6 +1382,87 @@ def build_parser() -> argparse.ArgumentParser:
         "--dry-run", action="store_true", help="List reports without downloading"
     )
     niti_ar.set_defaults(func=niti_annual_report_cmd)
+
+    nada = sub.add_parser(
+        "nada",
+        help="Acquire survey documentation from a NADA instance (questionnaires, methodology).",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=(
+            "Acquire studies and their documents from a NADA (National Data Archive) "
+            "instance. NADA is World Bank software, so one adapter serves many "
+            "catalogues; pick one with --base-url. Verified instances:\n"
+            "  https://microdata.gov.in/NADA    MoSPI, 187 studies (NSS, ASI, PLFS, ...)\n"
+            "  https://censusindia.gov.in/nada  ORGI, 40,254 studies\n\n"
+            "Acquires: DDI metadata (which carries the written sample design), the "
+            "questionnaire / report / technical-document PDFs, and the variable and "
+            "data-file listings.\n\n"
+            "Does NOT acquire the microdata files themselves: those are login-gated, "
+            "and this tool holds no credentials and implements no login. That is a "
+            "deliberate posture, not a missing flag."
+        ),
+        epilog=(
+            "Examples:\n"
+            "  # 1. What collections does this instance carry?\n"
+            "  commoner-probe nada --list-collections\n\n"
+            "  # 2. See what a bounded search would fetch, without fetching it\n"
+            "  commoner-probe nada --out data/nada --query NSS --max-studies 3 --dry-run\n\n"
+            "  # 3. Acquire those three studies with their questionnaires and reports\n"
+            "  commoner-probe nada --out data/nada --query NSS --max-studies 3\n\n"
+            "  # 4. Extract text from what was downloaded (second pass, no network)\n"
+            "  commoner-probe nada --out data/nada --extract-text\n\n"
+            "Another NADA instance:\n"
+            "  commoner-probe nada --base-url https://censusindia.gov.in/nada \\\n"
+            "      --out data/census-nada --max-studies 5\n"
+        ),
+    )
+    nada.add_argument("--out", help="Output directory (required unless --list-collections)")
+    nada.add_argument(
+        "--base-url",
+        default=nada_mod.DEFAULT_BASE_URL,
+        help="NADA instance root (default: %(default)s)",
+    )
+    nada.add_argument(
+        "--list-collections", action="store_true", help="List the instance's collections and exit"
+    )
+    nada.add_argument("--collection", help="Restrict enumeration to one collection, e.g. PLFS")
+    nada.add_argument("--query", help="Free-text catalogue search, e.g. NSS")
+    nada.add_argument(
+        "--study", action="append", help="Acquire one study by its DDI idno (repeatable)"
+    )
+    nada.add_argument(
+        "--max-studies",
+        type=int,
+        help=(
+            "REQUIRED for an enumeration run: how many studies to acquire. There is no "
+            "default meaning 'all' and no --all flag — walking a whole government "
+            "catalogue should be a number you chose. Re-running with a larger bound "
+            "resumes rather than restarts"
+        ),
+    )
+    nada.add_argument(
+        "--max-docs-per-study",
+        type=int,
+        default=nada_mod.DEFAULT_MAX_DOCS_PER_STUDY,
+        help="Documents to download per study (default: %(default)s); the rest are listed",
+    )
+    nada.add_argument(
+        "--no-download-docs", action="store_true", help="List documents without downloading them"
+    )
+    nada.add_argument(
+        "--dry-run", action="store_true", help="Report what would be acquired; fetch nothing"
+    )
+    nada.add_argument(
+        "--extract-text",
+        action="store_true",
+        help="Second pass: extract text from already-downloaded documents. Makes no network calls",
+    )
+    nada.add_argument(
+        "--ocr",
+        action="store_true",
+        help="In the extraction pass, allow the OCR rung when the text layer yields nothing",
+    )
+    nada.add_argument("--sleep", type=float, default=2.0, help="Seconds between requests (default: %(default)s)")
+    nada.set_defaults(func=nada_cmd)
 
     census = sub.add_parser(
         "census",

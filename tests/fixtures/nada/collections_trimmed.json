@@ -1,0 +1,22 @@
+{
+ "status": "success",
+ "total": 9,
+ "collections": [
+  {
+   "id": "1",
+   "repositoryid": "ASI",
+   "title": "Annual Survey of Industries",
+   "thumbnail": "files/asi.jpg",
+   "short_text": "Annual Survey of Industries covers the manufacturing units in the registered sector.",
+   "long_text": "Annual Survey of Industries covers the manufacturing units in the registered sector."
+  },
+  {
+   "id": "3",
+   "repositoryid": "ECO",
+   "title": "Economic Census",
+   "thumbnail": "files/EC_image.jpg",
+   "short_text": "",
+   "long_text": ""
+  }
+ ]
+}
