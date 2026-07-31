@@ -146,8 +146,15 @@ class NadaClient:
         rows: list[dict] = []
         found = 0
         page = 1
+        # The page size MUST stay constant for the whole walk. NADA's offset is
+        # (page - 1) * ps, so shrinking ps as the bound fills up while page
+        # advances addresses inconsistent windows: a walk of 7 with a server
+        # capping at 3 rows went offset 0 -> 4 -> 2, skipping one study
+        # entirely and returning another twice. The bound is applied by
+        # truncating at the end, never by narrowing the window mid-walk.
+        page_size = max(1, min(50, max_studies))
         while len(rows) < max_studies:
-            params: dict[str, Any] = {"ps": min(50, max_studies - len(rows)), "page": page}
+            params: dict[str, Any] = {"ps": page_size, "page": page}
             if collection:
                 params["collection"] = collection
             if query:
@@ -162,6 +169,13 @@ class NadaClient:
             if not batch:
                 break
             rows.extend(batch)
+            if len(batch) < page_size:
+                # Short page. Either the catalogue ended, or the server did not
+                # honour `ps` — and the two are indistinguishable from here.
+                # Advancing would address offset (page)*ps and skip whatever sat
+                # between, so stop. NADA honours `ps` (verified at 1, 2, 3, 200),
+                # so in practice this is the end of the catalogue.
+                break
             page += 1
             if len(rows) < max_studies:
                 time.sleep(self.sleep)
@@ -193,24 +207,36 @@ class NadaClient:
             resp = self.session.get(url, timeout=60)
             resp.raise_for_status()
             rows = parse_resources(resp.text)
-        except Exception as exc:  # noqa: BLE001 - any failure is "we do not know"
+        except (OSError, RuntimeError, NadaApiError) as exc:
+            # Deliberately NOT a bare `except Exception`. A defect inside the
+            # parser (AttributeError, TypeError, ...) would then be reported
+            # forever as "the portal is unavailable" — unfalsifiable, and it
+            # sends whoever investigates to the wrong system. Transport and
+            # protocol failures are "we do not know"; our own bugs are not.
             return [], "unavailable", f"{type(exc).__name__}: {exc}"
         for row in rows:
             if row.get("url"):
                 row["url"] = absolute_url(self.base_url, row["url"])
         return rows, "ok", None
 
-    def variables(self, idno: str) -> dict:
+    def variables(self, idno: str) -> dict | None:
+        """The variable listing, or None if it could not be obtained.
+
+        None rather than {}: an empty dict written to disk and pointed at by
+        `variables_path` would make "the endpoint failed" and "this study has
+        no variables" produce an identical, confident record.
+        """
         try:
             return self._get_json(f"{self.api}/{idno}/variables")
-        except NadaApiError:
-            return {}
+        except (NadaApiError, OSError, RuntimeError):
+            return None
 
-    def data_files(self, idno: str) -> dict:
+    def data_files(self, idno: str) -> dict | None:
+        """The data-file listing, or None if it could not be obtained."""
         try:
             return self._get_json(f"{self.api}/{idno}/data_files")
-        except NadaApiError:
-            return {}
+        except (NadaApiError, OSError, RuntimeError):
+            return None
 
 
 class _ResourceParser(HTMLParser):
@@ -374,11 +400,17 @@ class NadaProbe:
         )
         tmp.replace(self.manifest)
 
-    def _upsert(self, record: dict) -> None:
-        """Append a new row, or replace the existing row with this key."""
-        existing = self.load_seen()
+    def _upsert(self, record: dict, known: dict | None = None) -> None:
+        """Append a new row, or replace the existing row with this key.
+
+        *known* is the caller's already-loaded key index. Without it this read
+        the whole manifest once per row, so writing N rows moved O(N^2) bytes.
+        """
+        existing = self.load_seen() if known is None else known
         if record["key"] not in existing:
             self._append(record)
+            if known is not None:
+                known[record["key"]] = record
             return
         rows = [
             json.loads(line)
@@ -417,12 +449,16 @@ class NadaProbe:
         metadata_rel = Path("metadata") / f"{slug}.json"
         metadata_sha = self._write_json(metadata_rel, dataset)
 
+        # Written only when actually obtained. A path pointing at a fabricated
+        # empty listing would assert "we looked and there were none".
         variables = self.client.variables(idno)
         data_files = self.client.data_files(idno)
-        variables_rel = Path("variables") / f"{slug}.json"
-        data_files_rel = Path("data_files") / f"{slug}.json"
-        self._write_json(variables_rel, variables)
-        self._write_json(data_files_rel, data_files)
+        variables_rel = Path("variables") / f"{slug}.json" if variables is not None else None
+        data_files_rel = Path("data_files") / f"{slug}.json" if data_files is not None else None
+        if variables_rel is not None:
+            self._write_json(variables_rel, variables)
+        if data_files_rel is not None:
+            self._write_json(data_files_rel, data_files)
 
         method = (
             dataset.get("metadata", {})
@@ -457,17 +493,16 @@ class NadaProbe:
             "sampling_procedure_chars": len(sampling),
             "resources_status": resources_status,
             "resources_found": len(resources),
-            "variables_path": str(variables_rel),
+            "variables_path": str(variables_rel) if variables_rel else None,
             "variables_count": _count(variables, "variables", "total"),
-            "data_files_path": str(data_files_rel),
+            "data_files_path": str(data_files_rel) if data_files_rel else None,
             "data_files_count": _count(data_files, "datafiles", None),
             "checked_at": _now(),
             "fetched_at": _now(),
             "error": resources_error,
         }
-        self._upsert(study_record)
-
         seen = self.load_seen()
+        self._upsert(study_record, seen)
         resource_records = []
         downloaded = 0
         for resource in resources:
@@ -488,7 +523,7 @@ class NadaProbe:
             record = self._acquire_resource(idno, slug, catalog_id, resource, allow)
             if record["fetch_status"] == "downloaded":
                 downloaded += 1
-            self._upsert(record)
+            self._upsert(record, seen)
             resource_records.append(record)
             if allow:
                 time.sleep(self.client.sleep)
@@ -635,7 +670,8 @@ class NadaProbe:
         return counts
 
 
-def _count(payload: dict, list_key: str, total_key: str | None) -> int | None:
+def _count(payload: dict | None, list_key: str, total_key: str | None) -> int | None:
+    """Count entries in a listing, or None when the listing was not obtained."""
     if not payload:
         return None
     if total_key and isinstance(payload.get(total_key), int):
