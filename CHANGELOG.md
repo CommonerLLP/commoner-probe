@@ -261,8 +261,7 @@ the 961-1,744 band predicted from a 60-document sample before the run.
   - Three listing traps encoded: duplicate links, the upload directory
     `/2025-02/` masquerading as a fiscal year, and four-digit second years.
 
-- **`commoner-probe census` — ORGI / Census of India acquisition** (REQ-0045,
-  theright2read). A source family the org covered nowhere. Four surfaces from
+- **`commoner-probe census` — ORGI / Census of India acquisition** (REQ-0045). A source family the org covered nowhere. Four surfaces from
   the data.gov.in API: `pca`, `village-amenities`, `town-amenities`,
   `town-directory`, each with a provenance manifest and a typed corpus stream.
   - **The District Census Handbook PDFs are not the primary route.** The request

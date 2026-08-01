@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 """Shared ad-dict factory for the academia parsers.
 
-Ported from academiaindia/scraper/ad_factory.py. Builds a consistently-shaped
+Ported from the origin project's scraper/ad_factory.py. Builds a consistently-shaped
 ad ``dict`` (the probe's manifest convention — ``pdf_parsed`` not ``_pdf_parsed``)
 so parsers only pass the fields they actually know about.
 """

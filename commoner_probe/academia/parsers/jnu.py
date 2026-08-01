@@ -19,7 +19,7 @@ Notes / honesty
   from their respective column bands.
 - Parse confidence 0.78 — structure confirmed against RC/75/2026, 2026-05-20.
 
-Probe-native port of academiaindia/scraper/parsers/jnu.py: PDF download goes
+Probe-native port of the origin project's scraper/parsers/jnu.py: PDF download goes
 through the injected probe ``Fetcher`` (``pdf.download``); Pydantic ``JobAd``
 output is rewritten to plain dicts via :func:`make_ad`. Without a Fetcher
 (``--no-download``) or when a PDF can't be read, it degrades to one listing-level

@@ -6,7 +6,7 @@ portals (Shiv Nadar, FLAME), card/list jobs pages (Azim Premji, Ashoka), and
 standing faculty-call pages (Ahmedabad, JGU). Intentionally permissive — a
 coarse official listing beats silence.
 
-Probe-native port of academiaindia/scraper/parsers/private_university.py. The
+Probe-native port of the origin project's scraper/parsers/private_university.py. The
 Azim Premji per-position sub-page fetch is rerouted through the injected probe
 ``Fetcher`` (``pdf.get_html``); without it, APU degrades to index parsing.
 """

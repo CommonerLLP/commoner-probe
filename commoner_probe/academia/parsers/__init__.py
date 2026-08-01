@@ -9,16 +9,16 @@ rather than absent).
 
 Explicit dict (not dynamic ``importlib``) so packaging/imports are predictable.
 
-Migrated from academiaindia: ``generic``, ``iim_recruit``, ``iit_kanpur``,
+Migrated from the origin project: ``generic``, ``iim_recruit``, ``iit_kanpur``,
 ``anna_university``, ``private_university``, ``iit_indore``, ``iit_rolling``,
 ``jnu``. The only origin parsers not ported are ``iit_delhi`` and
 ``samarth_curec``, which no registry row references (dead in the origin);
 they resolve to ``generic`` if ever named.
 
 ``iit_gandhinagar`` and ``iit_hyderabad`` are new additions authored directly
-for commoner-probe, ported from academiaindia's parked ``feat/parser-dry-layer``
-branch — that branch was never merged into academiaindia's history, so these
-two parsers didn't exist anywhere in a released form until now.
+for commoner-probe, ported from a branch of the origin project that was never
+merged there — so these two parsers did not exist anywhere in a released form
+until now.
 """
 
 from __future__ import annotations

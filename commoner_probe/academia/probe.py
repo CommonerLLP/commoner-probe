@@ -8,7 +8,7 @@ and appends one ``academic_job_posting`` record per extracted ad to
 ``manifest.jsonl``. Provenance, fetch/parse failures, and the empty-result case
 are all recorded so coverage gaps are visible rather than silent.
 
-Migrated from academiaindia. Reuses probe's ``make_session`` (SSRF guard /
+Migrated from the origin project. Reuses probe's ``make_session`` (SSRF guard /
 robots / rate-limit) instead of the origin's duplicated ``fetch.py`` /
 ``url_safety.py``.
 """

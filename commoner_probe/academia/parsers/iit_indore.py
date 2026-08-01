@@ -6,7 +6,7 @@ Target: the recruitments/faculty-positions page — loose
 Finds PDF links under /public/storage/recruitments/ and associates the nearest
 preceding bold text as the title.
 
-Probe-native port of academiaindia/scraper/parsers/iit_indore.py (Pydantic JobAd
+Probe-native port of the origin project's scraper/parsers/iit_indore.py (Pydantic JobAd
 output rewritten to plain dicts via make_ad).
 """
 

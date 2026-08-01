@@ -52,11 +52,18 @@ BASE_URL = "https://api.data.gov.in"
 PUBLISHER = "Office of the Registrar General & Census Commissioner (ORGI)"
 SOURCE_FAMILY = "orgi-census"
 
-#: Where the registered key lives, named in the error so nobody re-registers one.
-#: The org convention predates this module — ``twenty27/scripts/ogd_ingest.py``
-#: reads the same variable from the same file.
+#: The API key, read from the environment. Register a free one at
+#: https://data.gov.in/apis.
 KEY_ENV = "DATA_GOV_IN_KEY"
-KEY_HINT = "sevent4/.secrets/keys.env"
+
+#: Optional: the FULL path of a ``KEY=VALUE`` file to read the key from instead
+#: of the environment. Opt-in and absolute, both deliberately. An earlier
+#: version instead walked every parent of ``__file__`` looking for one fixed
+#: relative path — which from site-packages meant reading and parsing whatever
+#: it found under ``/usr`` and ``/`` — and named a private directory in a
+#: published artefact. A credential search is not something a library should do
+#: on its own initiative outside its own tree.
+KEY_FILE_ENV = "COMMONER_PROBE_KEY_FILE"
 
 #: The public sample key published on data.gov.in/apis, identified by digest so
 #: the probe can refuse to crawl 1,128 districts on a shared, rate-limited
@@ -119,7 +126,7 @@ SURFACES: dict[str, Surface] = {
 }
 
 #: NOT AVAILABLE ON THE OGD API. Searched 2026-07-30, and this is the half of
-#: REQ-0045 the API does NOT cover — theright2read asked for ALL libraries, not
+#: REQ-0045 the API does NOT cover — the request was for ALL libraries, not
 #: the rural ones, so this gap blocks the consumer rather than trimming it.
 #:
 #: What was checked:
@@ -160,27 +167,31 @@ class CensusApiError(RuntimeError):
 
 
 def resolve_api_key(explicit: str | None = None) -> str:
-    """The OGD key, from an explicit value, the environment, or the shared file.
+    """The OGD key: an explicit value, then ``KEY_ENV``, then ``KEY_FILE_ENV``.
 
-    Fails with the path named. A probe that silently falls back to the public
-    sample key would appear to work and then throttle part-way through a
-    corpus, which reads as "the source is flaky" rather than "we used the wrong
-    credential".
+    Only those three. Nothing is discovered by searching the filesystem — see
+    ``KEY_FILE_ENV`` for why.
+
+    Fails loudly rather than falling back to the public sample key, which would
+    appear to work and then throttle part-way through a corpus, reading as "the
+    source is flaky" rather than "we used the wrong credential".
     """
     if explicit:
         return explicit
     if os.environ.get(KEY_ENV):
         return os.environ[KEY_ENV]
-    for parent in Path(__file__).resolve().parents:
-        candidate = parent / KEY_HINT
-        if candidate.exists():
-            for line in candidate.read_text(encoding="utf-8").splitlines():
+    key_file = os.environ.get(KEY_FILE_ENV)
+    if key_file:
+        path = Path(key_file)
+        if path.is_file():
+            for line in path.read_text(encoding="utf-8").splitlines():
                 line = line.strip()
                 if line.startswith(f"{KEY_ENV}="):
                     return line.split("=", 1)[1].strip().strip('"').strip("'")
     raise CensusApiError(
-        f"{KEY_ENV} is not set. Export it, or put it in {KEY_HINT} "
-        f"(the org already keeps a registered data.gov.in key there)."
+        f"{KEY_ENV} is not set. Register a free key at https://data.gov.in/apis, "
+        f"then either export {KEY_ENV}, pass --api-key, or point {KEY_FILE_ENV} "
+        f"at a file containing {KEY_ENV}=<key>."
     )
 
 
@@ -422,7 +433,7 @@ class CensusProbe:
             raise CensusApiError(
                 "refusing to crawl on the public sample key from data.gov.in/apis — it is "
                 f"shared and rate-limited, so a corpus pass would throttle part-way and read "
-                f"as a flaky source. Set {KEY_ENV} to the registered key ({KEY_HINT})."
+                f"as a flaky source. Set {KEY_ENV} to a key registered to you."
             )
         seen = self.load_seen()
         entries = self.discover(surface, year=year, max_resources=max_resources)

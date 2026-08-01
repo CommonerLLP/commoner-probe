@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 """HTTP client for probe — state mandatory-disclosure portals.
 
-Design (after academiaindia/scraper/fetch.py)
+Design (after the origin project's scraper/fetch.py)
 ---------------------------------------------
 - SSRF guard: every URL is checked against url_safety.is_safe_url() before
   the first request. Rejects non-http(s), unresolvable hosts, and any URL

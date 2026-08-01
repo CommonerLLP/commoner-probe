@@ -7,7 +7,7 @@ page as one ad, pulling deadline / publications / reservation counts from the
 PDF text. If no relevant PDF is found, emit one rolling-stub so the IIM is still
 visible.
 
-Probe-native port of academiaindia/scraper/parsers/iim_recruit.py. PDF fetching
+Probe-native port of the origin project's scraper/parsers/iim_recruit.py. PDF fetching
 + text extraction is injected via the ``pdf`` callable (provided by the probe in
 download mode; ``None`` skips PDF work, e.g. ``--no-download`` / dry-run).
 """
