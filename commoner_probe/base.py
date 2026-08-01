@@ -21,26 +21,41 @@ def now() -> str:
     return datetime.now().isoformat(timespec="seconds")
 
 
-def safe_filename_segment(value: object) -> str:
+def safe_filename_segment(value: object, *, collapse: bool = False) -> str:
     """Sanitize an attacker-controllable string for use in a filesystem path.
 
-    sansad.in API responses populate fields (``reportNo``, ``uuid``,
-    ``qslno``) that are interpolated into PDF destination paths. A
-    malicious or compromised upstream returning ``"../../../evil"`` for
-    one of these would cause ``write_pdf`` to write outside the intended
-    ``pdfs/`` directory.
+    Server-supplied fields — sansad.in's ``reportNo``/``uuid``/``qslno``, a
+    NADA resource's ``data-filename``, a document basename taken from a URL —
+    are interpolated into destination paths. An upstream returning ``".."`` or
+    ``"../../../evil"`` for one of these would otherwise write outside the
+    intended directory, or produce an empty path segment.
 
-    Replaces every character outside ``[A-Za-z0-9._-]`` with ``_``.
-    Empty / None / non-string inputs become ``"unknown"``.
+    Replaces every character outside ``[A-Za-z0-9._-]`` with ``_``, strips
+    leading dots, and returns ``"unknown"`` rather than an empty string.
+
+    ``collapse`` squashes each run of disallowed characters to a single ``_``
+    and trims trailing ones. It exists because callers that already did that
+    would otherwise rename every file they have on disk: ``"a  b"`` is
+    ``"a__b"`` without it and ``"a_b"`` with it. Pick whichever matches the
+    filenames the caller already wrote; the safety properties are the same
+    either way.
+
+    This is the ONE implementation. Eight near-copies of the regex existed
+    across the package and only this one carried the leading-dot and empty
+    defences, so ``nada._slug("..")`` returned ``".."`` and
+    ``nada._slug("///")`` returned ``""``.
     """
     if value is None:
         return "unknown"
     s = str(value).strip()
     if not s:
         return "unknown"
-    sanitized = re.sub(r"[^A-Za-z0-9._-]", "_", s)
-    # Defensive: strip leading dots so the segment cannot become a
-    # hidden file or a parent-directory reference even after sanitisation.
+    pattern = r"[^A-Za-z0-9._-]+" if collapse else r"[^A-Za-z0-9._-]"
+    sanitized = re.sub(pattern, "_", s)
+    if collapse:
+        sanitized = sanitized.strip("_")
+    # Strip leading dots so the segment cannot become a hidden file or a
+    # parent-directory reference even after sanitisation.
     sanitized = sanitized.lstrip(".")
     return sanitized or "unknown"
 
@@ -76,6 +91,7 @@ class BaseProbe:
         sleep: float = 0.25,
         topic_path: Path | str | None = None,
         resolver: "Resolver | None" = None,
+        user_agent: str | None = None,
     ):
         self.topic = topic
         self.out_dir = out_dir
@@ -83,7 +99,13 @@ class BaseProbe:
         self.manifest = out_dir / "manifest.jsonl"
         self.log_path = out_dir / "probe.log"
         self.sleep = sleep
-        self.session = make_session()
+        # Passed to make_session, NOT set on session.headers afterwards. The
+        # session needs the identity at construction so robots.txt is fetched
+        # and cached under the same User-Agent the pages will be requested
+        # with. Mutating headers later changes only the outgoing request; the
+        # robots check keeps using the default, and a portal that answers
+        # differently for the two identities gets the wrong answer.
+        self.session = make_session(user_agent=user_agent)
         self.topic_path = topic_path
         self.runlog = RunLog(out_dir)
         # Optional name+context -> entity_id resolver. When None, records

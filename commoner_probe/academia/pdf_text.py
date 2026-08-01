@@ -23,6 +23,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from ..base import safe_filename_segment
+
 _PDFTOTEXT = shutil.which("pdftotext")
 
 # Lower bound on accepted deadline years (see origin constants.py).
@@ -74,7 +76,8 @@ def download_pdf(session: Any, url: str, dest_dir: Path, *, timeout: float = 60.
     SSRF guard, so no separate url-safety check is needed here.
     """
     dest_dir.mkdir(parents=True, exist_ok=True)
-    name = re.sub(r"[^A-Za-z0-9._-]+", "_", url.split("?")[0].split("/")[-1])[:200] or "doc.pdf"
+    basename = url.split("?")[0].split("/")[-1]
+    name = safe_filename_segment(basename, collapse=True)[:200] if basename else "doc.pdf"
     if not name.lower().endswith(".pdf"):
         name += ".pdf"
     path = dest_dir / name

@@ -39,6 +39,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urljoin, urlparse
 
+from commoner_probe.base import safe_filename_segment
 from commoner_probe.http_client import make_session
 
 #: The canonical path, NOT the `/index.php/` alias. Both serve the same 34
@@ -180,7 +181,7 @@ class NitiAnnualReportProbe:
 
     def _record(self, report: dict[str, Any], *, status: str) -> dict[str, Any]:
         now = _now()
-        safe = re.sub(r"[^A-Za-z0-9._-]", "_", report["filename"])
+        safe = safe_filename_segment(report["filename"])
         dest = self.out_dir / f"{report['year']}_{report['language']}_{safe}"
         return {
             "key": f"NITI_AR|{report['year']}|{report['language']}",

@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urljoin, urlparse
 
+from .base import safe_filename_segment
 from .http_client import make_session
 from .textparse import extract_pdf_text
 
@@ -96,7 +97,7 @@ class DoePayAllowancesProbe:
     def _record(self, report: dict[str, Any], *, status: str) -> dict[str, Any]:
         now = _now()
         basename = Path(unquote(urlparse(report["url"]).path)).name
-        filename = f"{report['year']}_" + re.sub(r"[^A-Za-z0-9._-]", "_", basename)
+        filename = f"{report['year']}_" + safe_filename_segment(basename)
         dest = self.out_dir / filename
         return {
             "key": f"DOE_PAY_ALLOWANCES|{report['year']}",

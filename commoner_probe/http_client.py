@@ -378,7 +378,38 @@ if requests is not None:
                         time.sleep(_retry_delay(attempt, None))
             raise last_exc or RuntimeError(f"max retries exceeded for {url}")
 
+        # Every verb that makes a request must go through _request. Only get
+        # and post were wrapped, so `session.head(url)` — the natural way to
+        # check a document's size or type before downloading it — fell through
+        # __getattr__ to the bare requests.Session and skipped the SSRF guard,
+        # the robots check, the rate limit and the backoff. The comment above
+        # post records that this trap was already hit once; wrapping the rest
+        # closes the general case rather than the next instance of it.
+        def head(self, url: str, *, respect_robots: bool = True, **kwargs: Any) -> Any:
+            return self._request("HEAD", url, respect_robots=respect_robots, **kwargs)
+
+        def put(self, url: str, *, respect_robots: bool = True, **kwargs: Any) -> Any:
+            return self._request("PUT", url, respect_robots=respect_robots, **kwargs)
+
+        def patch(self, url: str, *, respect_robots: bool = True, **kwargs: Any) -> Any:
+            return self._request("PATCH", url, respect_robots=respect_robots, **kwargs)
+
+        def delete(self, url: str, *, respect_robots: bool = True, **kwargs: Any) -> Any:
+            return self._request("DELETE", url, respect_robots=respect_robots, **kwargs)
+
+        def request(self, method: str, url: str, *, respect_robots: bool = True, **kwargs: Any) -> Any:
+            return self._request(method, url, respect_robots=respect_robots, **kwargs)
+
         def __getattr__(self, name: str) -> Any:
+            # A future requests verb would still slip past the guards here, so
+            # refuse rather than forward it silently. Non-request attributes
+            # (headers, cookies, mount, close, ...) pass through as before.
+            if name in {"options", "connect", "trace"}:
+                raise AttributeError(
+                    f"{name!r} is not wrapped by RetrySession, so it would bypass the "
+                    "SSRF guard, robots check and rate limit. Use .request(method, url) "
+                    "or add an explicit wrapper."
+                )
             return getattr(self._session, name)
 
     def make_session(rate_limit_sec: float = DEFAULT_RATE_LIMIT_SEC, *, user_agent: str | None = None) -> RetrySession:

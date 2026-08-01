@@ -523,3 +523,38 @@ def test_5xx_backoff_still_works(monkeypatch):
     assert resp.status_code == 200
     assert session._session.calls == 2
     assert slept
+
+
+# ---------------------------------------------------------------------------
+# Verb coverage: anything that makes a request must go through the guards.
+#
+# Only get and post were wrapped. `session.head(url)` — the natural way to
+# check a document's size or type before downloading — fell through
+# __getattr__ to the bare requests.Session, skipping the SSRF guard, the
+# robots check, the rate limit and the backoff.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.skipif(not hasattr(hc, "RetrySession"), reason="requests not installed")
+@pytest.mark.parametrize("verb", ["get", "post", "head", "put", "patch", "delete"])
+def test_every_request_verb_is_guarded(verb, monkeypatch):
+    session = hc.make_session()
+    monkeypatch.setattr(hc, "is_safe_url", lambda url: False)
+    with pytest.raises(ValueError, match="SSRF guard"):
+        getattr(session, verb)("http://169.254.169.254/latest/meta-data/")
+
+
+@pytest.mark.skipif(not hasattr(hc, "RetrySession"), reason="requests not installed")
+def test_generic_request_is_guarded(monkeypatch):
+    session = hc.make_session()
+    monkeypatch.setattr(hc, "is_safe_url", lambda url: False)
+    with pytest.raises(ValueError, match="SSRF guard"):
+        session.request("GET", "http://127.0.0.1/")
+
+
+@pytest.mark.skipif(not hasattr(hc, "RetrySession"), reason="requests not installed")
+def test_an_unwrapped_verb_is_refused_rather_than_forwarded():
+    """The next requests verb must not silently inherit the old behaviour."""
+    session = hc.make_session()
+    with pytest.raises(AttributeError, match="bypass"):
+        session.options

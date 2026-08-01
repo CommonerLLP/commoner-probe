@@ -52,6 +52,8 @@ from pathlib import Path
 from typing import Any
 from xml.etree import ElementTree as ET
 
+from .base import safe_filename_segment
+
 NS = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
 
 #: An XLSX is a zip of XML, fetched over the network from a government portal —
@@ -259,7 +261,7 @@ def _now() -> str:
 
 def _slug(value: str) -> str:
     """Filesystem- and key-safe form of a town name."""
-    return re.sub(r"[^A-Za-z0-9._-]+", "_", str(value)).strip("_")
+    return safe_filename_segment(value, collapse=True)
 
 
 def _norm(value: Any) -> str:
