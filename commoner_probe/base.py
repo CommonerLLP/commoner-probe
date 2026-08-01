@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from datetime import datetime
 from pathlib import Path
@@ -153,17 +154,34 @@ class BaseProbe:
             f.write(json.dumps(rec, ensure_ascii=False) + "\n")
 
     def write_pdf(self, url: str, dest_path: Path, headers: dict) -> bool:
+        """Download to a temp file, then rename into place.
+
+        The rename is what makes the size check below trustworthy. Writing
+        straight to ``dest_path`` meant a Ctrl-C or a dropped connection left
+        a truncated PDF there, and the next run's ``st_size > 1000`` accepted
+        it as complete — permanently. Extraction then produced partial text
+        indistinguishable from a genuinely short answer.
+
+        ``os.replace`` is atomic within a filesystem, so a reader sees either
+        no file or the whole file, never a half-written one.
+        """
         if dest_path.exists() and dest_path.stat().st_size > 1000:
             return True
         dest_path.parent.mkdir(parents=True, exist_ok=True)
         encoded_url = _encode_url_path(url)
+        tmp_path = dest_path.with_suffix(dest_path.suffix + ".tmp")
         try:
             r = self.session.get(encoded_url, headers=headers, timeout=60)
             r.raise_for_status()
-            with dest_path.open("wb") as f:
+            with tmp_path.open("wb") as f:
                 for chunk in r.iter_content(chunk_size=16384):
                     f.write(chunk)
-            return dest_path.exists() and dest_path.stat().st_size > 1000
+            if tmp_path.stat().st_size <= 1000:
+                return False
+            os.replace(tmp_path, dest_path)
+            return True
         except Exception as e:
             self.log(f"Warning: Failed to download PDF {url}: {e}")
             return False
+        finally:
+            tmp_path.unlink(missing_ok=True)
