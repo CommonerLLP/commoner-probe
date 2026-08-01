@@ -64,3 +64,17 @@ nearest town and its distance**. Mangan (NP) reads `1.0` for libraries but
 `GANGTOK(67)` for medical colleges — meaning none here, nearest 67 km away. An
 integer parse silently drops exactly the towns that lack the facility, turning
 "absent" into "unknown" or worse into a skipped row.
+
+## `DH_2011_1101-North_District.zip`
+
+The **real** ZIP ORGI serves for Sikkim's North District (NADA catalog 13990,
+acquired 2026-08-01), trimmed to the two members the reader needs:
+`Town Statement-V_1101.xls` and `Appendix_I_1101.xls`. Both are unmodified.
+
+**Why the reader takes the ZIP and not the loose .xls.** The `1101` in the
+filename is ORGI's DCHB ordinal — state code plus a district counter — and is
+**not** the 2011 Census district code the rest of the corpus joins on. North
+District's census code is **241**, and the only in-band place it appears is the
+`Appendix_I` header cell: `District: North  District (241)`. A reader given the
+loose Statement V file cannot know it, and a reader that copies `1101` writes a
+key that silently fails to join. (Codex, PR #104.)

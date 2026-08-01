@@ -420,12 +420,10 @@ def test_re_ingesting_does_not_duplicate_rows(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Statement V (.xls) — Sikkim's shape. 34 states ship an xlsx; Sikkim does not.
+# Statement V — Sikkim's shape. 34 states ship an xlsx; Sikkim ships ZIPs.
 # ---------------------------------------------------------------------------
 
-# The source's real filename is kept deliberately: it is the ONLY carrier of the
-# district code, so renaming it would discard data the parser depends on.
-STMT_V = Path(__file__).parent / "fixtures" / "dchb" / "Town Statement-V_1101.xls"
+SK_ZIP = Path(__file__).parent / "fixtures" / "dchb" / "DH_2011_1101-North_District.zip"
 
 xlrd_required = pytest.mark.skipif(
     __import__("importlib.util", fromlist=["util"]).find_spec("xlrd") is None,
@@ -453,61 +451,81 @@ def test_an_empty_cell_is_unknown_not_zero():
 
 
 @xlrd_required
-def test_statement_v_yields_the_towns_with_library_and_reading_room_columns():
-    """Columns 21 and 22 are `Public libraries` and `Reading rooms` — separate,
-    per the corrected spec."""
-    rows = dchb_town.read_statement_v(STMT_V)
-    assert len(rows) == 1, f"North District has one town, got {len(rows)}"
-    town = rows[0]
-    assert town["town_name"].startswith("Mangan")
-    assert town["public_library"] == 1
-    assert town["reading_room"] == 1
-    # The nearest-place fields exist and are null when the facility is present.
-    assert town["public_library_nearest_place"] is None
+def test_the_census_district_code_is_read_from_the_zip_not_the_filename():
+    """`1101` in the filename is ORGI's DCHB ordinal — state code plus a district
+    counter — NOT the 2011 Census district code the rest of the corpus joins on.
+    North District's census code is 241, and the only in-band source is the
+    Appendix_I header: `District: North  District (241)`. Copying 1101 writes a
+    key that silently fails to join (Codex, PR #104)."""
+    state, district, name = dchb_town.district_from_zip(SK_ZIP)
+    assert district == "241", f"expected the census code 241, got {district!r}"
+    assert district != "1101", "the filename ordinal is not the census district code"
+    assert state == "11"
+    assert "North" in name
 
 
 @xlrd_required
-def test_statement_v_rows_validate_against_the_same_schema(tmp_path):
+def test_a_zip_without_the_appendix_header_is_refused(tmp_path):
+    """No Appendix_I means no census district code, and guessing one would write
+    rows that join to the wrong district."""
+    import zipfile as zf
+
+    bad = tmp_path / "DH_2011_1101-North_District.zip"
+    with zf.ZipFile(SK_ZIP) as src, zf.ZipFile(bad, "w") as dst:
+        for item in src.infolist():
+            if "Appendix_I" not in item.filename:
+                dst.writestr(item, src.read(item.filename))
+    with pytest.raises(dchb_town.DchbTownError, match="district code"):
+        dchb_town.district_from_zip(bad)
+
+
+@xlrd_required
+def test_the_zip_yields_towns_with_library_and_reading_room_columns(tmp_path):
+    probe = dchb_town.DchbTownProbe(tmp_path)
+    rows = probe.ingest_district_zip(SK_ZIP)
+    assert len(rows) == 1
+    town = rows[0]
+    assert town["town_name"].startswith("Mangan")
+    assert town["public_library_total"] == 1
+    assert town["reading_room_total"] == 1
+    assert town["measure"] == "count"
+    assert town["district_code"] == "241", "must be the census code, joinable to the rural corpus"
+    assert town["district_name"]
+
+
+@xlrd_required
+def test_zip_rows_validate_against_the_same_schema(tmp_path):
     """One schema for both input shapes — a consumer must not have to care which
     format a state happened to publish."""
     from commoner_probe.validate import validate_corpus
 
-    probe = dchb_town.DchbTownProbe(tmp_path)
-    probe.ingest_statement_v(STMT_V, state_code="11", district_code="101")
+    dchb_town.DchbTownProbe(tmp_path).ingest_district_zip(SK_ZIP)
     assert validate_corpus(tmp_path, log=lambda _m: None)
-    rows = _row_file(tmp_path)
-    assert rows and rows[0]["kind"] == "dchb_town_amenity"
-    assert rows[0]["state_code"] == "11"
 
 
-def test_reading_statement_v_without_xlrd_says_which_extra_to_install(monkeypatch):
+@xlrd_required
+def test_the_district_code_width_matches_the_xlsx_path(tmp_path):
+    """The xlsx path emits 3-digit census district codes (Maharashtra 497-500).
+    The zip path must emit the same width, or the join is cosmetic only."""
+    rows = dchb_town.DchbTownProbe(tmp_path).ingest_district_zip(SK_ZIP)
+    assert len(rows[0]["district_code"]) == 3
+
+
+def test_reading_without_xlrd_says_which_extra_to_install(monkeypatch):
     """The zero-dependency core stays zero-dependency; the failure has to name
     the fix rather than surface an ImportError."""
     monkeypatch.setattr(dchb_town, "_load_xlrd", lambda: None)
     with pytest.raises(dchb_town.DchbTownError, match=r"commoner-probe\[xls\]"):
-        dchb_town.read_statement_v(STMT_V)
-
-
-def test_the_district_and_state_codes_come_from_the_statement_v_filename():
-    """`Town Statement-V_1101.xls` carries the district code, and the first two
-    digits are the state. The sheet itself has neither, so the filename is the
-    only in-band source — and guessing them would be worse."""
-    assert dchb_town.codes_from_statement_v_name("Town Statement-V_1101.xls") == ("11", "1101")
-    assert dchb_town.codes_from_statement_v_name("/a/b/Town Statement-V_1104.xls") == ("11", "1104")
-
-
-def test_an_unparseable_statement_v_filename_is_refused():
-    with pytest.raises(dchb_town.DchbTownError, match="district code"):
-        dchb_town.codes_from_statement_v_name("some_random_file.xls")
+        dchb_town.district_from_zip(SK_ZIP)
 
 
 @xlrd_required
-def test_the_cli_reads_a_statement_v_xls(tmp_path):
+def test_the_cli_reads_a_district_zip(tmp_path):
     from commoner_probe import cli
 
-    args = cli.build_parser().parse_args(["dchb-town", "--out", str(tmp_path), str(STMT_V)])
+    args = cli.build_parser().parse_args(["dchb-town", "--out", str(tmp_path), str(SK_ZIP)])
     args.func(args)
     rows = _row_file(tmp_path)
     assert len(rows) == 1
-    assert rows[0]["state_code"] == "11" and rows[0]["district_code"] == "1101"
+    assert rows[0]["state_code"] == "11" and rows[0]["district_code"] == "241"
     assert rows[0]["public_library_total"] == 1

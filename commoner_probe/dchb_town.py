@@ -155,20 +155,50 @@ def parse_facility_cell(value: Any) -> tuple[int | None, str | None, float | Non
     return None, None, None
 
 
-def codes_from_statement_v_name(path: Path | str) -> tuple[str, str]:
-    """(state_code, district_code) from a `Town Statement-V_<district>.xls` name.
+def district_from_zip(zip_path: Path | str) -> tuple[str, str, str]:
+    """(state_code, census_district_code, district_name) from a DCHB district ZIP.
 
-    The sheet carries neither code, so the filename is the only in-band source.
-    Refused rather than guessed when the name does not match.
+    **The filename is not the source of the district code.** ORGI names these
+    `DH_2011_1101-North_District.zip`, where `1101` is the state code plus a
+    district ORDINAL — not the 2011 Census district code the rest of this corpus
+    joins on. North District's census code is 241. The only in-band source is the
+    `Appendix_I` header cell, `District: North  District (241)`.
+
+    Copying the ordinal writes a key that silently fails to join, so a ZIP
+    without that header is refused rather than guessed at.
     """
-    match = re.search(r"Statement-V_(\d{4})", Path(path).name)
-    if not match:
+    xlrd = _load_xlrd()
+    if xlrd is None:
         raise DchbTownError(
-            f"{Path(path).name}: no district code in the filename — expected "
-            "'Town Statement-V_<4-digit district>.xls'"
+            "reading a DCHB district ZIP needs the optional xls reader — "
+            "run: pip install commoner-probe[xls]. Only Sikkim publishes this "
+            "shape; the other 34 states ship an .xlsx that needs no extra."
         )
-    district = match.group(1)
-    return district[:2], district
+    zip_path = Path(zip_path)
+    ordinal = re.search(r"DH_2011_(\d{4})", zip_path.name)
+    if not ordinal:
+        raise DchbTownError(f"{zip_path.name}: not a DH_2011 district ZIP")
+    state = ordinal.group(1)[:2]
+
+    with zipfile.ZipFile(zip_path) as archive:
+        names = [n for n in archive.namelist() if re.search(r"Appendix_I_\d+\.xls$", n)]
+        if not names:
+            raise DchbTownError(
+                f"{zip_path.name}: no Appendix_I member, so the census district code "
+                "cannot be read. The filename carries ORGI's ordinal, not the census "
+                "code, and guessing it would write rows that join to the wrong district."
+            )
+        book = xlrd.open_workbook(file_contents=archive.read(names[0]))
+    sheet = book.sheet_by_index(0)
+    for r in range(min(sheet.nrows, 8)):
+        for c in range(min(sheet.ncols, 4)):
+            match = re.search(r"District:\s*(.+?)\s*\((\d+)\)", str(sheet.cell_value(r, c)))
+            if match:
+                return state, match.group(2), re.sub(r"\s+", " ", match.group(1)).strip()
+    raise DchbTownError(
+        f"{zip_path.name}: Appendix_I carries no 'District: <name> (<code>)' header, "
+        "so the census district code is unavailable"
+    )
 
 
 def read_statement_v(path: Path | str) -> list[dict]:
@@ -184,7 +214,10 @@ def read_statement_v(path: Path | str) -> list[dict]:
             "run: pip install commoner-probe[xls]. Only Sikkim publishes this "
             "shape; the other 34 states ship an .xlsx that needs no extra."
         )
-    book = xlrd.open_workbook(str(path))
+    if isinstance(path, (bytes, bytearray)):
+        book = xlrd.open_workbook(file_contents=bytes(path))
+    else:
+        book = xlrd.open_workbook(str(path))
     sheet = book.sheet_by_index(0)
 
     header_row = None
@@ -372,7 +405,32 @@ class DchbTownProbe:
         self._write(self.manifest, [record], key="key")
         return rows
 
-    def ingest_statement_v(self, xls: Path | str, *, state_code: str, district_code: str) -> list[dict]:
+    def ingest_district_zip(self, zip_path: Path | str) -> list[dict]:
+        """Ingest one DCHB district ZIP — Sikkim's shape — end to end.
+
+        Takes the ZIP because that is what ORGI serves AND because the census
+        district code lives in a sibling member; a loose Statement V file cannot
+        supply it.
+        """
+        zip_path = Path(zip_path)
+        state, district, district_name = district_from_zip(zip_path)
+        with zipfile.ZipFile(zip_path) as archive:
+            members = [n for n in archive.namelist() if "Town Statement-V_" in n]
+            if not members:
+                raise DchbTownError(f"{zip_path.name}: no Town Statement-V member")
+            payload = archive.read(members[0])
+            member_name = Path(members[0]).name
+        return self.ingest_statement_v(
+            payload,
+            state_code=state,
+            district_code=district,
+            district_name=district_name,
+            source_filename=f"{zip_path.name}::{member_name}",
+        )
+
+    def ingest_statement_v(self, xls, *, state_code: str, district_code: str,
+                           district_name: str | None = None,
+                           source_filename: str | None = None) -> list[dict]:
         """Ingest one `Town Statement-V_<district>.xls` — Sikkim's shape.
 
         Emits the SAME `dchb_town_amenity` rows as the xlsx path, so a consumer
@@ -380,9 +438,13 @@ class DchbTownProbe:
         and district codes are not in the sheet, so the caller supplies them
         from the filename or the record.
         """
-        xls = Path(xls)
-        towns = read_statement_v(xls)
-        blob = xls.read_bytes()
+        if isinstance(xls, (bytes, bytearray)):
+            blob = bytes(xls)
+            name = source_filename or "Town Statement-V.xls"
+        else:
+            blob = Path(xls).read_bytes()
+            name = source_filename or Path(xls).name
+        towns = read_statement_v(blob)
         sha = hashlib.sha256(blob).hexdigest()
         rows = []
         for town in towns:
@@ -397,7 +459,7 @@ class DchbTownProbe:
                 "state_code": state_code,
                 "state_name": None,
                 "district_code": district_code,
-                "district_name": None,
+                "district_name": district_name,
                 "subdistrict_code": None,
                 "subdistrict_name": None,
                 # Statement V has no town code; the name is the identity here.
@@ -417,25 +479,25 @@ class DchbTownProbe:
                 "reading_room_total": room,
                 "reading_room_govt_status": None,
                 "reading_room_private_status": None,
-                "source_filename": xls.name,
+                "source_filename": name,
                 "source_sha256": sha,
                 "extracted_at": _now(),
             })
         distinct = {r["key"] for r in rows}
         if len(distinct) != len(rows):
             raise DchbTownError(
-                f"{xls.name}: {len(rows)} towns collapse to {len(distinct)} keys"
+                f"{name}: {len(rows)} towns collapse to {len(distinct)} keys"
             )
         self.out_dir.mkdir(parents=True, exist_ok=True)
         self._write(self.rows_path, rows, key="key")
         self._write(self.manifest, [{
-            "key": f"DCHB|{state_code}|{xls.name}",
+            "key": f"DCHB|{state_code}|{name}",
             "kind": "dchb_town_release",
             "record_type": "dchb_town_release",
             "source": "censusindia.gov.in",
             "census_year": "2011",
             "state_code": state_code,
-            "source_filename": xls.name,
+            "source_filename": name,
             "sha256": sha,
             "bytes": len(blob),
             "towns": len(rows),
