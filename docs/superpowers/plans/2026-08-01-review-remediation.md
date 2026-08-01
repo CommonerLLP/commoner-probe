@@ -583,6 +583,46 @@ markers. The bare install was re-verified after the new cross-module imports:
 
 ---
 
+## Finding 16 — `_is_sample_key` may not recognise anything, and no test could tell
+
+Found on 2026-08-01 while answering "are there secrets on PyPI?" — not from
+the review. **Not fixed; it needs an input this repo does not hold.**
+
+`census._is_sample_key` guards a 1,128-district crawl: it refuses to run a
+corpus pass on the shared, rate-limited public key from data.gov.in, which
+would throttle part-way and read as "the source is flaky". It compares
+`sha256(key)` against the shipped `SAMPLE_KEY_SHA256`.
+
+Both tests that touch it do:
+
+```python
+monkeypatch.setattr(census, "_is_sample_key", lambda key: True)
+```
+
+They stub the predicate. So they prove the CALLER refuses a sample key, and
+prove nothing about whether the predicate can recognise one. If the constant
+is the digest of nothing, the guard never fires and every test still passes —
+the same shape as the three checks this plan already fixed.
+
+What is known: the constant is a digest, so it discloses nothing and is not a
+secret. What is NOT known: whether it is the digest of the key data.gov.in
+actually publishes. `https://www.data.gov.in/apis` returned **403** to an
+automated fetch on 2026-08-01, so it could not be settled from here.
+
+Done in the meantime: `test_is_sample_key_compares_a_digest_not_a_prefix`
+exercises the predicate rather than stubbing it, pinning that an exact match
+is True, a different key is False, and a key sharing the `579b464db66e` prefix
+every data.gov.in key starts with is NOT treated as the sample — a prefix test
+here would refuse the org's registered credential, which is how the first cut
+of this module failed.
+
+**To close it:** open `https://www.data.gov.in/apis` in a browser, copy the
+published sample key, and check `sha256(key).hexdigest()` against
+`SAMPLE_KEY_SHA256`. If they differ, the constant is wrong and the guard has
+never fired. That is one minute of a human's time and cannot be done headless.
+
+---
+
 ## What this plan does not do
 
 - **No new acquisition surface.** No new adapters, no new subcommands. This is
