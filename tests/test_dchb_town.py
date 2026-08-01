@@ -417,3 +417,115 @@ def test_re_ingesting_does_not_duplicate_rows(tmp_path):
     probe.ingest(FIX)
     assert len(_row_file(tmp_path)) == first
     assert len(_manifest(tmp_path)) == 1
+
+
+# ---------------------------------------------------------------------------
+# Statement V — Sikkim's shape. 34 states ship an xlsx; Sikkim ships ZIPs.
+# ---------------------------------------------------------------------------
+
+SK_ZIP = Path(__file__).parent / "fixtures" / "dchb" / "DH_2011_1101-North_District.zip"
+
+xlrd_required = pytest.mark.skipif(
+    __import__("importlib.util", fromlist=["util"]).find_spec("xlrd") is None,
+    reason="Statement V reading needs the optional xls extra: pip install commoner-probe[xls]",
+)
+
+
+def test_a_cell_holding_a_count_parses_as_a_count():
+    assert dchb_town.parse_facility_cell("1.0") == (1, None, None)
+    assert dchb_town.parse_facility_cell("3") == (3, None, None)
+
+
+def test_a_cell_holding_a_nearest_place_means_ZERO_not_unknown():
+    """The trap the corrected request spec names: a cell holds either a count OR
+    the nearest town and its distance. `GANGTOK(67)` means there is none here and
+    the nearest is 67 km away — a count of ZERO with a location, not a missing
+    value. An integer parse drops exactly the towns that lack the facility."""
+    assert dchb_town.parse_facility_cell("GANGTOK(67)") == (0, "GANGTOK", 67.0)
+    assert dchb_town.parse_facility_cell("WEST PENDAM(46)") == (0, "WEST PENDAM", 46.0)
+
+
+def test_an_empty_cell_is_unknown_not_zero():
+    assert dchb_town.parse_facility_cell("") == (None, None, None)
+    assert dchb_town.parse_facility_cell(None) == (None, None, None)
+
+
+@xlrd_required
+def test_the_census_district_code_is_read_from_the_zip_not_the_filename():
+    """`1101` in the filename is ORGI's DCHB ordinal — state code plus a district
+    counter — NOT the 2011 Census district code the rest of the corpus joins on.
+    North District's census code is 241, and the only in-band source is the
+    Appendix_I header: `District: North  District (241)`. Copying 1101 writes a
+    key that silently fails to join (Codex, PR #104)."""
+    state, district, name = dchb_town.district_from_zip(SK_ZIP)
+    assert district == "241", f"expected the census code 241, got {district!r}"
+    assert district != "1101", "the filename ordinal is not the census district code"
+    assert state == "11"
+    assert "North" in name
+
+
+@xlrd_required
+def test_a_zip_without_the_appendix_header_is_refused(tmp_path):
+    """No Appendix_I means no census district code, and guessing one would write
+    rows that join to the wrong district."""
+    import zipfile as zf
+
+    bad = tmp_path / "DH_2011_1101-North_District.zip"
+    with zf.ZipFile(SK_ZIP) as src, zf.ZipFile(bad, "w") as dst:
+        for item in src.infolist():
+            if "Appendix_I" not in item.filename:
+                dst.writestr(item, src.read(item.filename))
+    with pytest.raises(dchb_town.DchbTownError, match="district code"):
+        dchb_town.district_from_zip(bad)
+
+
+@xlrd_required
+def test_the_zip_yields_towns_with_library_and_reading_room_columns(tmp_path):
+    probe = dchb_town.DchbTownProbe(tmp_path)
+    rows = probe.ingest_district_zip(SK_ZIP)
+    assert len(rows) == 1
+    town = rows[0]
+    assert town["town_name"].startswith("Mangan")
+    assert town["public_library_total"] == 1
+    assert town["reading_room_total"] == 1
+    assert town["measure"] == "count"
+    assert town["district_code"] == "241", "must be the census code, joinable to the rural corpus"
+    assert town["district_name"]
+
+
+@xlrd_required
+def test_zip_rows_validate_against_the_same_schema(tmp_path):
+    """One schema for both input shapes — a consumer must not have to care which
+    format a state happened to publish."""
+    from commoner_probe.validate import validate_corpus
+
+    dchb_town.DchbTownProbe(tmp_path).ingest_district_zip(SK_ZIP)
+    assert validate_corpus(tmp_path, log=lambda _m: None)
+
+
+@xlrd_required
+def test_the_district_code_width_matches_the_xlsx_path(tmp_path):
+    """The xlsx path emits 3-digit census district codes (Maharashtra 497-500).
+    The zip path must emit the same width, or the join is cosmetic only."""
+    rows = dchb_town.DchbTownProbe(tmp_path).ingest_district_zip(SK_ZIP)
+    assert len(rows[0]["district_code"]) == 3
+
+
+def test_reading_without_xlrd_says_which_extra_to_install(monkeypatch):
+    """The zero-dependency core stays zero-dependency; the failure has to name
+    the fix rather than surface an ImportError."""
+    monkeypatch.setattr(dchb_town, "_load_xlrd", lambda: None)
+    with pytest.raises(dchb_town.DchbTownError, match=r"commoner-probe\[xls\]"):
+        dchb_town.district_from_zip(SK_ZIP)
+
+
+@xlrd_required
+def test_the_cli_reads_a_district_zip(tmp_path):
+    from commoner_probe import cli
+
+    args = cli.build_parser().parse_args(["dchb-town", "--out", str(tmp_path), str(SK_ZIP)])
+    args.func(args)
+    rows = _row_file(tmp_path)
+    assert len(rows) == 1
+    assert rows[0]["state_code"] == "11" and rows[0]["district_code"] == "241"
+    assert rows[0]["public_library_total"] == 1
