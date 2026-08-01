@@ -24,6 +24,7 @@ Exits non-zero, loudly, if the version is not installable.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -39,16 +40,25 @@ BACKOFF_SEC = 15
 
 
 def _version_endpoint(version: str) -> dict | None:
-    """The version-specific JSON route. 404 until the release is served."""
+    """The version-specific JSON route. 404 until the release is served.
+
+    Returns None for "not there yet" AND for a transient failure — a 503 or a
+    dropped connection during a publish window is not evidence the release is
+    missing, and raising on it would turn a retryable blip into a failed
+    verification (Codex, PR #102).
+    """
     url = f"https://pypi.org/pypi/{PROJECT}/{version}/json?cb={time.time()}"
     request = urllib.request.Request(url, headers={"Cache-Control": "no-cache"})
     try:
         with urllib.request.urlopen(request, timeout=30) as response:
             return json.loads(response.read())
     except urllib.error.HTTPError as exc:
-        if exc.code == 404:
-            return None
-        raise
+        if exc.code != 404:
+            print(f"  transient HTTP {exc.code} from the index — retrying", file=sys.stderr)
+        return None
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+        print(f"  transient error from the index ({exc}) — retrying", file=sys.stderr)
+        return None
 
 
 def _install_check(version: str) -> str:
@@ -62,18 +72,59 @@ def _install_check(version: str) -> str:
         subprocess.run([sys.executable, "-m", "venv", str(venv)], check=True, capture_output=True)
         pip = venv / "bin" / "pip"
         python = venv / "bin" / "python"
+
+        # Ignore the user's pip config and cache. Otherwise a wheel already in
+        # the local cache, or a configured alternate index or find-links,
+        # satisfies the install without PyPI serving anything (Codex, PR #102).
+        env = {
+            **os.environ,
+            "PIP_CONFIG_FILE": os.devnull,
+            "PIP_NO_CACHE_DIR": "1",
+            "PIP_INDEX_URL": "https://pypi.org/simple/",
+        }
+        for key in ("PIP_FIND_LINKS", "PIP_EXTRA_INDEX_URL", "PIP_TARGET"):
+            env.pop(key, None)
         subprocess.run(
-            [str(pip), "install", "-q", f"{PROJECT}=={version}"],
+            [str(pip), "install", "--no-cache-dir", "--index-url", "https://pypi.org/simple/",
+             "-q", f"{PROJECT}=={version}"],
             check=True,
             capture_output=True,
+            env=env,
         )
-        result = subprocess.run(
-            [str(python), "-c", f"import {IMPORT_NAME}; print({IMPORT_NAME}.__version__)"],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-        return result.stdout.strip()
+
+        # cwd=tmp, NOT the repo. `python -c` puts the working directory on
+        # sys.path, so running this from the checkout imported the local source
+        # tree instead of the installed wheel — a venv with nothing installed
+        # still reported the right version (Codex, PR #102). The path assertion
+        # below makes that failure impossible to reintroduce silently.
+        try:
+            result = subprocess.run(
+                [str(python), "-c",
+                 f"import {IMPORT_NAME}; print({IMPORT_NAME}.__version__); print({IMPORT_NAME}.__file__)"],
+                check=True,
+                capture_output=True,
+                text=True,
+                cwd=tmp,
+                env=env,
+            )
+        except subprocess.CalledProcessError as exc:
+            raise RuntimeError(
+                f"{IMPORT_NAME} is not importable in a clean environment after "
+                f"installing {PROJECT}=={version}: {exc.stderr.strip().splitlines()[-1:]}"
+            ) from None
+        reported, imported_from = result.stdout.strip().splitlines()[:2]
+        # Both sides resolved: on macOS /var/folders is a symlink to
+        # /private/var/folders, so tempfile and __file__ disagree on spelling
+        # for the very same directory.
+        resolved_import = Path(imported_from).resolve()
+        resolved_venv = venv.resolve()
+        if resolved_venv not in resolved_import.parents:
+            raise RuntimeError(
+                f"imported {IMPORT_NAME} from {resolved_import}, which is not inside the "
+                f"throwaway venv {resolved_venv} — this check would be verifying a local "
+                "source tree rather than the published artefact"
+            )
+        return reported
 
 
 def main(argv: list[str]) -> int:
@@ -108,7 +159,11 @@ def main(argv: list[str]) -> int:
     for file_info in payload.get("urls", []):
         print(f"  {file_info['packagetype']:<12} {file_info['filename']}  {file_info['size']} bytes")
 
-    installed = _install_check(version)
+    try:
+        installed = _install_check(version)
+    except (RuntimeError, subprocess.CalledProcessError) as exc:
+        print(f"FAIL: {exc}", file=sys.stderr)
+        return 1
     if installed != version:
         print(
             f"FAIL: installed {PROJECT} reports __version__ {installed!r}, expected {version!r}",
