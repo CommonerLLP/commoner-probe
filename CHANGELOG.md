@@ -1,5 +1,46 @@
 # Changelog
 
+## 0.12.1 (2026-08-01)
+
+A patch, not a minor. `ROADMAP.md`'s pre-1.0 rule reserves the minor slot for a
+new acquisition surface or a breaking change, and this is neither: `dchb-town`
+already existed, no subcommand was added (40 before, 40 after), nothing was
+removed, and the only changed behaviour on an existing path is a `.zip` branch
+where the previous code would have errored. The functions whose signatures moved
+were never released.
+
+**Closes the last coverage gap in REQ-0045's urban half.** 0.12.0 read the
+state-level `DH_2011_DCHB_Town_Release_<code>.xlsx` that 34 of 35 states publish.
+Sikkim publishes four per-district ZIPs of `Town Statement-V_<district>.xls`
+instead — same facts, older format — and those are now read too, so
+`commoner-probe dchb-town` covers all 35 states.
+
+Two source traps are encoded, both found in review rather than by the first cut:
+
+- **A Statement V cell holds either a count or the nearest town and its
+  distance.** `GANGTOK(67)` means none here and the nearest is 67 km away — a
+  count of *zero with a location*, not a missing value. Parsing the cell as an
+  integer silently drops exactly the towns that lack the facility.
+- **The ZIP filename carries ORGI's ordinal, not the census district code.**
+  `DH_2011_1101-North_District.zip` is state 11 plus district counter 01; the
+  2011 Census district code the corpus joins on is **241**, and it appears only
+  in the sibling `Appendix_I` header. The reader therefore takes the ZIP, and
+  refuses one without that header rather than writing a key that fails to join.
+
+**New optional extra: `commoner-probe[xls]`** (xlrd). This is the strongest
+argument anyone could make for calling this a minor, so it is stated plainly
+rather than buried: it is additive, no existing install changes, the core keeps
+`dependencies = []`, and 34 of 35 states need no extra at all. It is in `dev` so
+CI exercises the path instead of skipping it.
+
+Rows from both input shapes emit the same `dchb_town_amenity` kind, the same
+schema and the same `measure: "count"` guard, so a consumer never has to know
+which format a state happened to publish.
+
+Live: Sikkim's four districts — census codes 241-244, 9 towns, 4 public
+libraries, 9 being its actual 2011 town count — mixed with an xlsx state in one
+corpus, 35 towns, all schema-valid.
+
 ## 0.12.0 (2026-07-31)
 
 A new acquisition surface, so a minor bump under the pre-1.0 rule in
