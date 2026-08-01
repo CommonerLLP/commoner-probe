@@ -20,7 +20,64 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Install dependencies
         run: python -m pip install -e ".[pdf,http,dev]"
+      # Same paths as `make lint`. They had drifted: CI checked
+      # `commoner_probe tests` while the Makefile also checked `scripts`, so
+      # scripts/ was linted locally and unchecked upstream.
       - name: Lint
-        run: python -m ruff check commoner_probe tests
+        run: python -m ruff check commoner_probe tests scripts
       - name: Test
         run: pytest -q
+
+  # `dependencies = []` is this package's core design constraint, and a plain
+  # `pip install commoner-probe` is what most users get. Nothing tested it:
+  # every matrix entry above installs [pdf,http,dev], so a new top-level
+  # `import requests` in any adapter would stay green here and break every
+  # default install. This job is the one that fails on that.
+  bare-install:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install with no extras
+        run: python -m pip install .
+      # Guard the guard: if an extra were present, the import checks below
+      # would pass for the wrong reason and prove nothing.
+      - name: Refuse to proceed unless the environment is really bare
+        run: |
+          python - <<'PY'
+          import importlib.util, sys
+          leaked = [m for m in ("requests", "bs4", "lxml", "pdfminer", "xlrd")
+                    if importlib.util.find_spec(m) is not None]
+          if leaked:
+              sys.exit(f"not a bare environment — {leaked} present")
+          print("bare environment confirmed")
+          PY
+      # Not just the package root: `import commoner_probe` alone touches almost
+      # nothing. This walks the whole tree, so an optional dependency imported
+      # at module level in ANY adapter fails here.
+      - name: Import every shipped module
+        run: |
+          python - <<'PY'
+          import importlib, pkgutil, sys
+          import commoner_probe
+          names = [m.name for m in pkgutil.walk_packages(commoner_probe.__path__, "commoner_probe.")]
+          if len(names) < 50:
+              sys.exit(f"only found {len(names)} modules — the walk is broken, not the package")
+          failed = []
+          for name in names:
+              try:
+                  importlib.import_module(name)
+              except Exception as exc:
+                  failed.append(f"{name}: {type(exc).__name__}: {exc}")
+          print(f"imported {len(names)} modules")
+          if failed:
+              sys.exit("\n".join(failed))
+          PY
+      - name: Run the CLI
+        run: |
+          commoner-probe --version
+          commoner-probe --help > /dev/null

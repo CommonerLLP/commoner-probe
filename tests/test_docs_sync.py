@@ -29,6 +29,20 @@ class VersionSyncTests(unittest.TestCase):
         self.assertEqual(__version__, match.group(1))
 
 
+    def test_cli_reports_the_installed_version(self):
+        """`--version` must exist and agree with the package.
+
+        A bug report against a published CLI is unusable without it, and a
+        `--version` that drifts from `__version__` is worse than none.
+        """
+        parser = build_parser()
+        with self.assertRaises(SystemExit) as raised:
+            with redirect_stdout(StringIO()) as out:
+                parser.parse_args(["--version"])
+        self.assertEqual(raised.exception.code, 0)
+        self.assertEqual(out.getvalue().strip(), f"commoner-probe {__version__}")
+
+
 class CliCommandSyncTests(unittest.TestCase):
     def test_cli_exposes_expected_subcommands(self):
         parser = build_parser()

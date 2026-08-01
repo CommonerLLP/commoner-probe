@@ -6,6 +6,7 @@ import json
 import sys
 from pathlib import Path
 
+from . import __version__
 from . import nada as nada_mod
 from .academia import AcademicJobsProbe
 from .answers import extract_answers
@@ -1176,6 +1177,13 @@ def init_topic_cmd(args: argparse.Namespace) -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="commoner-probe")
+    # Every published CLI answers this, and a bug report is unusable without
+    # it. Reads the installed version, so it reports what is actually running.
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"commoner-probe {__version__}",
+    )
     sub = parser.add_subparsers(dest="command", required=True)
 
     sansad = sub.add_parser("sansad", help="Probe Lok Sabha / Rajya Sabha parliamentary questions")
