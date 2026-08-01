@@ -650,12 +650,17 @@ bundle; point `REQUESTS_CA_BUNDLE` at a system bundle that carries it
 
 ### `commoner-probe nada` — survey documentation from a NADA catalogue
 
-MoSPI's eSankhyiki API (above) serves aggregated indicator rows. The survey
-*instruments* — the NSS schedules, the written sample design, the technical
-reports — live in a separate NADA (National Data Archive) instance. NADA is
-World Bank software, so one adapter serves many catalogues; pick one with
-`--base-url`. Two are verified: `https://microdata.gov.in/NADA` (MoSPI, 187
-studies) and `https://censusindia.gov.in/nada` (ORGI, 40,254 studies).
+The eSankhyiki API (above) gives you aggregated numbers. This gives you the
+survey itself: the NSS questionnaires, the written sample design, the technical
+reports.
+
+Those live in a NADA (National Data Archive) instance — World Bank software, so
+one adapter reaches many catalogues. Pick one with `--base-url`:
+
+| instance | holds |
+|---|---|
+| `https://microdata.gov.in/NADA` (default) | MoSPI — 187 studies |
+| `https://censusindia.gov.in/nada` | ORGI — 40,254 studies |
 
 ```bash
 commoner-probe nada --list-collections
@@ -664,29 +669,71 @@ commoner-probe nada --out data/nada --query NSS --max-studies 3
 commoner-probe nada --out data/nada --extract-text
 ```
 
-Each study yields its DDI metadata (which carries
-`study_desc.method.data_collection.sampling_procedure`, the written sample
-design), the questionnaire and report PDFs with sha256, and the variable and
-data-file listings. `--extract-text` is a separate pass over what is already on
-disk and makes no network calls; `--ocr` adds the OCR rung for documents whose
-text layer yields nothing.
+Each study gives you:
 
-**`--max-studies` is required for an enumeration run.** It has no default
-meaning "all" and there is no `--all` flag: walking a whole government catalogue
-should be a number you chose, not one you inherited. Start small and raise it —
-documents already on disk are recorded `skipped_exists` and are not re-fetched,
-so a bigger bound resumes rather than restarts. Downloads are additionally
-capped per study by `--max-docs-per-study` (default 25), because a single study
-can list 60+ documents.
+- the DDI metadata, including `method.data_collection.sampling_procedure` —
+  the sample design in the statistician's own words
+- the questionnaire and report PDFs, with sha256
+- the variable and data-file listings
 
-**Microdata files themselves are not acquired.** They are login-gated; this
-tool holds no credentials and implements no login. That is a deliberate posture,
-not a missing flag.
+`--extract-text` is a second pass over what is already on disk. It makes no
+network calls. Add `--ocr` for documents whose text layer yields nothing.
 
-**TLS note for `censusindia.gov.in`:** that host serves its leaf certificate
-without the intermediate, so Python cannot verify the chain (curl can — it
-chases the AIA extension to fetch the missing certificate). Build a bundle that
-carries `emSign SSL CA - G1` and point `REQUESTS_CA_BUNDLE` at it:
+> **`--max-studies` is required.** There is no default meaning "all" and no
+> `--all` flag. Walking a whole government catalogue should be a number you
+> chose, not one you inherited.
+>
+> Start small and raise it. Documents already on disk are recorded
+> `skipped_exists` and are not re-fetched, so a bigger bound resumes rather than
+> restarts. `--max-docs-per-study` (default 25) caps downloads per study — one
+> study can list 60+ documents.
+
+**The microdata files themselves are not acquired.** They are login-gated, and
+this tool holds no credentials. That is a deliberate posture, not a missing flag.
+
+### `commoner-probe dchb-town` — urban public libraries from the Census
+
+The Census counts libraries twice, in two different ways.
+
+| | rural | urban |
+|---|---|---|
+| source | Village Amenities (above) | DCHB **Town Release** |
+| unit | one **village** | one **town** |
+| value | a flag: has a library, yes/no | a **count**: how many |
+
+The urban half lives in a spreadsheet attached to every District Census
+Handbook record. It is a **state-level** file, so about 36 of them cover India —
+not the ~640 district PDFs it looks like at first.
+
+```bash
+# 1. acquire any one district's DCHB record for the state you want
+commoner-probe nada --base-url https://censusindia.gov.in/nada \
+    --out data/dchb --study DH_2011_2725_PART_A_DCHB_PUNE
+
+# 2. read the Town Release that came with it
+commoner-probe dchb-town --out data/census-towns \
+    data/dchb/docs/DH_2011_2725_PART_A_DCHB_PUNE/DH_2011_DCHB_Town_Release_2700.xlsx
+```
+
+You get one row per town in `town_amenity_rows.jsonl`:
+
+- Govt and Private library counts, separately
+- reading-room counts, separately again
+- census state / district / town codes, which join back to the rural corpus
+
+> **Never add the rural and urban numbers together.**
+>
+> The rural figure counts *villages that have a library* — not libraries. Adding
+> it to a library count gives the widely-cited and wrong "~75,000 public
+> libraries".
+>
+> Every row here declares `measure: "count"`, and the schema pins it, so the two
+> cannot be mixed up quietly. Reading rooms are a different facility again, and
+> are never folded into the library totals.
+
+**TLS note.** `censusindia.gov.in` sends its certificate without the
+intermediate, so Python cannot verify the chain (curl can — it fetches the
+missing piece itself). Build a bundle and point `REQUESTS_CA_BUNDLE` at it:
 
 ```bash
 curl -s -o inter.crt http://repository.emsign.com/certs/emSignSSLCAG1.crt
@@ -695,36 +742,8 @@ cat "$(python -c 'import certifi;print(certifi.where())')" inter.pem > bundle.pe
 export REQUESTS_CA_BUNDLE=$PWD/bundle.pem
 ```
 
-Do not disable verification. The CLI detects this failure and prints the same
-guidance rather than a traceback.
-
-### `commoner-probe dchb-town` — urban public libraries from the Census
-
-The Village Amenities surface above gives the RURAL library picture. The URBAN
-counts live in District Census Handbook **Town Release** spreadsheets, which ship
-inside every DCHB record in ORGI's NADA catalogue — a **state-level** file, so
-about 36 of them cover India rather than ~640 district PDFs.
-
-```bash
-# 1. acquire a state's DCHB record (any district of that state carries the file)
-commoner-probe nada --base-url https://censusindia.gov.in/nada \
-    --out data/dchb --study DH_2011_2725_PART_A_DCHB_PUNE
-
-# 2. read the Town Release it shipped
-commoner-probe dchb-town --out data/census-towns \
-    data/dchb/docs/DH_2011_2725_PART_A_DCHB_PUNE/DH_2011_DCHB_Town_Release_2700.xlsx
-```
-
-Writes one row per town to `town_amenity_rows.jsonl` with Govt and Private
-library counts, reading-room counts, and the census state/district/town codes
-that join back to the rural corpus.
-
-**These are counts; the rural values are flags — never add them.** Village
-Amenities records `public_library` as availability per village (A=1/NA=2), so it
-counts *villages that have a library*, not libraries. Summing the two produces
-the widely-cited and wrong "~75,000 public libraries". Every row here declares
-`measure: "count"` and the schema pins it, so the two cannot be conflated
-silently. Reading rooms are a separate facility and are never added to libraries.
+Do not turn verification off. The CLI detects this failure and prints the same
+guidance instead of a traceback.
 
 ### `commoner-probe courts` — India court records
 
