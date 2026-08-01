@@ -71,9 +71,27 @@ before it was fixed.
   60-line `if` chain a new kind could be left out of — which had already shipped
   twice. Proven equivalent before switching: 32 kinds, zero disagreements.
 
+### Removed from the public tree
+
+- **Internal request ids.** `REQ-NNNN` is work-coordination vocabulary that
+  resolves only in a private ledger: meaningless to an outsider, and it
+  advertises that the tracker exists. 81 occurrences across 42 files — docs,
+  ~60 code comments, four schema descriptions, a dozen test docstrings. The
+  reason each comment gives is kept; only the id is dropped.
+- **Implementation plans and specs.** 2,334 lines under `docs/superpowers/`
+  and `docs/plans/` were session artefacts, not product documentation, and
+  were tracked so they were public. `docs/` now holds only what a user of the
+  package needs.
+- **A private sibling repo's name**, which appeared 23 times across the
+  academia package and `http_client`, and a second one twice — one of those
+  pointing at an internal research note. Provenance is preserved, the names
+  are not.
+
 ### Added
 
 - **`commoner-probe --version`**, which did not exist.
+- **`docs/CLI.md`.** The README was 1,284 lines and the command reference was
+  822 of them. It moved verbatim; the README is 468 and points at it.
 - **A release gate.** The publish workflow ran no tests, no lint, and no check
   that the tag matched `pyproject.toml`, so a `v0.13.0` tag on a 0.12.1 tree
   would have published 0.12.1 mislabelled, permanently. Publishing now depends
