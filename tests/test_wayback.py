@@ -1,4 +1,4 @@
-"""Tests for Internet Archive provenance capture (REQ-0036).
+"""Tests for Internet Archive provenance capture.
 
 Fixtures mirror the real CDX contract: row 0 is a header naming the requested
 `fl` fields, and `limit=-1` puts the most recent capture last.
@@ -181,7 +181,7 @@ class TestChangedSince:
         assert wayback.changed_since(URL, "", session=FakeSession()) is None
 
 
-# --- attach_snapshot: the probe wiring point (REQ-0036 acceptance 2) ---
+# --- attach_snapshot: the probe wiring point (acceptance 2) ---
 
 def test_attach_snapshot_merges_provenance_into_a_record(monkeypatch):
     monkeypatch.setattr(

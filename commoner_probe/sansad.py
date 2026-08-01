@@ -23,7 +23,7 @@ RS_API_SEARCH = "https://rsdoc.nic.in/Question/Search_Questions"
 LS_CATEGORY_QA = "Part 1(Questions And Answers)"
 
 # sansad.in portal (Next.js + api_ls) surfaces, live-verified 2026-07-17
-# (REQ-0028 recon):
+# recon 2026-07-17:
 # * qetAllQuestions — the LS question list. `sessionNumber` is the honored
 #   session param; `sessionNo` is silently IGNORED (falls back to the
 #   latest session). Rows carry member NAMES (array), no mpCode.
@@ -48,7 +48,7 @@ RS_HEADERS = {
     "Origin": "https://sansad.in",
     "Referer": "https://sansad.in/",
 }
-# Binary PDF fetches must not carry the JSON Accept header (the REQ-0005
+# Binary PDF fetches must not carry the JSON Accept header (the
 # latent-406 class) — same pattern as debates.py's PDF_HEADERS.
 PDF_HEADERS = {k: v for k, v in HEADERS.items() if k != "Accept"}
 
@@ -173,7 +173,7 @@ class SansadProbe(BaseProbe):
         if self.member_name:
             self.log(
                 "WARNING: --member uses name-prefix matching, which is identity-UNSAFE "
-                "where names collide across members/terms (REQ-0028). Prefer --mp-code."
+                "where names collide across members/terms. Prefer --mp-code."
             )
 
     @property
@@ -533,7 +533,7 @@ class SansadProbe(BaseProbe):
 
     def rs_search_session(self, ses_no: int, ministry_like: str, member_name: str | None = None, mp_code: int | None = None) -> list[dict]:
         if mp_code is not None:
-            # Identity-safe member retrieval (REQ-0028): rows carry the
+            # Identity-safe member retrieval: rows carry the
             # roster-pinned mp_code, live-verified against the RS roster
             # 2026-07-17 (mpCode 2372 = "Shri Sanjay Singh" both sides).
             where = f"ses_no={ses_no} and mp_code={mp_code}"
@@ -624,7 +624,7 @@ class SansadProbe(BaseProbe):
                     if self.mp_code is not None and row.get("mp_code") != self.mp_code:
                         # Drift guard: the API should honour the mp_code
                         # whereclause, but a row for anyone else is dropped
-                        # and counted, never silently kept (REQ-0028).
+                        # and counted, never silently kept.
                         bkt_no_match += 1
                         continue
                     date = rs_date_iso(row.get("ans_date"))
@@ -685,7 +685,7 @@ class SansadProbe(BaseProbe):
         self.runlog.finish(added=added)
         return added
 
-    # ---- member-ID retrieval (REQ-0028) ----
+    # ---- member-ID retrieval ----
 
     def resolve_rs_member(self, mp_code: int) -> dict:
         """Exact RS roster row for an mpCode. Raises KeyError when absent.
@@ -833,7 +833,7 @@ class SansadProbe(BaseProbe):
         max_records: int | None,
         download: bool,
     ) -> int:
-        """Per-member LS retrieval by roster mpCode (REQ-0028).
+        """Per-member LS retrieval by roster mpCode.
 
         The LS question list has no member code in its rows, so retrieval is
         roster-resolved EXACT-name filtering over session-bounded lists — not

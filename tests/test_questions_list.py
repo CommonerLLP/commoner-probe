@@ -185,7 +185,7 @@ def test_schema_bundled_and_validates(tmp_path):
 
 
 # --- section-aware parsing regressions (validated against the real 20-24 Jul
-# --- 2026 lists; see REQ-0030) -----------------------------------------------
+# --- 2026 lists -----------------------------------------------
 
 LS_COMBINED_SAMPLE = """\
                                              LOK SABHA

@@ -40,7 +40,7 @@ LS_HEADERS = {
     "User-Agent": "commoner-probe/0.5.0 (+https://github.com/CommonerLLP/commoner-probe; public-interest research; rate-limited)",
 }
 RS_HEADERS = {**LS_HEADERS, "Referer": "https://sansad.in/rs/committees"}
-# Binary PDF fetches must not carry the JSON Accept header — the REQ-0005
+# Binary PDF fetches must not carry the JSON Accept header
 # latent-406 class (rsdoc.nic.in 406'd every RS debates PDF while reporting
 # fetch_status ok). Live check 2026-07-17: sansad.in/getFile (LS + RS
 # committee PDFs) currently tolerates the header (206 application/pdf both

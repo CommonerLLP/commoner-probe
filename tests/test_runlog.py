@@ -243,7 +243,7 @@ class RecordBucketTests(unittest.TestCase):
 
 
 class RunStatusTests(unittest.TestCase):
-    """Run-level outcome (REQ-0043, zero-hour).
+    """Run-level outcome.
 
     A crawl whose every bucket raised still wrote ``added: 0`` and exited
     0, so a totally-failed run and a genuinely quiet member were the same

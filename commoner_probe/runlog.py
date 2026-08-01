@@ -112,7 +112,7 @@ class Run:
     # were undebuggable from the run log.
     bucket_attempts: list[dict[str, Any]] = field(default_factory=list)
     # Run-level outcome, derived at finish(): 'complete' | 'partial' |
-    # 'failed'. Added for REQ-0043 (zero-hour): a crawl whose every bucket
+    # 'failed'. Added for the zero-hour case: a crawl whose every bucket
     # raised still wrote added: 0 and exited 0, so a totally-failed run and
     # a genuinely quiet member produced indistinguishable artefacts.
     status: str = "complete"

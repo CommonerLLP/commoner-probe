@@ -112,7 +112,7 @@ class ManifestQaRecord:
     answer_text: str | None = None
     pdf_url_hindi: str | None = None
     status: str | None = None
-    # Member-ID retrieval (REQ-0028): RS rows echo the API's mp_code,
+    # Member-ID retrieval: RS rows echo the API's mp_code,
     # LS portal rows carry the requested roster mpCode. Keep this field after
     # the pre-existing positional fields so older callers do not shift LS args.
     mp_code: int | None = None

@@ -504,7 +504,7 @@ def test_year_comes_from_the_filename_when_the_anchor_text_is_just_a_size():
     assert docs[0]["year"] == "2021-22"
 
 
-# --- Wayback provenance wiring (REQ-0036 acceptance 2) ---
+# --- Wayback provenance wiring (acceptance 2) ---
 
 def _wayback_probe(tmp_path, monkeypatch, **kwargs):
     from commoner_probe import ddg as ddg_mod

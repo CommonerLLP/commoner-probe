@@ -8,7 +8,7 @@ Expenditure by Minor Heads) and Statement 16 (Detailed Statement of Capital
 Expenditure by Minor Heads and Sub-Heads) — from which minor-head figures like
 ``2205-00-105`` (Public Libraries, revenue) and ``4202-04-105`` (Public
 Libraries, capital) are read downstream by public-finance's
-``account_code_extract`` (REQ-0003).
+``account_code_extract``.
 
 Unlike the audit-report side of cag.gov.in, State Accounts have no central index
 and no per-document detail page. One server-rendered page per State

@@ -4,7 +4,7 @@
 DDGs are laid annually by each ministry/department and, unlike
 indiabudget.gov.in's "Demand for Grants" (SBE — a major-head summary
 only), carry the object-head-wise breakdown, including the "Professional
-Services" head (REQ-0019: object head 28, confirmed against the live
+Services" head (object head 28, confirmed against the live
 Ministry of Finance DDG 2026-07-08). There is no central index — each
 ministry hosts its own listing page, on its own domain, in its own site
 template.
@@ -44,7 +44,7 @@ Grow this registry the way ``neva_portals.py`` grew: one live-verified
 entry at a time, never a guessed batch.
 
 Acquisition only — parsing the ``NN.01.28 Professional Services`` object-head
-lines out of the downloaded PDFs is a public-finance concern (REQ-0019).
+lines out of the downloaded PDFs is a public-finance concern.
 """
 
 from __future__ import annotations

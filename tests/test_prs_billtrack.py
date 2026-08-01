@@ -1,4 +1,4 @@
-"""Tests for the PRS Bill Track surface (REQ-0029).
+"""Tests for the PRS Bill Track surface.
 
 Fixture markup mirrors the live Drupal Views listing (verified 2026-07-25,
 964 bills in one page, no pagination). The load-bearing detail it encodes:

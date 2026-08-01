@@ -1,6 +1,6 @@
 """Tests for the Abhilekh Patal (National Archives of India) catalogue adapter.
 
-REQ-0021. Fixture markup mirrors the live cards (verified 2026-07-28 from
+Fixture markup mirrors the live cards (verified 2026-07-28 from
 ap-south-1: a `police` query reports 59,414 records across 5,942 pages, ten
 per page).
 

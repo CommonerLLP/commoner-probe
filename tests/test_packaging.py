@@ -22,6 +22,7 @@ live.
 
 from __future__ import annotations
 
+import re
 import subprocess
 from pathlib import Path
 
@@ -84,6 +85,23 @@ def test_there_are_tracked_docs_to_scan():
     assert len(_tracked_public_docs()) > 5
 
 
+def _tracked_tests() -> list[Path]:
+    out = subprocess.run(["git", "ls-files", "tests/*.py"], cwd=REPO_ROOT,
+                         capture_output=True, text=True, check=True)
+    return [REPO_ROOT / line for line in out.stdout.split("\n") if line]
+
+
+def _pattern_hits(paths: list[Path], pattern) -> list[str]:
+    found = []
+    for path in paths:
+        if path.resolve() == Path(__file__).resolve():
+            continue
+        for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if pattern.search(line):
+                found.append(f"{path.relative_to(REPO_ROOT)}:{lineno}")
+    return found
+
+
 def _hits(paths: list[Path], needle: str) -> list[str]:
     found = []
     for path in paths:
@@ -103,6 +121,28 @@ def test_no_internal_reference_in_shipped_source(needle):
         "This package is published to PyPI from a public repo — internal repo "
         "names, credential locations and operator paths do not belong in it."
     )
+
+
+#: Internal work-coordination vocabulary. A `REQ-NNNN` is an id in a private
+#: cross-repo ledger: it means nothing to an outsider and advertises what the
+#: org is working on. Substring matching cannot express this, hence a regex.
+FORBIDDEN_PATTERNS = {
+    "cross-repo request id": re.compile(r"\bREQ-\d{3,}\b"),
+}
+
+
+@pytest.mark.parametrize("label", sorted(FORBIDDEN_PATTERNS))
+def test_no_internal_identifier_in_shipped_source(label):
+    pattern = FORBIDDEN_PATTERNS[label]
+    hits = _pattern_hits(_shipped_sources(), pattern)
+    assert not hits, f"{label} appears in shipped source at {', '.join(hits)}."
+
+
+@pytest.mark.parametrize("label", sorted(FORBIDDEN_PATTERNS))
+def test_no_internal_identifier_in_tracked_docs(label):
+    pattern = FORBIDDEN_PATTERNS[label]
+    hits = _pattern_hits(_tracked_public_docs() + _tracked_tests(), pattern)
+    assert not hits, f"{label} appears in tracked files at {', '.join(hits)}."
 
 
 @pytest.mark.parametrize("needle", FORBIDDEN)

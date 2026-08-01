@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 """NITI Aayog Annual Reports — acquisition with provenance.
 
-REQ-0020's residual. The Annual Reports carry the "Young Professionals"
+The Annual Reports carry the "Young Professionals"
 headcount, a named primary source for the contractualisation / consultant face
 of the outsourcing panel. This module acquires the documents; extracting the
 headcount from them is a separate step.

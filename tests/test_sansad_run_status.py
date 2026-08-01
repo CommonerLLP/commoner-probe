@@ -1,4 +1,4 @@
-"""Run-level outcome and exit code for Sansad crawls (REQ-0043, zero-hour).
+"""Run-level outcome and exit code for Sansad crawls.
 
 zero-hour's `census-2026` holds 1,964 runs across 786 member directories;
 1,285 of them recorded `added: 0` and exited 0. Some of those were quiet

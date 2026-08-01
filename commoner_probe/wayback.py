@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-"""Internet Archive snapshot capture for acquisition-time provenance (REQ-0036).
+"""Internet Archive snapshot capture for acquisition-time provenance.
 
 A citation to a government page is only as good as proof of what that page said
 on the day it was cited. This module pushes an acquired URL to the Wayback
@@ -24,7 +24,7 @@ be the reason a public record goes unacquired.
 This is a deliberate reimplementation over IA's own public endpoints rather than
 a dependency on the community ``mcp-wayback-machine`` package, which is
 CC-BY-NC-SA-4.0 and cannot be vendored into this MIT-licensed, PyPI-published
-package. See REQ-0036 for the licence analysis.
+package.
 """
 
 from __future__ import annotations

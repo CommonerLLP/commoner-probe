@@ -185,7 +185,7 @@ def _rs_probe(tmp_path, csv_text: str = RS_CSV_TEXT):
 
 
 def test_the_rajya_sabha_surface_writes_records(tmp_path):
-    """REQ-0044: it wrote nothing at all and exited 0.
+    """It wrote nothing at all and exited 0.
 
     Every RS row lacks `mp_election_index`, so all 828 were dropped for want of a
     key — no file, no directory, no log line, exit 0. Live before the fix: 0
@@ -213,7 +213,7 @@ def test_the_rs_activity_columns_are_not_silently_dropped(tmp_path):
 
 
 def test_a_csv_with_no_identity_column_raises_instead_of_exiting_quietly(tmp_path):
-    """The generalizable half of REQ-0044.
+    """The generalizable half.
 
     A parsed CSV that yields no usable identity on ANY row is a changed source
     contract, not an empty result. Without this the next column rename is silent
@@ -238,7 +238,7 @@ def test_an_empty_or_header_only_csv_raises_too(tmp_path):
 
     `if parsed and ...` skipped the check entirely when the CSV parsed to zero
     rows — an empty or header-only body on an HTTP 200 — so the command wrote
-    nothing and exited 0, which is the exact failure REQ-0044 filed. Zero parsed
+    nothing and exited 0, which is the exact failure reported. Zero parsed
     rows cannot be a resume: a resume has rows whose keys are terminal.
     """
     import pytest

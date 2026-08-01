@@ -23,7 +23,7 @@ NADA is World Bank software, not a MoSPI product. `censusindia.gov.in/nada` runs
 the same application with the same API and 40,254 studies (verified 2026-07-31).
 A per-instance adapter would have to be written twice, so this one is
 parameterised by base URL. The Census instance is also the acquisition surface
-REQ-0045's urban half needs; serving it is a consequence of this design, not a
+the urban half needs; serving it is a consequence of this design, not a
 commitment made here.
 
 ## Scope
@@ -376,7 +376,7 @@ above; `resource_type` is an open string (fact 6).
 | study payload missing `dataset` or carrying a different `idno` | raise; never accept a body that does not answer the question asked (fact 3) |
 | related-materials 5xx | `resources_status: "unavailable"` with the error; the study row is still written and the run continues to the next study |
 | a document download fails | `fetch_status: "failed"` with the error; the run continues to the next document |
-| every study in a run failed to produce a study row | non-zero exit, per the REQ-0043 convention |
+| every study in a run failed to produce a study row | non-zero exit, per the repo convention |
 
 A partially-degraded run — some studies `unavailable`, some documents `failed` —
 exits 0 and reports the counts. Only a run in which no study was acquired at all

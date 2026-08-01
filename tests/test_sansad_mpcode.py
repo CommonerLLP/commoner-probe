@@ -1,4 +1,4 @@
-"""Tests for identity-safe per-member retrieval by member code (REQ-0028).
+"""Tests for identity-safe per-member retrieval by member code.
 
 Fixtures mirror the live-verified contracts (2026-07-17):
 

@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: MIT
 """Lok Sabha member-attendance acquisition (sansad.in native API).
 
-Supersedes the REQ-0012 PRS-attendance want: this is a primary source
+Supersedes the PRS-attendance want: this is a primary source
 with no ToS ambiguity, discovered from the sansad.in JS config chunk and
-smoke-tested live 2026-07-07 (per REQ-0012's own notes), re-verified live
+smoke-tested live 2026-07-07, re-verified live
 2026-07-08. Session/date enumeration reuses the same
 ``AllLoksabhaAndSessionDates`` contract as ``commoner_probe.debates``.
 

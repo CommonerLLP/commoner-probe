@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 """PRS Legislative Research acquisition.
 
-REQ-0029's licensing posture is internal-research-only: PRS pages carry an
+The licensing posture is internal-research-only: PRS pages carry an
 "All Rights Reserved" footer and no usable ToS. Records are stamped
 ``source: prsindia.org`` so downstream consumers can segregate them and avoid
 republication of PRS text.
@@ -118,7 +118,7 @@ def parse_mptrack_csv(text: str) -> list[dict[str, str]]:
 
     Without the normalization the RS surface is a **silent no-op**: every row
     lacks ``mp_election_index``, so all 828 are dropped for want of a key and the
-    command writes nothing and exits 0 (REQ-0044, zero-hour). The adapter was
+    command writes nothing and exits 0. The adapter was
     built and tested against the Lok Sabha CSV only, and the fixture inherited
     its column names, so no test could see it.
     """
@@ -569,7 +569,7 @@ class PrsProbe:
                 if max_records is not None and len(records) >= max_records:
                     return records
             # Two ways this CSV can be useless, and both must be loud. Exiting 0
-            # with no output is what made REQ-0044 invisible for a day.
+            # with no output is what made it invisible for a day.
             #
             # Neither is a resume. A resume run HAS parsed rows — it writes
             # nothing because their keys are already terminal — so zero usable
