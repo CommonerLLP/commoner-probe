@@ -268,6 +268,72 @@ class ManifestOrgiCensusRecord:
 
 
 @dataclass
+class ManifestDchbTownReleaseRecord:
+    """One DCHB Town Release spreadsheet ingested, from manifest.jsonl."""
+
+    key: str
+    kind: str
+    record_type: str
+    source: str
+    census_year: str
+    source_filename: str
+    sha256: str
+    towns: int
+    ingested_at: str
+    state_code: str | None = None
+    bytes: int | None = None
+    districts: int | None = None
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "ManifestDchbTownReleaseRecord":
+        return _from_dict(cls, d)
+
+
+@dataclass
+class DchbTownAmenityRecord:
+    """One town from a DCHB Town Release, from town_amenity_rows.jsonl.
+
+    `measure` is always "count". The rural Village Amenities equivalent is an
+    availability flag per village; the two are differently typed and must never
+    be summed.
+    """
+
+    key: str
+    kind: str
+    record_type: str
+    source: str
+    census_year: str
+    measure: str
+    state_code: str | None
+    town_code: str | None
+    town_name: str | None
+    public_library_govt: int | None
+    public_library_private: int | None
+    public_library_total: int | None
+    source_filename: str
+    source_sha256: str
+    extracted_at: str
+    state_name: str | None = None
+    district_code: str | None = None
+    district_name: str | None = None
+    subdistrict_code: str | None = None
+    subdistrict_name: str | None = None
+    total_households: int | None = None
+    total_population: int | None = None
+    public_library_govt_status: str | None = None
+    public_library_private_status: str | None = None
+    reading_room_govt: int | None = None
+    reading_room_private: int | None = None
+    reading_room_total: int | None = None
+    reading_room_govt_status: str | None = None
+    reading_room_private_status: str | None = None
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "DchbTownAmenityRecord":
+        return _from_dict(cls, d)
+
+
+@dataclass
 class ManifestNadaStudyRecord:
     """One NADA study record from manifest.jsonl.
 

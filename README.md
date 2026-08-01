@@ -698,6 +698,34 @@ export REQUESTS_CA_BUNDLE=$PWD/bundle.pem
 Do not disable verification. The CLI detects this failure and prints the same
 guidance rather than a traceback.
 
+### `commoner-probe dchb-town` — urban public libraries from the Census
+
+The Village Amenities surface above gives the RURAL library picture. The URBAN
+counts live in District Census Handbook **Town Release** spreadsheets, which ship
+inside every DCHB record in ORGI's NADA catalogue — a **state-level** file, so
+about 36 of them cover India rather than ~640 district PDFs.
+
+```bash
+# 1. acquire a state's DCHB record (any district of that state carries the file)
+commoner-probe nada --base-url https://censusindia.gov.in/nada \
+    --out data/dchb --study DH_2011_2725_PART_A_DCHB_PUNE
+
+# 2. read the Town Release it shipped
+commoner-probe dchb-town --out data/census-towns \
+    data/dchb/docs/DH_2011_2725_PART_A_DCHB_PUNE/DH_2011_DCHB_Town_Release_2700.xlsx
+```
+
+Writes one row per town to `town_amenity_rows.jsonl` with Govt and Private
+library counts, reading-room counts, and the census state/district/town codes
+that join back to the rural corpus.
+
+**These are counts; the rural values are flags — never add them.** Village
+Amenities records `public_library` as availability per village (A=1/NA=2), so it
+counts *villages that have a library*, not libraries. Summing the two produces
+the widely-cited and wrong "~75,000 public libraries". Every row here declares
+`measure: "count"` and the schema pins it, so the two cannot be conflated
+silently. Reading rooms are a separate facility and are never added to libraries.
+
 ### `commoner-probe courts` — India court records
 
 ```bash

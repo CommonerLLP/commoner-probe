@@ -51,6 +51,8 @@ def _pick_schema_name(rec: dict) -> str | None:
         return "manifest_dpe_csr"
     if kind == "orgi_census_resource":
         return "manifest_orgi_census"
+    if kind == "dchb_town_release":
+        return "manifest_dchb_town_release"
     if kind == "nada_study":
         return "manifest_nada_study"
     if kind == "nada_resource":
@@ -243,6 +245,15 @@ def validate_corpus(
         log(f"Validating {neva_rows_path.relative_to(out_dir)} ...")
         ok = _validate_file(neva_rows_path, lambda _: "neva_district_row")
         n = sum(1 for line in neva_rows_path.read_text(encoding="utf-8").splitlines() if line.strip())
+        log(f"  {n} records — {'ok' if ok else 'FAILED'}")
+        any_error = any_error or (not ok)
+
+    # --- town_amenity_rows.jsonl ---
+    town_rows_path = out_dir / "town_amenity_rows.jsonl"
+    if town_rows_path.exists():
+        log(f"Validating {town_rows_path.relative_to(out_dir)} ...")
+        ok = _validate_file(town_rows_path, lambda _: "dchb_town_amenity")
+        n = sum(1 for line in town_rows_path.read_text(encoding="utf-8").splitlines() if line.strip())
         log(f"  {n} records — {'ok' if ok else 'FAILED'}")
         any_error = any_error or (not ok)
 

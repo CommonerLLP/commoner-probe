@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CommonerLLP/commoner-probe/schemas/v1/manifest_dchb_town_release.json",
+  "title": "manifest.jsonl — DCHB Town Release spreadsheet",
+  "description": "One District Census Handbook Town Release ingested. The file is STATE-level, not district-level, despite arriving attached to a per-district DCHB record — so ~36 files cover India rather than ~640. The town rows themselves live in town_amenity_rows.jsonl.",
+  "type": "object",
+  "required": ["key", "kind", "record_type", "source", "census_year", "source_filename", "sha256", "towns", "ingested_at"],
+  "properties": {
+    "key": { "type": "string", "pattern": "^DCHB\\|" },
+    "kind": { "const": "dchb_town_release" },
+    "record_type": { "const": "dchb_town_release" },
+    "source": { "type": "string" },
+    "census_year": { "type": "string" },
+    "state_code": { "type": ["string", "null"] },
+    "source_filename": { "type": "string" },
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "bytes": { "type": "integer", "minimum": 0 },
+    "towns": { "type": "integer", "minimum": 0 },
+    "districts": { "type": "integer", "minimum": 0 },
+    "ingested_at": { "type": "string" }
+  }
+}

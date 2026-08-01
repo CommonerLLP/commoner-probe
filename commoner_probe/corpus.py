@@ -47,6 +47,7 @@ from .records import (
     AnswerNevaQaResponse,
     AnswerQaResponse,
     AtrLinkageRecord,
+    DchbTownAmenityRecord,
     ManifestAcademicJobRecord,
     ManifestAttendanceRecord,
     ManifestBillRecord,
@@ -54,6 +55,7 @@ from .records import (
     ManifestCagStateAccountRecord,
     ManifestCommitteeReportRecord,
     ManifestCourtRecord,
+    ManifestDchbTownReleaseRecord,
     ManifestDoePayAllowancesRecord,
     ManifestDpeCsrRecord,
     ManifestFloorDebateRecord,
@@ -178,6 +180,22 @@ class Corpus:
         for d in _iter_jsonl(self.out_dir / "manifest.jsonl"):
             if d.get("kind") == "niti_annual_report":
                 yield ManifestNitiAnnualReportRecord.from_dict(d)
+
+    def manifest_dchb_town_releases(self) -> Iterator[ManifestDchbTownReleaseRecord]:
+        """Stream DCHB Town Release records from manifest.jsonl."""
+        for d in _iter_jsonl(self.out_dir / "manifest.jsonl"):
+            if d.get("kind") == "dchb_town_release":
+                yield ManifestDchbTownReleaseRecord.from_dict(d)
+
+    def dchb_town_amenities(self) -> Iterator[DchbTownAmenityRecord]:
+        """Stream town amenity rows from town_amenity_rows.jsonl.
+
+        These are COUNTS. The rural equivalent is an availability flag; do not
+        sum across the two.
+        """
+        for d in _iter_jsonl(self.out_dir / "town_amenity_rows.jsonl"):
+            if d.get("kind") == "dchb_town_amenity":
+                yield DchbTownAmenityRecord.from_dict(d)
 
     def manifest_nada_studies(self) -> Iterator[ManifestNadaStudyRecord]:
         """Stream NADA study records from manifest.jsonl."""

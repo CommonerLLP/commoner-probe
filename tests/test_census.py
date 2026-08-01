@@ -333,6 +333,7 @@ def test_every_manifest_kind_this_package_emits_is_registered_with_validate():
     per_file = {
         "qa_response", "atr_response", "dfg_recommendation", "neva_qa_response",
         "neva_district_row", "outsourcing_signal", "question_list_row", "vacancy_row",
+        "dchb_town_amenity",
     }
     unregistered = sorted(
         k for k in manifest_kinds - per_file if _pick_schema_name({"kind": k}) is None
