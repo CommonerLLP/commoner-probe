@@ -1,4 +1,4 @@
-"""Tests for the India court-data adapter (REQ-0038).
+"""Tests for the India court-data adapter.
 
 Fixture payloads mirror the Indian Kanoon API contract read from IKAPI's own
 source (``sushant354/IKAPI``, MIT) on 2026-07-26: POST-only endpoints,

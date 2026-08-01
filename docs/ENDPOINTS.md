@@ -243,7 +243,7 @@ Vol-II); seven States/UTs have no obtainable Vol-II and are documented in
 
 The fiscal year is read from the page's accordion header, never the filename
 (several States ship year-less or misspelled filenames). Acquisition only —
-parsing Statement 15/16 out of the PDFs is a public-finance concern (REQ-0003).
+parsing Statement 15/16 out of the PDFs is a public-finance concern.
 
 Outputs:
 
@@ -376,7 +376,7 @@ Outputs: `manifest.jsonl` (`kind: orgi_census_resource`) + `rows/<surface>__<id>
 ## NITI Aayog Annual Reports (`niti-annual-report`)
 
 Publisher: NITI Aayog. Contract verified live 2026-07-30. Carries the "Young
-Professionals" headcount (REQ-0020) — the 2024-25 report states 26 Consultant
+Professionals" headcount — the 2024-25 report states 26 Consultant
 Grade II, 71 Consultant Grade I and 116 Young Professionals.
 
 - listing: `GET https://www.niti.gov.in/publication/annual-report`

@@ -2,7 +2,7 @@
 """ORGI / Census of India acquisition via the data.gov.in (OGD) API.
 
 The Office of the Registrar General & Census Commissioner is a source family the
-org covered nowhere before REQ-0045. It is **not** substitutable by the MoSPI
+org covered nowhere before this request. It is **not** substitutable by the MoSPI
 client: MoSPI's datasets are NSSO/CSO products, and the Census is a different
 agency with different instruments.
 
@@ -126,7 +126,7 @@ SURFACES: dict[str, Surface] = {
 }
 
 #: NOT AVAILABLE ON THE OGD API. Searched 2026-07-30, and this is the half of
-#: REQ-0045 the API does NOT cover — the request was for ALL libraries, not
+#: the half the API does NOT cover — the request was for ALL libraries, not
 #: the rural ones, so this gap blocks the consumer rather than trimming it.
 #:
 #: What was checked:
@@ -142,7 +142,7 @@ SURFACES: dict[str, Surface] = {
 #:   - no district was found carrying a second town resource (the "997 town
 #:     amenities" count is mostly unrelated noise the title filter removes).
 #:
-#: So the urban public-library COUNT — and with it REQ-0045's merge trap, since
+#: So the urban public-library COUNT — and with it the merge trap, since
 #: that column fuses ORGI's separately-defined 9.11 Public Library and 9.12
 #: Public Reading Room — lives only in the DCHB Part A PDFs. Summing it with the
 #: rural availability flag is what produces the wrong "~75,000 libraries".

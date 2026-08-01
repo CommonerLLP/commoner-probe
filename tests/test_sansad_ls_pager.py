@@ -1,4 +1,4 @@
-"""Tests for the LS portal question-list pager (REQ-0040).
+"""Tests for the LS portal question-list pager.
 
 Fixtures mirror the live-verified contract (2026-07-23, zero-hour):
 

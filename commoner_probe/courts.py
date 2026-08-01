@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 """India court-data acquisition — Indian Kanoon API, plus an arm's-length eCourts boundary.
 
-REQ-0038. Two sources were surveyed; **their licences decide the architecture**,
+Two sources were surveyed; **their licences decide the architecture**,
 so the split below is legal, not stylistic:
 
 * **Indian Kanoon** — ``sushant354/IKAPI`` is **MIT**, the same licence

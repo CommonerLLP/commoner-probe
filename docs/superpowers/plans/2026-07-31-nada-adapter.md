@@ -868,7 +868,7 @@ Stopped at the --max-studies bound: 2 of 5 matching studies acquired, 3 more ava
 Continue with:  commoner-probe nada --out data/nada --query NSS --max-studies 5
 ```
 
-Exit non-zero only when no study was acquired at all (REQ-0043 convention); a partially degraded run exits 0 and prints the counts.
+Exit non-zero only when no study was acquired at all (convention); a partially degraded run exits 0 and prints the counts.
 
 - [ ] **Step 4: Run to verify they pass**
 

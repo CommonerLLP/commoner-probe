@@ -362,13 +362,13 @@ class CrawlIntegrationTests(unittest.TestCase):
 
 
 # --------------------------------------------------------------------------- #
-# PDF download headers — REQ-0005 latent-406 class                            #
+# PDF download headers — the latent-406 class                                 #
 # --------------------------------------------------------------------------- #
 
 
 class PdfDownloadHeaderTests(unittest.TestCase):
     """Binary PDF fetches must not carry the JSON Accept header (the
-    REQ-0005 rsdoc.nic.in 406 class). Live check 2026-07-17: sansad.in/getFile
+    the rsdoc.nic.in 406 class). Live check 2026-07-17: sansad.in/getFile
     currently tolerates the header (206 application/pdf both ways) — this pins
     the hardening. API calls must keep the JSON Accept header."""
 

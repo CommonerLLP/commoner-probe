@@ -1,4 +1,4 @@
-"""Tests for the PRS Report Summaries and Vital Stats surfaces (REQ-0029).
+"""Tests for the PRS Report Summaries and Vital Stats surfaces.
 
 Fixture markup mirrors the live Drupal Views listing (verified 2026-07-28:
 442 report summaries and 24 vital stats, each in one response, no pager

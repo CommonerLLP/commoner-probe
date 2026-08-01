@@ -1,4 +1,4 @@
-"""Tests for the ORGI / Census of India adapter (REQ-0045).
+"""Tests for the ORGI / Census of India adapter.
 
 Fixtures mirror the live OGD API, contract measured 2026-07-30:
 
@@ -316,7 +316,7 @@ class TestRowsAndFailureModes:
 
 
 def test_the_urban_library_gap_is_recorded_in_code():
-    """REQ-0045 asked for ALL libraries. The urban count is not on the OGD API,
+    """The request asked for ALL libraries. The urban count is not on the OGD API,
     so the constraint has to travel with the module rather than live in a
     session note that the next reader never sees."""
     assert "DCHB" in census.URBAN_LIBRARY_COUNT_UNAVAILABLE

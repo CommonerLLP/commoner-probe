@@ -37,7 +37,7 @@
     "responder_entity_id": { "type": ["string", "null"] },
     "responder_role_at_event": { "type": ["string", "null"] },
     "source": { "type": "string", "enum": ["elibrary.sansad.in", "rsdoc.nic.in", "sansad.in/api_ls/question"] },
-    "mp_code": { "type": ["integer", "null"], "description": "Stable member code (REQ-0028 member-ID retrieval). RS: mp_code echoed by the rsdoc API row (code-pinned). LS portal: the requested roster mpCode (roster-resolved exact-name join). Absent on topic/name-mode records." },
+    "mp_code": { "type": ["integer", "null"], "description": "Stable member code (member-ID retrieval). RS: mp_code echoed by the rsdoc API row (code-pinned). LS portal: the requested roster mpCode (roster-resolved exact-name join). Absent on topic/name-mode records." },
     "found_via_query": { "type": "string" },
     "probed_at": { "type": "string" },
     "language_classified": { "type": "array", "items": { "type": "string" } },

@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 """Abhilekh Patal (National Archives of India) catalogue acquisition.
 
-REQ-0021. This adapter acquires the **catalogue**, not the documents.
+This adapter acquires the **catalogue**, not the documents.
 
 The distinction is the whole design. Search and metadata are open: a query
 returns tens of thousands of records carrying an identifier, year, page count,
@@ -15,7 +15,7 @@ acquired.
 **India egress is a hard requirement, not a nice-to-have.** The site sits
 behind an AWS WAF challenge that answers non-India clients with HTTP 202 and a
 Human Verification page — zero bytes of catalogue. A real headless Chromium
-executing JS did not clear it either (recorded in REQ-0021, 2026-07-09), so
+executing JS did not clear it either (recorded 2026-07-09), so
 this is not a rendering problem a browser fallback solves. From ap-south-1 the
 same request returns HTTP 200 and the real page. The probe therefore treats a
 challenge response as a **hard error naming the cause**, and never as an empty

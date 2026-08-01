@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 """Headless-browser fallback acquisition, with a shell-vs-content assertion.
 
-REQ-0035. A **fallback**, never the default: a real browser costs orders of
+A **fallback**, never the default: a real browser costs orders of
 magnitude more than a GET, so it is for pages the fetch layer genuinely cannot
 read, not for convenience.
 
@@ -11,7 +11,7 @@ loudly. ``data.gov.in``, ``lokdhaba.ashoka.edu.in`` and ``myneta.info`` all
 answer HTTP 200 with a well-formed HTML document for every path, including
 invented ones. A status-code check records a clean acquisition of a page
 containing none of the data. That silent-success class has bitten this repo
-repeatedly (the RS PDF 406 stored as ``fetch_status: "ok"``, REQ-0005).
+repeatedly (the RS PDF 406 stored as ``fetch_status: "ok"``).
 
 **Byte size does not separate the two, and this was measured, not assumed.**
 Live, 2026-07-26:
@@ -25,7 +25,7 @@ prsindia.org/billtrack           407,356   67,372 chars
 
 The Nuxt shell is **two and a half times larger** than the fully-rendered page,
 because a ~1 MB inline ``window.__NUXT__`` payload counts as bytes but is
-script, not content. So a size floor — the check REQ-0035 itself suggested —
+script, not content. So a size floor —
 passes the empty page and would have to fail the real one. The discriminator is
 visible text *after* script/style removal, plus caller-supplied content the page
 must actually contain.

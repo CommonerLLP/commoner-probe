@@ -1,4 +1,4 @@
-"""Tests for the DCHB Town Release reader — the urban half of REQ-0045.
+"""Tests for the DCHB Town Release reader — the urban half.
 
 The fixture is the real Nagaland Town Release trimmed to three towns; see
 `tests/fixtures/dchb/README.md`. No test here touches the network.

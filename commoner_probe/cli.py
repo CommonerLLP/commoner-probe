@@ -263,7 +263,7 @@ def sansad_cmd(args: argparse.Namespace) -> None:
 
 
 def _exit_on_failed_runs(probe: SansadProbe) -> None:
-    """Exit non-zero when a crawl's every bucket errored (REQ-0043).
+    """Exit non-zero when a crawl's every bucket errored.
 
     Without this a run that reached nothing exits 0 with ``added: 0``,
     which a consumer reads as a finding about the member rather than a
@@ -1843,7 +1843,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     prs = sub.add_parser(
         "prs",
-        help="Probe PRS Legislative Research surfaces for internal research (REQ-0029).",
+        help="Probe PRS Legislative Research surfaces for internal research.",
     )
     prs.add_argument("--out", required=True, help="Output corpus directory")
     prs.add_argument(

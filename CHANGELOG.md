@@ -93,7 +93,7 @@ removed, and the only changed behaviour on an existing path is a `.zip` branch
 where the previous code would have errored. The functions whose signatures moved
 were never released.
 
-**Closes the last coverage gap in REQ-0045's urban half.** 0.12.0 read the
+**Closes the last coverage gap in the urban half.** 0.12.0 read the
 state-level `DH_2011_DCHB_Town_Release_<code>.xlsx` that 34 of 35 states publish.
 Sikkim publishes four per-district ZIPs of `Town Statement-V_<district>.xls`
 instead — same facts, older format — and those are now read too, so
@@ -134,10 +134,10 @@ A new acquisition surface, so a minor bump under the pre-1.0 rule in
 do not carry: NSS questionnaires, the written sample design, technical reports.
 NADA is World Bank software, so one adapter parameterised by `--base-url` serves
 both `microdata.gov.in/NADA` (187 studies) and `censusindia.gov.in/nada`
-(40,254) — the second being the acquisition surface REQ-0045's urban half was
+(40,254) — the second being the acquisition surface the urban half was
 waiting on.
 
-**`commoner-probe dchb-town` closes REQ-0045's urban half — without the PDF
+**`commoner-probe dchb-town` closes the urban half — without the PDF
 route.** The urban public-library COUNT was believed to live only inside ~640
 District Census Handbook PDFs at ~18 MB each, which is why a Statement V PDF
 parser was attempted and removed at 4-of-24 town recall. It does not: every DCHB
@@ -312,14 +312,13 @@ already reported as verified.
 Two new acquisition surfaces, so a minor bump under the pre-1.0 rule — plus the
 change that makes a long corpus pass survivable.
 
-**Two source families the org covered nowhere:** ORGI / Census of India
-(REQ-0045) and NITI Aayog Annual Reports (REQ-0020's residual). Both
+**Two source families the org covered nowhere:** ORGI / Census of India and NITI Aayog Annual Reports (an earlier request's residual). Both
 live-verified end to end, and both shipped with the traps encoded rather than
 described: the Census adapter refuses to let a rural availability flag be summed
 with an urban count, and the NITI adapter reads its fiscal year from the filename
 because the upload directory `/2025-02/` matches a year pattern.
 
-**One request is deliberately NOT closed.** REQ-0045 asked for all libraries.
+**One request is deliberately NOT closed.** The request asked for all libraries.
 The rural half is fully served and the urban public-library count is not on the
 API, so it stays in-progress with the remaining route named. Reporting it as
 delivered would hand the requester coverage they do not have.
@@ -331,7 +330,7 @@ the 961-1,744 band predicted from a 60-document sample before the run.
 
 ### Added
 
-- **`commoner-probe niti-annual-report`** — NITI Aayog Annual Reports (REQ-0020
+- **`commoner-probe niti-annual-report`** — NITI Aayog Annual Reports (an
   residual). English only; the Hindi editions are detected and skipped, which is
   load-bearing because one is named `Annual Report 2024-25 Hindi_V3 LOWRES.pdf`
   and neither a parenthesis- nor `\b`-anchored match catches it. Live-verified:
@@ -345,7 +344,7 @@ the 961-1,744 band predicted from a 60-document sample before the run.
   - Three listing traps encoded: duplicate links, the upload directory
     `/2025-02/` masquerading as a fiscal year, and four-digit second years.
 
-- **`commoner-probe census` — ORGI / Census of India acquisition** (REQ-0045). A source family the org covered nowhere. Four surfaces from
+- **`commoner-probe census` — ORGI / Census of India acquisition**. A source family the org covered nowhere. Four surfaces from
   the data.gov.in API: `pca`, `village-amenities`, `town-amenities`,
   `town-directory`, each with a provenance manifest and a typed corpus stream.
   - **The District Census Handbook PDFs are not the primary route.** The request
@@ -405,7 +404,7 @@ neither was visible to the test suite:
   hardcoded `www.`. Every test asserts the URL *string*; none reaches the host,
   so four weeks of total failure stayed green.
 - `prs --surface mp-track --house rs` wrote nothing and exited 0 for its whole
-  life (REQ-0044). The RS CSV diverges from the LS CSV on 13 of 27 column names,
+  life. The RS CSV diverges from the LS CSV on 13 of 27 column names,
   and the adapter was built and fixtured against LS only.
 
 The rest close five Codex findings, each reproduced by execution before being
@@ -417,7 +416,7 @@ cannot see its own edge case*).
 
 ### Fixed
 
-- **`prs --surface mp-track --house rs` wrote nothing and exited 0.** REQ-0044
+- **`prs --surface mp-track --house rs` wrote nothing and exited 0.**
   (zero-hour). The Rajya Sabha CSV names its identity column `mp_index`; the
   adapter read `mp_election_index`, which exists only in the Lok Sabha CSV — so
   all 828 RS rows were dropped for want of a key, and the command created no
@@ -549,7 +548,7 @@ slot.
 
 - **`status` on every `_runs.jsonl` record** (`complete` / `partial` /
   `failed`), derived from `bucket_attempts` and never from `added`. Closes
-  REQ-0043 (zero-hour): a run that reached nothing and a genuinely quiet source
+  the zero-hour case: a run that reached nothing and a genuinely quiet source
   both wrote `added: 0` and exited 0, so the artefact could not tell them apart.
   `RunLog.finish()` returns the status; `RunLog.statuses` collects every run
   finished on the instance.
@@ -646,7 +645,7 @@ addressed. Two of these broke `validate` on shipped output.
 
 ### Not changed, and why
 
-REQ-0043 also reported that `sansad --member` silently caps at 25 rows per
+A downstream repo also reported that `sansad --member` silently caps at 25 rows per
 member. It does not. All 1,964 runs in the reporting corpus record
 `scope.max_records: 25` — the caller's own `--max-records`, whose default is
 `None`. The flag was already explicit in the CLI and already written to the run
@@ -738,7 +737,7 @@ These are behaviour changes, not additions. A pinned consumer will see them.
 - **`cag_state_account` was never registered** for schema validation or corpus
   streaming, so the adapter shipped unreachable from both.
 - **LS question-list pager**: `pageNo` is 1-indexed and `pageNo=0` returns HTTP
-  500; the guard raises before any request (REQ-0040).
+  500; the guard raises before any request.
 - **`dae` withdrawn from the DDG registry** hours after being added. Its listing
   parsed nine clean rows; its documents cannot be downloaded at all, because
   they sit on a host serving an incomplete certificate chain. The check that was

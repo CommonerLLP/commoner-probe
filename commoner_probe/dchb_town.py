@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 """District Census Handbook Town Release — the urban public-library COUNT.
 
-REQ-0045 asked for every public library in the 2011 Census. The rural half is
+The request asked for every public library in the 2011 Census. The rural half is
 served by Village Amenities (see :mod:`commoner_probe.census`). The urban half
 was believed to live only inside ~640 DCHB Part A PDFs, which is why a Town
 Directory Statement V PDF parser was attempted and removed at 4-of-24 town
@@ -201,7 +201,7 @@ def parse_facility_cell(value: Any) -> tuple[int | None, str | None, float | Non
     `GANGTOK(67)` means there is none in this town and the nearest is 67 km
     away. That is a count of **zero with a location**, not a missing value.
     Parsing the cell as an integer silently drops exactly the towns that lack
-    the facility, which is the trap the request spec for REQ-0045 names.
+    the facility, which is the trap the request spec names.
     """
     if value is None:
         return None, None, None

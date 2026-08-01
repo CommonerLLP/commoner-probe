@@ -1,4 +1,4 @@
-"""Tests for the NITI Aayog Annual Report adapter (REQ-0020 residual).
+"""Tests for the NITI Aayog Annual Report adapter (residual).
 
 The fixture is the real listing's markup, reduced. Every filename below is
 verbatim from https://www.niti.gov.in/index.php/publication/annual-report as it
