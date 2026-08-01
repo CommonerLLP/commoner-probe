@@ -30,7 +30,17 @@ first, or accept that 1.0 means a 2.0 shortly after.
 Version-bump checklist: bump `pyproject.toml` (the single source of truth —
 `__version__` reads it), CHANGELOG entry, `pip install -e .` in the repo
 `.venv` (refreshes the `dist-info` that `_resolve_version()` reads), branch +
-PR, tag, then move consumer pins.
+PR, tag, **`make verify-release VERSION=x.y.z`**, then move consumer pins.
+
+**The verify step is not optional, and a green workflow does not replace it.**
+Neither does one read of PyPI's top-level JSON. That index has now misled a
+release twice, in both directions: at 0.10.0 a cached read showed the PREVIOUS
+version and made an unfinished publish look done; at 0.12.0, twenty seconds
+after a successful upload, it still reported 0.11.0 and made a finished publish
+look failed. `make verify-release` therefore retries the version-specific route
+and then **installs the exact version from PyPI into a throwaway venv and
+imports it** — the only check a stale index cannot fake, and the only one a
+consumer actually depends on.
 
 **Pre-1.0 versioning rule in force here:** a new acquisition surface or any
 breaking change is a minor bump; only backwards-compatible fixes take a patch.
