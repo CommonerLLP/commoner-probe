@@ -60,6 +60,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urljoin, urlparse
 
+from .base import safe_filename_segment
 from .http_client import TOOL_VERSION, make_session
 from .textparse import extract_pdf_text
 from .wayback import attach_snapshot
@@ -426,7 +427,7 @@ class MinistryDDGProbe:
         # fiscal year (Vol-I, Vol-II A/B) — fold a slug of the source
         # filename into the key so those don't collide.
         doc_slug = re.sub(r"[^a-z0-9]+", "-", Path(basename).stem.lower()).strip("-")
-        filename = f"{self.portal.ministry_code}_{doc['year']}_" + re.sub(r"[^A-Za-z0-9._-]", "_", basename)
+        filename = f"{self.portal.ministry_code}_{doc['year']}_" + safe_filename_segment(basename)
         dest = self.out_dir / self.portal.ministry_code / filename
         return {
             "key": f"MINISTRY_DDG|{self.portal.ministry_code}|{doc['year']}|{doc_slug}",

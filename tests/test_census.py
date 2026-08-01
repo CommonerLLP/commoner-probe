@@ -17,6 +17,7 @@ No network.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import shutil
 from pathlib import Path
@@ -137,6 +138,36 @@ class TestSampleKeyGuard:
             api_key=REGISTERED_KEY,
         )
         assert probe.probe("pca")[0]["status"] == "downloaded"
+
+    def test_is_sample_key_compares_a_digest_not_a_prefix(self, monkeypatch):
+        """Exercise the predicate itself, which every other test stubs out.
+
+        The two tests below monkeypatch `_is_sample_key` to a constant, so
+        they prove the CALLER refuses a sample key without ever proving the
+        predicate can recognise one. That is the shape of check this package
+        keeps having to fix.
+
+        This pins the mechanism: the exact key hashes True, a different key
+        hashes False, and — the reason the digest exists at all — a key that
+        merely shares the `579b464db66e` prefix every data.gov.in key starts
+        with is NOT treated as the sample. A prefix test here would refuse the
+        org's registered credential, which is how the first cut of this module
+        failed.
+
+        NOT pinned, because it cannot be from inside this repo: whether the
+        shipped SAMPLE_KEY_SHA256 is the digest of the key data.gov.in
+        actually publishes. Verifying that needs the live page, which returned
+        403 on 2026-08-01. See the plan doc.
+        """
+        some_key = "579b464db66eDEADBEEF" + "0" * 38
+        monkeypatch.setattr(
+            census,
+            "SAMPLE_KEY_SHA256",
+            hashlib.sha256(some_key.encode("utf-8")).hexdigest(),
+        )
+        assert census._is_sample_key(some_key) is True
+        assert census._is_sample_key("579b464db66eSOMETHINGELSE" + "0" * 33) is False
+        assert census._is_sample_key("579b464db66e") is False
 
     def test_the_sample_key_is_refused_for_a_real_run(self, tmp_path, monkeypatch):
         monkeypatch.setattr(census, "_is_sample_key", lambda key: True)

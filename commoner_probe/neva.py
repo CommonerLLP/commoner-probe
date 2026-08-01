@@ -228,11 +228,10 @@ class StateAssemblyCrawler(BaseProbe):
         *,
         sleep: float = 0.5,
     ) -> None:
-        super().__init__(None, Path(out_dir), sleep=sleep)
+        super().__init__(None, Path(out_dir), sleep=sleep, user_agent=NEVA_UA)
         self.portal_code = portal_code
         self.state_code = state_code
         self._base = f"https://{portal_code}.neva.gov.in"
-        self.session.headers.update({"User-Agent": NEVA_UA})
         self.questions_path = self.out_dir / "questions.jsonl"
         self.unlisted_path = self.out_dir / "questions_unlisted.jsonl"
         self.members_path = self.out_dir / "members.jsonl"

@@ -64,7 +64,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re
 import time
 from datetime import datetime
 from html.parser import HTMLParser
@@ -73,6 +72,7 @@ from typing import Any
 from urllib.parse import urljoin, urlparse
 
 from . import textparse
+from .base import safe_filename_segment
 from .http_client import make_session
 
 DEFAULT_BASE_URL = "https://microdata.gov.in/NADA"
@@ -86,7 +86,7 @@ def _now() -> str:
 
 
 def _slug(value: str) -> str:
-    return re.sub(r"[^A-Za-z0-9._-]+", "_", value).strip("_")
+    return safe_filename_segment(value, collapse=True)
 
 
 class NadaApiError(RuntimeError):

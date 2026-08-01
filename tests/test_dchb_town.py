@@ -7,6 +7,10 @@ The fixture is the real Nagaland Town Release trimmed to three towns; see
 from __future__ import annotations
 
 import json
+import struct
+import tempfile
+import unittest
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -529,3 +533,70 @@ def test_the_cli_reads_a_district_zip(tmp_path):
     assert len(rows) == 1
     assert rows[0]["state_code"] == "11" and rows[0]["district_code"] == "241"
     assert rows[0]["public_library_total"] == 1
+
+
+class DecompressionBombTests(unittest.TestCase):
+    """The size cap must not trust the archive's own claim about itself.
+
+    The guard tested `ZipFile.getinfo(member).file_size`, a number the archive
+    supplies — an attacker writes it — and then called `ZipFile.read`, which
+    expands the whole member into memory before comparing anything. Measured on
+    the forged archive this test builds: declared 1000 bytes, guard passed,
+    peak RSS grew 432 MB, and BadZipFile arrived only afterwards.
+    """
+
+    @staticmethod
+    def _forged_archive(path, member="xl/worksheets/sheet1.xml", real_mb=64, claim=1000):
+        """A zip whose headers claim `claim` bytes and whose stream is real_mb."""
+        with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
+            z.writestr(member, b"A" * (real_mb * 1024 * 1024))
+        raw = bytearray(path.read_bytes())
+        # uncompressed-size field: central directory +24, local header +22
+        for sig, off in ((b"PK\x01\x02", 24), (b"PK\x03\x04", 22)):
+            i = raw.find(sig)
+            while i != -1:
+                struct.pack_into("<I", raw, i + off, claim)
+                i = raw.find(sig, i + 4)
+        path.write_bytes(raw)
+        return path
+
+    def test_a_lying_header_does_not_get_the_member_expanded(self):
+        import resource
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._forged_archive(Path(tmp) / "bomb.xlsx")
+            archive = zipfile.ZipFile(path)
+            member = "xl/worksheets/sheet1.xml"
+            self.assertEqual(
+                archive.getinfo(member).file_size,
+                1000,
+                "the fixture must actually lie about its size, or it proves nothing",
+            )
+            before = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+            with self.assertRaises(dchb_town.DchbTownError) as raised:
+                dchb_town.read_capped(archive, member, limit=8 * 1024 * 1024)
+            grew_mb = (resource.getrusage(resource.RUSAGE_SELF).ru_maxrss - before) / 1024 / 1024
+            self.assertIn("does not match its contents", str(raised.exception))
+            # The point of the fix. `ZipFile.read` expanded the full 64 MB here
+            # before raising; reading through `archive.open` stops at the size
+            # the archive claimed.
+            self.assertLess(grew_mb, 16, f"peak RSS grew {grew_mb:.0f} MB — the member was expanded")
+
+    def test_an_honest_oversize_member_is_still_refused_before_reading(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "big.xlsx"
+            with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
+                z.writestr("xl/worksheets/sheet1.xml", b"A" * (16 * 1024 * 1024))
+            archive = zipfile.ZipFile(path)
+            with self.assertRaises(dchb_town.DchbTownError) as raised:
+                dchb_town.read_capped(archive, "xl/worksheets/sheet1.xml", limit=1024)
+            self.assertIn("declares", str(raised.exception))
+
+    def test_an_ordinary_member_reads_through_unchanged(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "ok.xlsx"
+            body = b"<sheetData/>" * 100
+            with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
+                z.writestr("xl/worksheets/sheet1.xml", body)
+            archive = zipfile.ZipFile(path)
+            self.assertEqual(dchb_town.read_capped(archive, "xl/worksheets/sheet1.xml"), body)

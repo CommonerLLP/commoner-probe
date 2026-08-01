@@ -52,6 +52,8 @@ from pathlib import Path
 from typing import Any
 from xml.etree import ElementTree as ET
 
+from .base import safe_filename_segment
+
 NS = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
 
 #: An XLSX is a zip of XML, fetched over the network from a government portal —
@@ -121,6 +123,67 @@ STATEMENT_V_HEADERS = {
 }
 
 
+def read_capped(archive: zipfile.ZipFile, member: str, limit: int | None = None) -> bytes:
+    """Read one zip member, stopping if it expands past *limit*.
+
+    Decompresses in chunks through ``archive.open`` and counts the bytes that
+    actually arrive. ``ZipFile.read`` cannot do this: it expands the whole
+    member into memory and only then compares the result against the CRC and
+    size in the archive's own directory.
+
+    The version this replaced tested ``info.file_size`` and then called
+    ``ZipFile.read``. ``file_size`` is a number the archive supplies about
+    itself, so an attacker writes it. Measured on a forged file whose headers
+    declared 1000 bytes and whose stream expanded to 300 MB:
+
+        declared file_size: 1000     -> the check passed
+        archive.read(...)            -> raised BadZipFile (bad CRC)
+        peak RSS during the call     -> +432 MB
+
+    The exception arrived after the allocation, so it was not a defence.
+
+    Two bounds hold here instead, covering the honest and the dishonest case.
+    An oversized DECLARED size is refused before any decompression. A declared
+    size that lies low bounds ``ZipExtFile`` itself, which stops at the claim
+    and then fails its CRC — so the forged member above yields 1000 bytes and
+    an error rather than 300 MB. The running total is the belt to that
+    braces: it stops a member that outruns the cap whatever the header said.
+    """
+    # Resolved here, not as a default argument: a default binds at def time,
+    # so MAX_XML_BYTES could not be overridden afterwards — which silently
+    # broke the existing bomb test that lowers it.
+    limit = MAX_XML_BYTES if limit is None else limit
+    declared = archive.getinfo(member).file_size
+    if declared > limit:
+        raise DchbTownError(
+            f"{member}: declares {declared} uncompressed bytes, above the "
+            f"{limit} cap — refusing to expand a possible decompression bomb"
+        )
+    chunks: list[bytes] = []
+    total = 0
+    try:
+        with archive.open(member) as stream:
+            while True:
+                chunk = stream.read(1024 * 1024)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > limit:
+                    raise DchbTownError(
+                        f"{member}: expanded past the {limit}-byte cap while declaring "
+                        f"{declared} — refusing to expand a decompression bomb"
+                    )
+                chunks.append(chunk)
+    except zipfile.BadZipFile as exc:
+        # Reached when the member's real content disagrees with the size or
+        # CRC the archive declared for it — i.e. exactly the forged case.
+        raise DchbTownError(
+            f"{member}: the archive's declared size or checksum does not match its "
+            f"contents ({exc}) — refusing to use it"
+        ) from exc
+    return b"".join(chunks)
+
+
 def _load_xlrd():
     """The optional xls reader, or None. Kept lazy: the core declares
     `dependencies = []` and 34 of 35 states need no .xls path at all."""
@@ -188,7 +251,7 @@ def district_from_zip(zip_path: Path | str) -> tuple[str, str, str]:
                 "cannot be read. The filename carries ORGI's ordinal, not the census "
                 "code, and guessing it would write rows that join to the wrong district."
             )
-        book = xlrd.open_workbook(file_contents=archive.read(names[0]))
+        book = xlrd.open_workbook(file_contents=read_capped(archive, names[0]))
     sheet = book.sheet_by_index(0)
     for r in range(min(sheet.nrows, 8)):
         for c in range(min(sheet.ncols, 4)):
@@ -259,7 +322,7 @@ def _now() -> str:
 
 def _slug(value: str) -> str:
     """Filesystem- and key-safe form of a town name."""
-    return re.sub(r"[^A-Za-z0-9._-]+", "_", str(value)).strip("_")
+    return safe_filename_segment(value, collapse=True)
 
 
 def _norm(value: Any) -> str:
@@ -272,13 +335,7 @@ def _safe_xml(archive: zipfile.ZipFile, member: str) -> ET.Element:
     See MAX_XML_BYTES. Raises :class:`DchbTownError` rather than letting a
     hostile file reach the parser.
     """
-    info = archive.getinfo(member)
-    if info.file_size > MAX_XML_BYTES:
-        raise DchbTownError(
-            f"{member}: declares {info.file_size} uncompressed bytes, above the "
-            f"{MAX_XML_BYTES} cap — refusing to expand a possible decompression bomb"
-        )
-    raw = archive.read(member)
+    raw = read_capped(archive, member)
     # A legitimate XLSX part carries no DTD, and the entity-expansion attack
     # needs one. Checked before parsing, on the bytes.
     # The WHOLE buffer, not a prefix: >4 KiB of legal comment before the
@@ -418,7 +475,7 @@ class DchbTownProbe:
             members = [n for n in archive.namelist() if "Town Statement-V_" in n]
             if not members:
                 raise DchbTownError(f"{zip_path.name}: no Town Statement-V member")
-            payload = archive.read(members[0])
+            payload = read_capped(archive, members[0])
             member_name = Path(members[0]).name
         return self.ingest_statement_v(
             payload,
