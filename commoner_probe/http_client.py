@@ -3,6 +3,13 @@
 
 Design (after the origin project's scraper/fetch.py)
 ---------------------------------------------
+Everything in the first three bullets holds on BOTH sessions — the requests-
+backed RetrySession and the zero-dependency StdlibSession. That is deliberate:
+`dependencies = []` makes the stdlib path the DEFAULT install, so a guarantee
+that held only with an extra installed would be false for most users. It was
+false until 2026-08-01, when the fallback had none of these and this docstring
+claimed all of them.
+
 - SSRF guard: every URL is checked against url_safety.is_safe_url() before
   the first request. Rejects non-http(s), unresolvable hosts, and any URL
   resolving to private/loopback/link-local/reserved IP space.
@@ -27,9 +34,10 @@ Design (after the origin project's scraper/fetch.py)
   Without it, a plain requests.Session is used (no caching).
 - User-Agent identifies the library so portal operators can reach us.
 - Stdlib fallback: if requests is not installed at all, a minimal urllib-based
-  implementation is used (no retry, no cache) for zero-dependency environments.
-  No retry means no 429 or `Retry-After` handling either — the fallback exists
-  for zero-dependency installs, not for crawling government portals at volume.
+  implementation is used. It carries the SSRF guard, the robots check and the
+  rate limit, but has no retry, no backoff and no cache — which also means no
+  429 or `Retry-After` handling. It is safe to point at a government portal;
+  it is not equipped to crawl one at volume. Use commoner-probe[http] for that.
 
 Call-site contract
 ------------------
@@ -227,16 +235,52 @@ class StdlibResponse:
 
 
 class StdlibSession:
-    def __init__(self, *, user_agent: str | None = None) -> None:
+    """The session a default ``pip install commoner-probe`` gets.
+
+    ``dependencies = []`` means this is not an edge case — with no extras
+    installed there is no ``requests``, so every probe in the package runs
+    through this class. It therefore applies the same SSRF, robots and
+    rate-limit policy as :class:`RetrySession`; the module docstring's
+    guarantees hold on both paths or they are not guarantees.
+
+    None of that costs a dependency. ``is_safe_url`` is stdlib-only, and
+    ``_get_robot_parser`` / ``_rate_limit`` are defined above the ``import
+    requests`` in this module so both sessions can reach them.
+
+    What this still does NOT do, and callers should know: no retry, no
+    backoff, no response cache. Those need ``commoner-probe[http]``.
+    """
+
+    def __init__(
+        self,
+        *,
+        user_agent: str | None = None,
+        rate_limit_sec: float = DEFAULT_RATE_LIMIT_SEC,
+    ) -> None:
         self.headers: dict[str, str] = {"User-Agent": user_agent or USER_AGENT}
+        self._user_agent = user_agent or USER_AGENT
+        self.rate_limit_sec = rate_limit_sec
 
-    def get(self, url: str, **kwargs: Any) -> StdlibResponse:
-        return self._request("GET", url, **kwargs)
+    def get(self, url: str, *, respect_robots: bool = True, **kwargs: Any) -> StdlibResponse:
+        return self._request("GET", url, respect_robots=respect_robots, **kwargs)
 
-    def post(self, url: str, **kwargs: Any) -> StdlibResponse:
-        return self._request("POST", url, **kwargs)
+    def post(self, url: str, *, respect_robots: bool = True, **kwargs: Any) -> StdlibResponse:
+        return self._request("POST", url, respect_robots=respect_robots, **kwargs)
 
-    def _request(self, method: str, url: str, **kwargs: Any) -> StdlibResponse:
+    def _request(
+        self, method: str, url: str, *, respect_robots: bool = True, **kwargs: Any
+    ) -> StdlibResponse:
+        # Same order as RetrySession._request: reject, then ask permission,
+        # then wait our turn. Checked BEFORE the params are appended, because
+        # the scheme and host are what the guard judges and neither changes.
+        if not is_safe_url(url):
+            raise ValueError(f"URL rejected by SSRF guard: {url}")
+        if respect_robots:
+            rp = _get_robot_parser(url, user_agent=self._user_agent)
+            if not rp.can_fetch(self._user_agent, url):
+                raise PermissionError(f"Disallowed by robots.txt: {url}")
+        _rate_limit(urlparse(url).netloc, self.rate_limit_sec)
+
         params = kwargs.get("params")
         if params:
             sep = "&" if "?" in url else "?"
@@ -341,10 +385,12 @@ if requests is not None:
         return RetrySession(rate_limit_sec=rate_limit_sec, user_agent=user_agent)
 
 else:
-    # Stdlib fallback — no SSRF guard, no retry, no cache, no rate-limit.
-    # Sufficient for zero-dependency installs and test environments.
+    # Stdlib fallback. Same SSRF guard, robots check and rate limit as
+    # RetrySession — see StdlibSession's docstring for why that is not
+    # optional. Still no retry, no backoff and no cache: those need
+    # `commoner-probe[http]`.
     # StdlibResponse/StdlibSession are defined at module level above.
     requests = types.SimpleNamespace(Session=StdlibSession)  # type: ignore[assignment]
 
     def make_session(rate_limit_sec: float = DEFAULT_RATE_LIMIT_SEC, *, user_agent: str | None = None) -> StdlibSession:  # type: ignore[misc]
-        return StdlibSession(user_agent=user_agent)
+        return StdlibSession(user_agent=user_agent, rate_limit_sec=rate_limit_sec)

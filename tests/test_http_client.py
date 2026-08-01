@@ -231,8 +231,106 @@ def test_post_is_guarded_like_get():
         session.post("http://169.254.169.254/latest/meta-data/")
 
 
+# ---------------------------------------------------------------------------
+# The zero-dependency fallback is the DEFAULT install, not an edge case.
+#
+# `dependencies = []` means a plain `pip install commoner-probe` has no
+# requests, so `make_session()` returns StdlibSession and every probe in the
+# package runs through it. It applied none of the guards the module docstring
+# promises: no SSRF check, no robots check, no rate limit. `file:///etc/passwd`
+# was honoured by urllib's file handler and 169.254.169.254 was reachable.
+#
+# None of this needed a dependency. url_safety is stdlib-only, and
+# _get_robot_parser / _rate_limit / _retry_delay are defined ABOVE the
+# `import requests` in this module precisely so both sessions can use them.
+#
+# These four cases use a literal IP or a non-http scheme, so none of them
+# performs DNS and the suite stays offline.
+# ---------------------------------------------------------------------------
+
+
+def test_stdlib_session_refuses_a_non_http_scheme():
+    """urllib.request honours file:// — the guard is what stops it."""
+    with pytest.raises(ValueError, match="SSRF guard"):
+        hc.StdlibSession().get("file:///etc/passwd")
+
+
+def test_stdlib_session_refuses_cloud_metadata():
+    with pytest.raises(ValueError, match="SSRF guard"):
+        hc.StdlibSession().get("http://169.254.169.254/latest/meta-data/")
+
+
+def test_stdlib_session_refuses_loopback():
+    with pytest.raises(ValueError, match="SSRF guard"):
+        hc.StdlibSession().post("http://127.0.0.1:8080/admin")
+
+
+def test_stdlib_session_honours_robots_disallow(monkeypatch):
+    monkeypatch.setattr(hc, "is_safe_url", lambda url: True)
+
+    class _Disallowing:
+        def can_fetch(self, ua, url):
+            return False
+
+    monkeypatch.setattr(hc, "_get_robot_parser", lambda url, user_agent: _Disallowing())
+    with pytest.raises(PermissionError, match="robots.txt"):
+        hc.StdlibSession().get("https://example.gov.in/secret")
+
+
+def test_stdlib_session_rate_limits_per_domain(monkeypatch):
+    """The politeness interval must apply on the default install too."""
+    monkeypatch.setattr(hc, "is_safe_url", lambda url: True)
+    monkeypatch.setattr(hc, "_get_robot_parser", lambda url, user_agent: _AllowAll())
+    waits = []
+    monkeypatch.setattr(hc, "_rate_limit", lambda domain, interval: waits.append((domain, interval)))
+    monkeypatch.setattr(hc.urllib.request, "urlopen", _ok_urlopen)
+    hc.StdlibSession(rate_limit_sec=2.5).get("https://example.gov.in/a")
+    assert waits == [("example.gov.in", 2.5)]
+
+
+def test_stdlib_session_can_opt_out_of_robots_like_retry_session(monkeypatch):
+    """`respect_robots=False` exists for portals that blanket-disallow crawlers.
+
+    The two sessions must agree on the opt-out, or a caller that works with
+    requests installed breaks without it.
+    """
+    monkeypatch.setattr(hc, "is_safe_url", lambda url: True)
+
+    def _explode(url, user_agent):
+        raise AssertionError("robots must not be consulted when opted out")
+
+    monkeypatch.setattr(hc, "_get_robot_parser", _explode)
+    monkeypatch.setattr(hc, "_rate_limit", lambda domain, interval: None)
+    monkeypatch.setattr(hc.urllib.request, "urlopen", _ok_urlopen)
+    assert hc.StdlibSession().get("https://example.gov.in/a", respect_robots=False).status_code == 200
+
+
+class _AllowAll:
+    def can_fetch(self, ua, url):
+        return True
+
+
+def _ok_urlopen(req, timeout=None):
+    class _Resp:
+        status = 200
+
+        def read(self):
+            return b"{}"
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    return _Resp()
+
+
 def test_stdlib_session_supports_post(monkeypatch):
     """The zero-dependency fallback must not AttributeError on POST."""
+    monkeypatch.setattr(hc, "is_safe_url", lambda url: True)
+    monkeypatch.setattr(hc, "_get_robot_parser", lambda url, user_agent: _AllowAll())
+    monkeypatch.setattr(hc, "_rate_limit", lambda domain, interval: None)
     session = hc.StdlibSession()
     assert callable(getattr(session, "post", None))
     captured = {}
