@@ -116,18 +116,22 @@ class CliCommandSyncTests(unittest.TestCase):
         reads as a missing value. Nothing caught it because no test had ever
         run a README command through the parser.
         """
-        readme = (Path(__file__).resolve().parents[1] / "README.md").read_text(encoding="utf-8")
+        root = Path(__file__).resolve().parents[1]
+        # Both files: the command reference moved to docs/CLI.md, and reading
+        # only the README silently dropped this from 55 examples to 12.
+        docs = "\n".join((root / name).read_text(encoding="utf-8")
+                         for name in ("README.md", "docs/CLI.md"))
         parser = build_parser()
-        joined = readme.replace("\\\n", " ")
+        joined = docs.replace("\\\n", " ")
         commands = re.findall(r"^commoner-probe .*$", joined, re.MULTILINE)
-        self.assertTrue(commands, "no commoner-probe examples found in README")
+        self.assertGreater(len(commands), 40, "documented examples went missing")
         for raw in commands:
             with self.subTest(command=raw):
                 argv = shlex.split(raw)[1:]
                 try:
                     parser.parse_args(argv)
                 except SystemExit as exc:
-                    self.fail(f"README example does not parse (exit {exc.code}): {raw}")
+                    self.fail(f"documented example does not parse (exit {exc.code}): {raw}")
 
     def test_explicit_zero_sleep_is_not_replaced_by_the_default(self):
         """`or` treated an explicit --sleep 0 as absent and restored 2.0s,
