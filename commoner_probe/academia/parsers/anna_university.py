@@ -5,7 +5,7 @@ Targets the events/recruitment page, whose Recruitment tab publishes a table of
 notices with department and last-date columns. HTML-only — linked PDFs are
 recorded but not parsed here.
 
-Probe-native port of academiaindia/scraper/parsers/anna_university.py (bs4 lazy;
+Probe-native port of the origin project's scraper/parsers/anna_university.py (bs4 lazy;
 NavigableString/Tag isinstance checks replaced with duck-typing).
 """
 

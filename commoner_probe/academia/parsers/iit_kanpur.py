@@ -5,7 +5,7 @@ Targets the DOFA "department-wise vacancies and area of specialization" page,
 which lists each academic unit as ``<Department Name>: <areas sought>``. HTML-
 only (IIT-K publishes the area descriptions inline, no PDF).
 
-Probe-native port of academiaindia/scraper/parsers/iit_kanpur.py.
+Probe-native port of the origin project's scraper/parsers/iit_kanpur.py.
 """
 
 from __future__ import annotations

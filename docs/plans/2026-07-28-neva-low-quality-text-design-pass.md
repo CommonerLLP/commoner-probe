@@ -152,20 +152,20 @@ domain-repo implementation. This case sits on that line:
 - The **mechanism** (rasterize a page, run tesseract, return text) is generic.
   Three implementations already exist in the org — `sevent4`'s
   `adapters/budget_ocr.py` (the cleanest: parameterized `lang`/`dpi`, 61 lines),
-  plus two one-offs in `narcotrek`. That duplication is the argument for a
+  plus two one-offs in a private domain repo. That duplication is the argument for a
   shared home.
 - The **trigger** (a broken-cmap Gujarati assembly PDF whose `low` label comes
   from a portal-metadata mismatch) is entirely source-structural, and NeVA
   acquisition is registered to `commoner-probe`.
 
 Recommendation: the generic rasterize-and-OCR helper goes to `partial-recall`
-and both `sevent4` and `narcotrek` collapse onto it; the NeVA-specific policy
+and both `sevent4` and the private domain repo collapse onto it; the NeVA-specific policy
 — which documents qualify, what `quality` becomes, how both texts are carried —
 stays in `commoner_probe/neva_text.py`. That needs Commoner's ruling before any
 code is written, because it is a cross-repo boundary move.
 
-Note also that `narcotrek/scripts/surgical_ocr_dopo.py`, named in the original
-ask as the thing to base this on, is the wrong reference regardless: it runs
+Note also that the one-off OCR script named in the original ask as the thing
+to base this on is the wrong reference regardless: it runs
 tesseract with no `-l` flag (English on Gujarati script), hardcodes DOPO table
 regexes and pages 50–120, and its input host `bprd.nic.in` is unreachable from
 two continents.

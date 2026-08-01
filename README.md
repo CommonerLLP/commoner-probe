@@ -314,7 +314,7 @@ commoner-probe budget \
 faculty-recruitment advertisements, driven by a bundled institution registry. Each
 ad becomes one `academic_job_posting` record; fetch/parse failures and
 empty-result cases are recorded so coverage gaps are visible rather than silent.
-(Migrated from the academiaindia project.)
+(Migrated from an earlier academic-jobs scraper.)
 
 ```bash
 commoner-probe academic-jobs \

@@ -11,10 +11,9 @@ All parsers face the same core sub-problems:
 This module owns those answers. Individual parsers import from here
 instead of re-implementing the logic in isolation.
 
-Ported verbatim from academiaindia's parked `feat/parser-dry-layer` branch
-(never merged to academiaindia `main`) — pure regex/string logic with no
-coupling to the old Pydantic/`ad_factory` layer, so no adaptation was
-required beyond this header.
+Ported verbatim from a branch of the origin project that was never merged
+there — pure regex/string logic with no coupling to the old
+Pydantic/`ad_factory` layer, so no adaptation was required beyond this header.
 """
 
 from __future__ import annotations

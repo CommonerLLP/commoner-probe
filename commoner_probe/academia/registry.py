@@ -2,7 +2,7 @@
 """Institution registry loader.
 
 Ships ``institutions_registry.json`` (migrated from
-academiaindia/docs/data/institutions_registry.json — 79 HEIs). Each entry has
+the origin project's institutions registry — 79 HEIs). Each entry has
 ``id``, ``name``, ``short_name``, ``type``, ``state``, ``career_page_url_guess``,
 ``parser``, etc.
 """

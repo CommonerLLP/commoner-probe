@@ -8,9 +8,8 @@ The generic parser sees both but misclassifies and misses department info.
 This parser adds department extraction and accurate post_type by delegating
 post-type and department logic to parser_utils — no duplication.
 
-Ported from academiaindia's parked `feat/parser-dry-layer` branch — that
-branch was never merged into academiaindia's history, so this parser didn't
-exist anywhere in a released form until now.
+Ported from a branch of the origin project that was never merged there, so
+this parser did not exist anywhere in a released form until now.
 """
 
 from __future__ import annotations

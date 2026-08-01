@@ -6,7 +6,7 @@ optional "Eligibility Criteria" PDF) linked from a listing page (IIT Bombay,
 Delhi, Madras). Discovers the most recent rolling-ad PDF, splits it into per-unit
 blocks, and emits one ad per academic unit.
 
-Probe-native port of academiaindia/scraper/parsers/iit_rolling.py: PDF download
+Probe-native port of the origin project's scraper/parsers/iit_rolling.py: PDF download
 goes through the injected probe ``Fetcher``; Pydantic JobAd output is rewritten
 to plain dicts via make_ad. Requires a Fetcher (returns [] in --no-download mode).
 """

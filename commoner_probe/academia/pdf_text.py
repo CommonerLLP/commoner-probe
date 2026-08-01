@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 """PDF text + field-extraction helpers for academic recruitment ads.
 
-Ported from academiaindia/scraper/pdf_extractor.py (the subset the migrated
+Ported from the origin project's scraper/pdf_extractor.py (the subset the migrated
 parsers need). Two differences from the origin:
 
 * Downloads route through the probe HTTP session (SSRF guard / robots / rate-

@@ -18,6 +18,8 @@ No network.
 from __future__ import annotations
 
 import json
+import shutil
+from pathlib import Path
 
 import pytest
 
@@ -149,15 +151,56 @@ class TestSampleKeyGuard:
 
 
 class TestKeyResolution:
-    def test_the_error_names_where_the_key_lives(self, tmp_path, monkeypatch):
+    def test_the_error_says_how_to_get_and_supply_a_key(self, monkeypatch):
         monkeypatch.delenv(census.KEY_ENV, raising=False)
-        monkeypatch.setattr(census.Path, "exists", lambda self: False)
-        with pytest.raises(CensusApiError, match=census.KEY_HINT):
+        monkeypatch.delenv(census.KEY_FILE_ENV, raising=False)
+        with pytest.raises(CensusApiError) as exc:
             census.resolve_api_key()
+        message = str(exc.value)
+        assert census.KEY_ENV in message
+        assert census.KEY_FILE_ENV in message
+        assert "data.gov.in/apis" in message
 
     def test_the_environment_is_preferred(self, monkeypatch):
         monkeypatch.setenv(census.KEY_ENV, "from-env")
         assert census.resolve_api_key() == "from-env"
+
+    def test_no_credential_is_read_from_outside_the_package(self, monkeypatch):
+        """A key file planted in an ancestor directory must NOT be read.
+
+        `resolve_api_key` used to walk every parent of `__file__` looking for a
+        fixed relative path. Installed into site-packages that walk covers
+        site-packages, python3.x, /usr/lib, /usr and / — the package read and
+        parsed arbitrary files outside its own tree while hunting a credential.
+        This plants exactly such a file and requires it to be ignored.
+        """
+        monkeypatch.delenv(census.KEY_ENV, raising=False)
+        monkeypatch.delenv(census.KEY_FILE_ENV, raising=False)
+        planted = Path(census.__file__).resolve().parent.parent / "sevent4" / ".secrets"
+        planted.mkdir(parents=True, exist_ok=True)
+        (planted / "keys.env").write_text(f"{census.KEY_ENV}=leaked-by-ancestor-walk\n", encoding="utf-8")
+        try:
+            with pytest.raises(CensusApiError):
+                census.resolve_api_key()
+        finally:
+            shutil.rmtree(planted.parent, ignore_errors=True)
+
+    def test_a_key_file_is_read_only_when_the_operator_names_one(self, tmp_path, monkeypatch):
+        monkeypatch.delenv(census.KEY_ENV, raising=False)
+        keyfile = tmp_path / "keys.env"
+        keyfile.write_text(f'{census.KEY_ENV}="abc123"\n', encoding="utf-8")
+        monkeypatch.setenv(census.KEY_FILE_ENV, str(keyfile))
+        assert census.resolve_api_key() == "abc123"
+
+    def test_a_named_key_file_that_is_absent_does_not_crash(self, tmp_path, monkeypatch):
+        monkeypatch.delenv(census.KEY_ENV, raising=False)
+        monkeypatch.setenv(census.KEY_FILE_ENV, str(tmp_path / "nope.env"))
+        with pytest.raises(CensusApiError):
+            census.resolve_api_key()
+
+    def test_explicit_beats_everything(self, monkeypatch):
+        monkeypatch.setenv(census.KEY_ENV, "from-env")
+        assert census.resolve_api_key("explicit") == "explicit"
 
 
 class TestDiscovery:

@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 """Indian HEI faculty-recruitment acquisition.
 
-Consolidates the academiaindia scraping core into commoner-probe's Layer 0: an
+Consolidates the origin project's scraping core into commoner-probe's Layer 0: an
 institution registry, per-institution parsers, and PDF text extraction. Topic-
 less, dmft-style — see :class:`AcademicJobsProbe`.
 

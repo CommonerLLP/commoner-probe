@@ -17,8 +17,7 @@ and no per-document detail page. One server-rendered page per State
 grouped under ``<div class="accTrigger"> YYYY - YY</div>`` fiscal-year headers,
 each header owning the ``<li>`` rows that follow it until the next header.
 
-Portal facts, all live-verified 2026-07-23 (full survey in theright2read
-``notes/research/library-fiscal-2026-07-08/cag-portal-map-2026-07-23.md``):
+Portal facts, all live-verified 2026-07-23:
 
 * Plain HTTP-over-TLS, no JS/WAF gate; the server honours ``defuat_state_id``.
 * **The fiscal year is NOT reliable in the filename** — Telangana ships

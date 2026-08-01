@@ -8,9 +8,8 @@ parser explodes that composite page into one ad per department.
 
 Regular faculty and non-teaching pages fall back to the generic parser.
 
-Ported from academiaindia's parked `feat/parser-dry-layer` branch — that
-branch was never merged into academiaindia's history, so this parser didn't
-exist anywhere in a released form until now.
+Ported from a branch of the origin project that was never merged there, so
+this parser did not exist anywhere in a released form until now.
 """
 
 from __future__ import annotations

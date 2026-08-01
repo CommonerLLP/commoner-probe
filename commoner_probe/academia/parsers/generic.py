@@ -6,7 +6,7 @@ advertisements (keyword match in link text / href / surrounding text, or a PDF
 near recruitment context). Does NOT fetch PDFs — keeps latency predictable; a
 site-specific parser earns its keep by going into the PDF.
 
-Probe-native port of academiaindia/scraper/parsers/generic.py: emits plain
+Probe-native port of the origin project's scraper/parsers/generic.py: emits plain
 dicts with string ``post_type`` / ``contract_status`` instead of Pydantic
 ``JobAd`` objects.
 """
