@@ -1,5 +1,89 @@
 # Changelog
 
+## 0.13.0 (2026-08-01)
+
+**A minor, on the breaking changes alone — no new acquisition surface.** The
+precedent is 0.10.0, which took the minor slot for exactly one contract change:
+`sansad` exiting non-zero where it exited 0. `validate` now does the same thing,
+and three smaller changes are also visible to a working caller. Everything here
+came out of a whole-package review; each defect below was demonstrated failing
+before it was fixed.
+
+### Breaking
+
+- **`validate` fails closed.** A record whose `kind` had no schema was skipped,
+  `file_ok` stayed true, and the command exited 0 having validated nothing. On a
+  one-record corpus with an unregistered kind: 0.12.1 printed `1 records — ok`
+  and exited 0; 0.13.0 names the kind and the line and exits 1. If you run
+  `commoner-probe validate` in CI over a corpus containing an unregistered kind,
+  it will now go red — that is the fix working.
+- **The `validate` summary line changed** from `N records — ok` to
+  `N of M records validated — ok`. The old count counted non-blank *lines*, so a
+  file whose records were every one of them skipped printed the same number as a
+  file that was fully checked. Anything parsing that line needs updating.
+- **`census.KEY_HINT` is removed.** See the credential change below.
+- **The zero-dependency session now refuses and throttles.** With no extras
+  installed it applies the SSRF guard, the robots check and the per-domain rate
+  limit, so a URL that previously fetched may now raise `ValueError` or
+  `PermissionError`, and requests to one host are spaced.
+
+### Security
+
+- **The published package no longer names a private path or hunts credentials
+  outside its own tree.** `resolve_api_key` walked *every* parent of `__file__`
+  looking for one fixed relative path; installed into site-packages that walk
+  covers `/usr/lib`, `/usr` and `/`, reading and parsing whatever it found there.
+  Resolution is now three sources and no search: an explicit argument,
+  `DATA_GOV_IN_KEY`, then `COMMONER_PROBE_KEY_FILE` — a full path you name.
+  No credential was ever in the artefact; the disclosure was a directory name.
+- **The default install is guarded.** `dependencies = []` means a plain
+  `pip install commoner-probe` gets the stdlib session, which every probe uses
+  and which applied none of the guards this package documents.
+  `StdlibSession().get("file:///etc/hosts")` returned the file. None of the
+  guards needed a dependency — `url_safety` is stdlib-only and the robots and
+  rate-limit helpers are defined above the `import requests` — they were simply
+  never wired in.
+- **Every request verb is guarded.** `head`, `put`, `patch`, `delete` and
+  `request` fell through to the bare `requests.Session`, skipping the SSRF
+  guard, robots, rate limit and backoff. Unwrapped verbs are now refused rather
+  than forwarded silently.
+- **Zip members are capped on bytes read, not on the size the archive claims.**
+  The bomb guard trusted `file_size` from the archive's own directory — a value
+  an attacker writes — then called `ZipFile.read`, which expands the member
+  fully before checking anything. A forged file declaring 1000 bytes grew peak
+  RSS by 432 MB before raising. Reading is now incremental, at all three sites.
+- **One filename sanitiser instead of eight.** Only the shared one carried the
+  leading-dot and empty-input defences, so `nada._slug("..")` returned `".."`
+  and `_slug("///")` returned `""`. Filenames already on disk are unchanged —
+  verified on real names before the switch.
+
+### Fixed
+
+- **An interrupted PDF download is no longer treated as complete.** `write_pdf`
+  streamed to its final path and resumed on `size > 1000`, so a dropped
+  connection left a truncated PDF that every later run accepted — permanently.
+  It now writes a temp file and renames. Fixed in `sansad.py`'s override too,
+  which had the identical defect.
+- **robots.txt is checked under the identity that fetches.** `NevaProbe` set
+  the User-Agent after construction, so robots was evaluated and cached under
+  the default while pages went out as `NEVA_UA`.
+- **`validate`'s kind → schema map is derived from the schemas** rather than a
+  60-line `if` chain a new kind could be left out of — which had already shipped
+  twice. Proven equivalent before switching: 32 kinds, zero disagreements.
+
+### Added
+
+- **`commoner-probe --version`**, which did not exist.
+- **A release gate.** The publish workflow ran no tests, no lint, and no check
+  that the tag matched `pyproject.toml`, so a `v0.13.0` tag on a 0.12.1 tree
+  would have published 0.12.1 mislabelled, permanently. Publishing now depends
+  on a verify job.
+- **A bare-install CI job.** `dependencies = []` is this package's core
+  constraint and nothing tested it; every matrix entry installed the extras.
+- **A packaging guard** covering the shipped package and tracked markdown, so
+  an internal reference fails a test instead of reaching PyPI.
+
+
 ## 0.12.1 (2026-08-01)
 
 A patch, not a minor. `ROADMAP.md`'s pre-1.0 rule reserves the minor slot for a
