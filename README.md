@@ -671,8 +671,8 @@ commoner-probe nada --out data/nada --extract-text
 
 Each study gives you:
 
-- the DDI metadata, including `method.data_collection.sampling_procedure` —
-  the sample design in the statistician's own words
+- the DDI metadata, including the sample design in the statistician's own
+  words, at `study_desc.method.data_collection.sampling_procedure`
 - the questionnaire and report PDFs, with sha256
 - the variable and data-file listings
 
