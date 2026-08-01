@@ -69,7 +69,7 @@ stops shipping today rather than at the end of the plan.
 
 ## Task 1 — Remove the internal credential path from the published wheel
 
-**Finding (CONFIRMED, `census.py:59`).** `KEY_HINT = "sevent4/.secrets/keys.env"`
+**Finding (CONFIRMED, `census.py:59`).** `KEY_HINT`, a hardcoded path inside a private sibling repo,
 is in the wheel on PyPI. Verified by unzipping
 `dist/commoner_probe-0.12.1-py3-none-any.whl` and reading the shipped
 `census.py`: the internal path and a private sibling repo's name are both present.
@@ -81,7 +81,7 @@ Two distinct problems, and the second is the worse one:
    data.gov.in key there". The org's own pre-publish scan rule names exactly
    this class.
 2. **The search.** `resolve_api_key` (`census.py:174-181`) iterates
-   `Path(__file__).resolve().parents` and reads any `sevent4/.secrets/keys.env`
+   `Path(__file__).resolve().parents` and reads any file at that hardcoded relative path
    it finds. Installed into site-packages, that walk covers
    `.../site-packages`, `.../python3.x`, `/usr/lib`, `/usr`, and `/` — the
    package reads and parses arbitrary files outside its own tree looking for a
@@ -107,9 +107,9 @@ def test_resolve_api_key_does_not_walk_outside_the_package(tmp_path, monkeypatch
     """
     monkeypatch.delenv("DATA_GOV_IN_KEY", raising=False)
     monkeypatch.delenv("COMMONER_PROBE_KEY_FILE", raising=False)
-    planted = Path(census.__file__).resolve().parent.parent / "sevent4" / ".secrets"
+    planted = Path(census.__file__).resolve().parent.parent / PRIVATE_REL_DIR
     planted.mkdir(parents=True, exist_ok=True)
-    (planted / "keys.env").write_text("DATA_GOV_IN_KEY=leaked\n", encoding="utf-8")
+    (planted / KEY_FILENAME).write_text("DATA_GOV_IN_KEY=leaked\n", encoding="utf-8")
     try:
         with pytest.raises(census.CensusApiError):
             census.resolve_api_key()
@@ -129,7 +129,7 @@ def test_error_message_names_no_internal_path(monkeypatch):
 
 def test_explicit_key_file_is_read_when_the_operator_names_one(tmp_path, monkeypatch):
     monkeypatch.delenv("DATA_GOV_IN_KEY", raising=False)
-    keyfile = tmp_path / "keys.env"
+    keyfile = tmp_path / KEY_FILENAME
     keyfile.write_text('DATA_GOV_IN_KEY="abc123"\n', encoding="utf-8")
     monkeypatch.setenv("COMMONER_PROBE_KEY_FILE", str(keyfile))
     assert census.resolve_api_key() == "abc123"
@@ -139,7 +139,7 @@ def test_explicit_key_file_is_read_when_the_operator_names_one(tmp_path, monkeyp
 
 Run: `.venv/bin/python -m pytest tests/test_census.py -k "walk or internal_path or key_file" -v`
 Expected: the parents-walk test fails (it reads the planted file and returns
-`"leaked"`), the message test fails (the message names `sevent4`). This is the
+`"leaked"`), the message test fails (the message names the private path). This is the
 "show it failing" step — if the first test passes before the fix, the planted
 file is in the wrong place and the test proves nothing.
 
@@ -553,7 +553,7 @@ assumed from the review:
 | zip bomb | forged header declared 1000 bytes; peak RSS grew 432 MB |
 
 Widening Task 1's scan found the leak class was larger than the one occurrence
-reported: `academiaindia` (PRIVATE) 23 times, `theright2read` (PRIVATE) twice,
+reported: one private sibling repo appeared 23 times and another twice,
 one pointing at a gitignored internal note. `docs/_archive/` turned out to be
 gitignored, so the sensitive material there was never public.
 
