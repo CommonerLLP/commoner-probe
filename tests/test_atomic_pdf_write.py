@@ -1,0 +1,154 @@
+"""A download that dies part-way must not be mistaken for a finished one.
+
+`write_pdf` streamed straight to its final path and resumed on
+`exists() and st_size > 1000`. So a Ctrl-C, a dropped connection or a full
+disk inside the chunk loop left a truncated PDF that every later run accepted
+as complete — and `answers.extract_answers` then pulled partial text out of
+it, which is indistinguishable from a genuinely short ministry answer.
+
+Five other writers in this package already write `.tmp` and rename
+(answers, atr_linkage, dchb_town, nada, questions_list). The shared base class
+that the sansad and committee crawlers use did not, nor did sansad's own
+override of it.
+
+No network: the session is a stub whose chunk stream raises where a real one
+would be cut off.
+"""
+
+from __future__ import annotations
+
+import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
+from commoner_probe.base import BaseProbe
+from commoner_probe.sansad import SansadProbe
+from commoner_probe.topics import TopicProfile
+
+GOOD_PDF = b"%PDF-1.4\n" + b"x" * 4000
+
+
+class _Response:
+    """Yields `chunks`, then raises if `fail_after` chunks have gone out."""
+
+    status_code = 200
+
+    def __init__(self, body: bytes, fail_after: int | None = None) -> None:
+        self._body = body
+        self._fail_after = fail_after
+
+    def raise_for_status(self) -> None:
+        pass
+
+    def iter_content(self, chunk_size: int = 16384):
+        emitted = 0
+        for i in range(0, len(self._body), 1024):
+            if self._fail_after is not None and emitted >= self._fail_after:
+                raise ConnectionError("connection reset by peer")
+            yield self._body[i : i + 1024]
+            emitted += 1
+
+
+class _Session:
+    def __init__(self, response: _Response) -> None:
+        self._response = response
+        self.calls = 0
+
+    def get(self, url, **kwargs):
+        self.calls += 1
+        return self._response
+
+
+def _probe(out_dir: Path, response: _Response) -> BaseProbe:
+    probe = BaseProbe(TopicProfile(name="t", description="", search_groups={}, lok_sabha_ministries=[], rajya_sabha_ministry_likes=[]), out_dir)
+    probe.session = _Session(response)
+    return probe
+
+
+def _sansad_probe(out_dir: Path, response: _Response) -> SansadProbe:
+    probe = SansadProbe(TopicProfile(name="t", description="", search_groups={}, lok_sabha_ministries=[], rajya_sabha_ministry_likes=[]), out_dir)
+    probe.session = _Session(response)
+    return probe
+
+
+class AtomicWriteTests(unittest.TestCase):
+    def test_an_interrupted_download_leaves_no_file(self):
+        with TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "pdfs" / "doc.pdf"
+            probe = _probe(Path(tmp), _Response(GOOD_PDF, fail_after=2))
+            self.assertFalse(probe.write_pdf("https://example.gov.in/a.pdf", dest, {}))
+            self.assertFalse(
+                dest.exists(),
+                "a partial download must not be left at the final path — the "
+                "next run would accept it as complete",
+            )
+
+    def test_no_tmp_file_is_left_behind(self):
+        with TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "pdfs" / "doc.pdf"
+            probe = _probe(Path(tmp), _Response(GOOD_PDF, fail_after=2))
+            probe.write_pdf("https://example.gov.in/a.pdf", dest, {})
+            leftovers = list(dest.parent.glob("*"))
+            self.assertEqual(leftovers, [], f"temp files left behind: {leftovers}")
+
+    def test_a_retry_after_an_interruption_refetches(self):
+        """The point of the whole fix: the second attempt must do the work."""
+        with TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "pdfs" / "doc.pdf"
+            _probe(Path(tmp), _Response(GOOD_PDF, fail_after=2)).write_pdf(
+                "https://example.gov.in/a.pdf", dest, {}
+            )
+            good = _probe(Path(tmp), _Response(GOOD_PDF))
+            self.assertTrue(good.write_pdf("https://example.gov.in/a.pdf", dest, {}))
+            self.assertEqual(good.session.calls, 1, "the retry must actually fetch")
+            self.assertEqual(dest.read_bytes(), GOOD_PDF)
+
+    def test_a_complete_download_lands_whole(self):
+        with TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "pdfs" / "doc.pdf"
+            probe = _probe(Path(tmp), _Response(GOOD_PDF))
+            self.assertTrue(probe.write_pdf("https://example.gov.in/a.pdf", dest, {}))
+            self.assertEqual(dest.read_bytes(), GOOD_PDF)
+
+    def test_an_existing_complete_file_is_not_refetched(self):
+        with TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "pdfs" / "doc.pdf"
+            dest.parent.mkdir(parents=True)
+            dest.write_bytes(GOOD_PDF)
+            probe = _probe(Path(tmp), _Response(GOOD_PDF))
+            self.assertTrue(probe.write_pdf("https://example.gov.in/a.pdf", dest, {}))
+            self.assertEqual(probe.session.calls, 0)
+
+
+class SansadOverrideTests(unittest.TestCase):
+    """SansadProbe overrides write_pdf, so it needs the same guarantee.
+
+    This is the crawler the repo is built around; fixing only the base class
+    would leave its main surface with the defect.
+    """
+
+    def test_an_interrupted_download_leaves_no_file(self):
+        """This override propagates the error rather than returning False.
+
+        That difference from the base class is left alone — swallowing it here
+        would be a behaviour change beyond this fix. What must hold either way
+        is that nothing partial survives on disk.
+        """
+        with TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "pdfs" / "doc.pdf"
+            probe = _sansad_probe(Path(tmp), _Response(GOOD_PDF, fail_after=2))
+            with self.assertRaises(ConnectionError):
+                probe.write_pdf("https://example.gov.in/a.pdf", dest, {})
+            self.assertFalse(dest.exists())
+            self.assertEqual(list(dest.parent.glob("*")), [])
+
+    def test_a_complete_download_lands_whole(self):
+        with TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "pdfs" / "doc.pdf"
+            probe = _sansad_probe(Path(tmp), _Response(GOOD_PDF))
+            self.assertTrue(probe.write_pdf("https://example.gov.in/a.pdf", dest, {}))
+            self.assertEqual(dest.read_bytes(), GOOD_PDF)
+
+
+if __name__ == "__main__":
+    unittest.main()

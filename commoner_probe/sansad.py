@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import socket
 import time
@@ -308,16 +309,29 @@ class SansadProbe(BaseProbe):
         return pdf.get("_links", {}).get("content", {}).get("href") if pdf else None
 
     def write_pdf(self, url: str, path: Path, headers: dict) -> bool:
+        """As ``BaseProbe.write_pdf``: temp file, then rename.
+
+        Overridden for the longer timeout and the DSpace 200-only check, not
+        to change the write guarantee — an interrupted download here left the
+        same permanently-accepted truncated PDF.
+        """
         if path.exists() and path.stat().st_size > 1000:
             return True
         path.parent.mkdir(parents=True, exist_ok=True)
         r = self.session.get(url, headers=headers, timeout=120, stream=True)
         if r.status_code != 200:
             return False
-        with path.open("wb") as f:
-            for chunk in r.iter_content(chunk_size=16384):
-                f.write(chunk)
-        return path.exists() and path.stat().st_size > 1000
+        tmp_path = path.with_suffix(path.suffix + ".tmp")
+        try:
+            with tmp_path.open("wb") as f:
+                for chunk in r.iter_content(chunk_size=16384):
+                    f.write(chunk)
+            if tmp_path.stat().st_size <= 1000:
+                return False
+            os.replace(tmp_path, path)
+            return True
+        finally:
+            tmp_path.unlink(missing_ok=True)
 
     def _ls_record(self, item: dict, *, run_id: str, group: str, query: str, ministry: str) -> dict:
         md = item.get("metadata", {})
