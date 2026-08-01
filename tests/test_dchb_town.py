@@ -417,3 +417,97 @@ def test_re_ingesting_does_not_duplicate_rows(tmp_path):
     probe.ingest(FIX)
     assert len(_row_file(tmp_path)) == first
     assert len(_manifest(tmp_path)) == 1
+
+
+# ---------------------------------------------------------------------------
+# Statement V (.xls) — Sikkim's shape. 34 states ship an xlsx; Sikkim does not.
+# ---------------------------------------------------------------------------
+
+# The source's real filename is kept deliberately: it is the ONLY carrier of the
+# district code, so renaming it would discard data the parser depends on.
+STMT_V = Path(__file__).parent / "fixtures" / "dchb" / "Town Statement-V_1101.xls"
+
+xlrd_required = pytest.mark.skipif(
+    __import__("importlib.util", fromlist=["util"]).find_spec("xlrd") is None,
+    reason="Statement V reading needs the optional xls extra: pip install commoner-probe[xls]",
+)
+
+
+def test_a_cell_holding_a_count_parses_as_a_count():
+    assert dchb_town.parse_facility_cell("1.0") == (1, None, None)
+    assert dchb_town.parse_facility_cell("3") == (3, None, None)
+
+
+def test_a_cell_holding_a_nearest_place_means_ZERO_not_unknown():
+    """The trap the corrected request spec names: a cell holds either a count OR
+    the nearest town and its distance. `GANGTOK(67)` means there is none here and
+    the nearest is 67 km away — a count of ZERO with a location, not a missing
+    value. An integer parse drops exactly the towns that lack the facility."""
+    assert dchb_town.parse_facility_cell("GANGTOK(67)") == (0, "GANGTOK", 67.0)
+    assert dchb_town.parse_facility_cell("WEST PENDAM(46)") == (0, "WEST PENDAM", 46.0)
+
+
+def test_an_empty_cell_is_unknown_not_zero():
+    assert dchb_town.parse_facility_cell("") == (None, None, None)
+    assert dchb_town.parse_facility_cell(None) == (None, None, None)
+
+
+@xlrd_required
+def test_statement_v_yields_the_towns_with_library_and_reading_room_columns():
+    """Columns 21 and 22 are `Public libraries` and `Reading rooms` — separate,
+    per the corrected spec."""
+    rows = dchb_town.read_statement_v(STMT_V)
+    assert len(rows) == 1, f"North District has one town, got {len(rows)}"
+    town = rows[0]
+    assert town["town_name"].startswith("Mangan")
+    assert town["public_library"] == 1
+    assert town["reading_room"] == 1
+    # The nearest-place fields exist and are null when the facility is present.
+    assert town["public_library_nearest_place"] is None
+
+
+@xlrd_required
+def test_statement_v_rows_validate_against_the_same_schema(tmp_path):
+    """One schema for both input shapes — a consumer must not have to care which
+    format a state happened to publish."""
+    from commoner_probe.validate import validate_corpus
+
+    probe = dchb_town.DchbTownProbe(tmp_path)
+    probe.ingest_statement_v(STMT_V, state_code="11", district_code="101")
+    assert validate_corpus(tmp_path, log=lambda _m: None)
+    rows = _row_file(tmp_path)
+    assert rows and rows[0]["kind"] == "dchb_town_amenity"
+    assert rows[0]["state_code"] == "11"
+
+
+def test_reading_statement_v_without_xlrd_says_which_extra_to_install(monkeypatch):
+    """The zero-dependency core stays zero-dependency; the failure has to name
+    the fix rather than surface an ImportError."""
+    monkeypatch.setattr(dchb_town, "_load_xlrd", lambda: None)
+    with pytest.raises(dchb_town.DchbTownError, match=r"commoner-probe\[xls\]"):
+        dchb_town.read_statement_v(STMT_V)
+
+
+def test_the_district_and_state_codes_come_from_the_statement_v_filename():
+    """`Town Statement-V_1101.xls` carries the district code, and the first two
+    digits are the state. The sheet itself has neither, so the filename is the
+    only in-band source — and guessing them would be worse."""
+    assert dchb_town.codes_from_statement_v_name("Town Statement-V_1101.xls") == ("11", "1101")
+    assert dchb_town.codes_from_statement_v_name("/a/b/Town Statement-V_1104.xls") == ("11", "1104")
+
+
+def test_an_unparseable_statement_v_filename_is_refused():
+    with pytest.raises(dchb_town.DchbTownError, match="district code"):
+        dchb_town.codes_from_statement_v_name("some_random_file.xls")
+
+
+@xlrd_required
+def test_the_cli_reads_a_statement_v_xls(tmp_path):
+    from commoner_probe import cli
+
+    args = cli.build_parser().parse_args(["dchb-town", "--out", str(tmp_path), str(STMT_V)])
+    args.func(args)
+    rows = _row_file(tmp_path)
+    assert len(rows) == 1
+    assert rows[0]["state_code"] == "11" and rows[0]["district_code"] == "1101"
+    assert rows[0]["public_library_total"] == 1

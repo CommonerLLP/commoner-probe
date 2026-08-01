@@ -47,13 +47,17 @@ pdf = ["pdfminer.six>=20231228"]
 http = ["requests>=2.31.0"]
 pandas = ["pandas>=2.0"]
 budget = ["lxml>=5.0"]
+# Sikkim alone publishes Statement V as OLE2 .xls; the other 34 states ship xlsx
+# that the stdlib reader handles, so this stays optional.
+xls = ["xlrd>=2.0.1"]
 academia = ["beautifulsoup4>=4.12", "pdfminer.six>=20231228"]
-dev = ["jsonschema>=4.20", "pytest>=7", "ruff>=0.4", "lxml>=5.0", "beautifulsoup4>=4.12"]
+dev = ["jsonschema>=4.20", "pytest>=7", "ruff>=0.4", "lxml>=5.0", "beautifulsoup4>=4.12", "xlrd>=2.0.1"]
 all = [
   "pdfminer.six>=20231228",
   "requests>=2.31.0",
   "lxml>=5.0",
   "beautifulsoup4>=4.12",
+  "xlrd>=2.0.1",
 ]
 
 [project.urls]

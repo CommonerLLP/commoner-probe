@@ -583,8 +583,15 @@ def dchb_town_cmd(args: argparse.Namespace) -> None:
     total_towns = 0
     total_lib = 0
     for path in args.xlsx:
+        source = Path(path)
         try:
-            rows = probe.ingest(Path(path))
+            if source.suffix.lower() == ".xls":
+                # Sikkim's shape: per-district Statement V, OLE2 binary.
+                from .dchb_town import codes_from_statement_v_name
+                state, district = codes_from_statement_v_name(source)
+                rows = probe.ingest_statement_v(source, state_code=state, district_code=district)
+            else:
+                rows = probe.ingest(source)
         except (DchbTownError, OSError) as exc:
             raise SystemExit(f"dchb-town: {path}: {exc}") from None
         # A None total means the source did not record the value for that town.
@@ -1445,7 +1452,11 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     dchb_town.add_argument("--out", required=True, help="Output directory")
-    dchb_town.add_argument("xlsx", nargs="+", help="One or more Town Release .xlsx files")
+    dchb_town.add_argument(
+        "xlsx", nargs="+",
+        help="Town Release .xlsx files, and/or Sikkim's Town Statement-V .xls "
+             "(the latter needs: pip install commoner-probe[xls])",
+    )
     dchb_town.set_defaults(func=dchb_town_cmd)
 
     nada = sub.add_parser(

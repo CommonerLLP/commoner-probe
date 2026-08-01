@@ -113,8 +113,120 @@ class DchbTownError(RuntimeError):
     pass
 
 
+#: Column headers in a Statement V sheet, which Sikkim publishes instead of a
+#: state-level Town Release. Verified against the real North District file.
+STATEMENT_V_HEADERS = {
+    "public libraries": "public_library",
+    "reading rooms": "reading_room",
+}
+
+
+def _load_xlrd():
+    """The optional xls reader, or None. Kept lazy: the core declares
+    `dependencies = []` and 34 of 35 states need no .xls path at all."""
+    try:
+        import xlrd  # type: ignore
+    except ImportError:
+        return None
+    return xlrd
+
+
+def parse_facility_cell(value: Any) -> tuple[int | None, str | None, float | None]:
+    """Return (count, nearest_place, distance_km) for one Statement V cell.
+
+    A cell holds EITHER a count OR the nearest town and its distance —
+    `GANGTOK(67)` means there is none in this town and the nearest is 67 km
+    away. That is a count of **zero with a location**, not a missing value.
+    Parsing the cell as an integer silently drops exactly the towns that lack
+    the facility, which is the trap the request spec for REQ-0045 names.
+    """
+    if value is None:
+        return None, None, None
+    text = str(value).strip()
+    if not text:
+        return None, None, None
+    try:
+        return int(float(text)), None, None
+    except ValueError:
+        pass
+    match = re.match(r"^(.+?)\s*\((\d+(?:\.\d+)?)\)$", text)
+    if match:
+        return 0, match.group(1).strip(), float(match.group(2))
+    return None, None, None
+
+
+def codes_from_statement_v_name(path: Path | str) -> tuple[str, str]:
+    """(state_code, district_code) from a `Town Statement-V_<district>.xls` name.
+
+    The sheet carries neither code, so the filename is the only in-band source.
+    Refused rather than guessed when the name does not match.
+    """
+    match = re.search(r"Statement-V_(\d{4})", Path(path).name)
+    if not match:
+        raise DchbTownError(
+            f"{Path(path).name}: no district code in the filename — expected "
+            "'Town Statement-V_<4-digit district>.xls'"
+        )
+    district = match.group(1)
+    return district[:2], district
+
+
+def read_statement_v(path: Path | str) -> list[dict]:
+    """Read a `Town Statement-V_<district>.xls` into town dicts.
+
+    Sikkim is the only state that publishes this shape rather than a
+    state-level Town Release; the columns carry the same facts.
+    """
+    xlrd = _load_xlrd()
+    if xlrd is None:
+        raise DchbTownError(
+            "reading Statement V needs the optional xls reader — "
+            "run: pip install commoner-probe[xls]. Only Sikkim publishes this "
+            "shape; the other 34 states ship an .xlsx that needs no extra."
+        )
+    book = xlrd.open_workbook(str(path))
+    sheet = book.sheet_by_index(0)
+
+    header_row = None
+    columns: dict[str, int] = {}
+    for r in range(min(sheet.nrows, 10)):
+        found = {}
+        for c in range(sheet.ncols):
+            field = STATEMENT_V_HEADERS.get(_norm(sheet.cell_value(r, c)))
+            if field:
+                found[field] = c
+        if len(found) == len(STATEMENT_V_HEADERS):
+            header_row, columns = r, found
+            break
+    if header_row is None:
+        raise DchbTownError(
+            f"{Path(path).name}: no Statement V library columns found — refusing "
+            "to emit rows rather than record absent columns as zero libraries"
+        )
+
+    rows: list[dict] = []
+    for r in range(header_row + 1, sheet.nrows):
+        name = str(sheet.cell_value(r, 1)).strip()
+        # Skip the column-number band (1.0, 2.0, ...) and the footnote row.
+        if not name or name.replace(".", "").isdigit() or name.startswith("*"):
+            continue
+        row = {"town_name": name}
+        for field, col in columns.items():
+            count, place, dist = parse_facility_cell(sheet.cell_value(r, col))
+            row[field] = count
+            row[f"{field}_nearest_place"] = place
+            row[f"{field}_nearest_km"] = dist
+        rows.append(row)
+    return rows
+
+
 def _now() -> str:
     return datetime.now().isoformat(timespec="seconds")
+
+
+def _slug(value: str) -> str:
+    """Filesystem- and key-safe form of a town name."""
+    return re.sub(r"[^A-Za-z0-9._-]+", "_", str(value)).strip("_")
 
 
 def _norm(value: Any) -> str:
@@ -258,6 +370,78 @@ class DchbTownProbe:
             "ingested_at": _now(),
         }
         self._write(self.manifest, [record], key="key")
+        return rows
+
+    def ingest_statement_v(self, xls: Path | str, *, state_code: str, district_code: str) -> list[dict]:
+        """Ingest one `Town Statement-V_<district>.xls` — Sikkim's shape.
+
+        Emits the SAME `dchb_town_amenity` rows as the xlsx path, so a consumer
+        never has to know which format a state happened to publish. The state
+        and district codes are not in the sheet, so the caller supplies them
+        from the filename or the record.
+        """
+        xls = Path(xls)
+        towns = read_statement_v(xls)
+        blob = xls.read_bytes()
+        sha = hashlib.sha256(blob).hexdigest()
+        rows = []
+        for town in towns:
+            lib, room = town.get("public_library"), town.get("reading_room")
+            rows.append({
+                "key": f"DCHB|{state_code}|{district_code}|{_slug(town['town_name'])}",
+                "kind": "dchb_town_amenity",
+                "record_type": "dchb_town_amenity",
+                "source": "censusindia.gov.in",
+                "census_year": "2011",
+                "measure": "count",
+                "state_code": state_code,
+                "state_name": None,
+                "district_code": district_code,
+                "district_name": None,
+                "subdistrict_code": None,
+                "subdistrict_name": None,
+                # Statement V has no town code; the name is the identity here.
+                "town_code": None,
+                "town_name": town["town_name"],
+                "total_households": None,
+                "total_population": None,
+                # Statement V does not split govt from private, so the split
+                # fields stay null rather than guessing which side a count is.
+                "public_library_govt": None,
+                "public_library_private": None,
+                "public_library_total": lib,
+                "public_library_govt_status": None,
+                "public_library_private_status": None,
+                "reading_room_govt": None,
+                "reading_room_private": None,
+                "reading_room_total": room,
+                "reading_room_govt_status": None,
+                "reading_room_private_status": None,
+                "source_filename": xls.name,
+                "source_sha256": sha,
+                "extracted_at": _now(),
+            })
+        distinct = {r["key"] for r in rows}
+        if len(distinct) != len(rows):
+            raise DchbTownError(
+                f"{xls.name}: {len(rows)} towns collapse to {len(distinct)} keys"
+            )
+        self.out_dir.mkdir(parents=True, exist_ok=True)
+        self._write(self.rows_path, rows, key="key")
+        self._write(self.manifest, [{
+            "key": f"DCHB|{state_code}|{xls.name}",
+            "kind": "dchb_town_release",
+            "record_type": "dchb_town_release",
+            "source": "censusindia.gov.in",
+            "census_year": "2011",
+            "state_code": state_code,
+            "source_filename": xls.name,
+            "sha256": sha,
+            "bytes": len(blob),
+            "towns": len(rows),
+            "districts": 1,
+            "ingested_at": _now(),
+        }], key="key")
         return rows
 
     def _row(self, raw: dict, cols: dict, filename: str, sha: str) -> dict:

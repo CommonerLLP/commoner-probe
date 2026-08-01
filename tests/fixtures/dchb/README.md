@@ -41,3 +41,26 @@ These are **counts**. The rural Village Amenities equivalent is an
 widely-cited and wrong "~75,000 libraries" — because the rural figure counts
 *villages that have a library*, not libraries. Reading rooms are likewise a
 separate facility from libraries and are never added to them.
+
+## `Town Statement-V_1101.xls`
+
+The **real** Statement V for Sikkim's North District, extracted unmodified from
+`DH_2011_1101-North_District.zip` inside ORGI NADA catalog 13990, acquired
+2026-08-01. Genuine OLE2/BIFF8 binary, 8 rows × 23 columns, one town.
+
+**The filename is kept exactly as the source publishes it, and that is
+deliberate**: the sheet carries neither the state nor the district code, so
+`Town Statement-V_<district>.xls` is the only in-band source of them. Renaming
+this fixture to something tidier would throw away data the parser needs.
+
+**Why Sikkim needs a second reader at all.** 34 of 35 states ship a state-level
+`DH_2011_DCHB_Town_Release_<code>.xlsx`. Sikkim ships four per-district ZIPs of
+`Town Statement-V_<district>.xls` instead — same data, older format.
+
+**What it establishes.** Column 21 is `Public libraries`, column 22 is
+`Reading rooms` — separate, as the corrected request spec says. And it carries
+the cell grammar that spec warned about: a cell holds **either a count or the
+nearest town and its distance**. Mangan (NP) reads `1.0` for libraries but
+`GANGTOK(67)` for medical colleges — meaning none here, nearest 67 km away. An
+integer parse silently drops exactly the towns that lack the facility, turning
+"absent" into "unknown" or worse into a skipped row.
