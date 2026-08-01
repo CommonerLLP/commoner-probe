@@ -21,6 +21,10 @@ hooks:
 test: $(PYTHON)
 	$(PYTHON) -m pytest tests/ -v
 
+verify-release:    ## prove a published version installs from PyPI: make verify-release VERSION=0.12.0
+	@test -n "$(VERSION)" || (echo "usage: make verify-release VERSION=x.y.z" && exit 2)
+	python3 scripts/verify_release.py $(VERSION)
+
 clean:
 	rm -rf $(VENV) build/ *.egg-info/
 
