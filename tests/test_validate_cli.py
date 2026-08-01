@@ -90,13 +90,68 @@ def test_empty_directory_passes():
 # Records with unknown kind are skipped (no false positives)
 # ---------------------------------------------------------------------------
 
-def test_unknown_kind_skipped():
+def test_unknown_kind_fails_instead_of_being_skipped():
+    """An unregistered kind is an unvalidated record, and must not pass.
+
+    This inverts the previous contract. Skipping meant a probe could emit a
+    new kind, or rename one, and `commoner-probe validate` would print
+    "N records — ok" and exit 0 having validated nothing. That shipped at
+    least twice; the second fix was commit dc06d85, "one more unvalidated
+    manifest kind". Adding one more `if` each time treats the instance, not
+    the mechanism.
+    """
     rec = {"key": "X|Y|Z", "kind": "future_kind", "house": "Upper House"}
     with tempfile.TemporaryDirectory() as tmp:
         m = Path(tmp) / "manifest.jsonl"
         m.write_text(json.dumps(rec) + "\n", encoding="utf-8")
         ok, lines = _run_validate(Path(tmp))
-    assert ok, "Unknown kind should be silently skipped"
+    assert not ok, "an unregistered kind must fail, not pass silently"
+    joined = "\n".join(lines)
+    assert "future_kind" in joined, f"the failure must name the kind:\n{joined}"
+    assert "line 1" in joined, f"the failure must name the line:\n{joined}"
+
+
+def test_the_count_reports_records_validated_not_lines_read():
+    """`N records — ok` counted non-blank LINES, so it could not detect this.
+
+    A file of records that were all skipped reported the same number as a file
+    of records that were all checked.
+    """
+    known = {
+        "key": "K|1",
+        "kind": "wayback_capture",
+        "url": "https://example.gov.in/x",
+        "timestamp": "20240101000000",
+        "status": "captured",
+        "fetched_at": "2026-01-01T00:00:00Z",
+    }
+    with tempfile.TemporaryDirectory() as tmp:
+        m = Path(tmp) / "manifest.jsonl"
+        m.write_text(
+            json.dumps(known) + "\n" + json.dumps({"key": "K|2", "kind": "future_kind"}) + "\n",
+            encoding="utf-8",
+        )
+        ok, lines = _run_validate(Path(tmp))
+    joined = "\n".join(lines)
+    assert not ok
+    assert "1 of 2" in joined, f"the count must distinguish validated from read:\n{joined}"
+
+
+def test_every_manifest_schema_is_reachable():
+    """The kind -> schema map must cover every manifest schema that ships.
+
+    Derived from the schemas rather than hand-written, so a new schema cannot
+    be forgotten. This asserts the derivation actually found them all.
+    """
+    from commoner_probe import schemas as sc
+    from commoner_probe.validate import manifest_schema_by_kind
+
+    shipped = {n for n in sc.list_all() if n.startswith("manifest_")}
+    reachable = set(manifest_schema_by_kind().values())
+    assert shipped == reachable, (
+        f"unreachable manifest schemas: {sorted(shipped - reachable)}; "
+        f"mapped to non-existent: {sorted(reachable - shipped)}"
+    )
 
 
 # ---------------------------------------------------------------------------

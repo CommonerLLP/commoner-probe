@@ -15,8 +15,9 @@ from __future__ import annotations
 
 import json
 import sys
+from functools import lru_cache
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
 # Maximum number of individual errors to print per file before truncating.
 _MAX_ERRORS_PER_FILE = 10
@@ -36,72 +37,38 @@ def _load_jsonschema():
         sys.exit(2)
 
 
+@lru_cache(maxsize=1)
+def manifest_schema_by_kind() -> dict[str, str]:
+    """Map each manifest ``kind`` to its schema, read from the schemas.
+
+    Derived, not hand-written. Every ``manifest_*`` schema pins the kinds it
+    describes in ``properties.kind`` as a ``const`` or an ``enum``, so the
+    mapping is already stated once, in the schema, and can be read back.
+
+    The version this replaced was a 60-line ``if kind == ...`` chain, and a
+    kind missing from it was silently skipped rather than reported. That
+    combination shipped unvalidated records at least twice — commit dc06d85 is
+    literally "one more unvalidated manifest kind". Each fix added one more
+    branch; none removed the possibility of forgetting the next one. Derivation
+    does, and ``test_every_manifest_schema_is_reachable`` proves the derivation
+    finds them all.
+    """
+    from commoner_probe import schemas as sc
+
+    mapping: dict[str, str] = {}
+    for name in sc.list_all():
+        if not name.startswith("manifest_"):
+            continue
+        spec = sc.load(name).get("properties", {}).get("kind") or {}
+        kinds = [spec["const"]] if "const" in spec else list(spec.get("enum") or [])
+        for kind in kinds:
+            mapping.setdefault(kind, name)
+    return mapping
+
+
 def _pick_schema_name(rec: dict) -> str | None:
     """Choose the schema name for a manifest record based on kind + house."""
-    kind = rec.get("kind")
-    if kind == "qa":
-        return "manifest_qa"
-    if kind == "committee_report":
-        return "manifest_committee_report"
-    if kind == "mca_csr_company_spend":
-        return "manifest_mca_csr"
-    if kind == "mines_dmft_source_file":
-        return "manifest_mines_dmft"
-    if kind == "dpe_csr_document":
-        return "manifest_dpe_csr"
-    if kind == "orgi_census_resource":
-        return "manifest_orgi_census"
-    if kind == "dchb_town_release":
-        return "manifest_dchb_town_release"
-    if kind == "nada_study":
-        return "manifest_nada_study"
-    if kind == "nada_resource":
-        return "manifest_nada_resource"
-    if kind == "niti_annual_report":
-        return "manifest_niti_annual_report"
-    if kind == "doe_pay_allowances_report":
-        return "manifest_doe_pay_allowances"
-    if kind == "budget_source_file":
-        return "manifest_budget"
-    if kind == "academic_job_posting":
-        return "manifest_academic_job"
-    if kind == "floor_debate":
-        return "manifest_floor_debate"
-    if kind == "bill_record":
-        return "manifest_bill"
-    if kind == "indiacode_instrument":
-        return "manifest_indiacode"
-    if kind == "attendance":
-        return "manifest_attendance"
-    if kind == "myneta_candidate":
-        return "manifest_myneta"
-    if kind == "cag_state_account":
-        return "manifest_cag_state_account"
-    if kind == "prs_mp_track":
-        return "manifest_prs_mp_track"
-    if kind == "prs_bill_track":
-        return "manifest_prs_bill_track"
-    if kind in ("prs_report_summary", "prs_vital_stats"):
-        return "manifest_prs_publication"
-    if kind == "nai_catalogue_record":
-        return "manifest_abhilekh_patal"
-    if kind == "wayback_capture":
-        return "manifest_wayback_capture"
-    if kind == "question_list":
-        return "manifest_question_list"
-    if kind == "legacy_dspace_item":
-        return "manifest_legacy_dspace"
-    if kind == "tabled_paper":
-        return "manifest_tabled_paper"
-    if kind == "ministry_ddg_document":
-        return "manifest_ministry_ddg"
-    if kind == "mospi_pull":
-        return "manifest_mospi"
-    if kind == "court_record":
-        return "manifest_court_record"
-    if kind == "rendered_page":
-        return "manifest_rendered_page"
-    return None
+    return manifest_schema_by_kind().get(rec.get("kind"))
 
 
 def _schema_for_answers_kind(kind: str) -> str | None:
@@ -133,19 +100,33 @@ def validate_corpus(
     def _validate_file(
         path: Path,
         schema_name_for: Callable[[dict], str | None],
-    ) -> bool:
-        """Validate a JSONL file; return True if all records are clean."""
+    ) -> tuple[bool, int, int]:
+        """Validate a JSONL file.
+
+        Returns ``(ok, validated, read)``. The caller reports both counts,
+        because they used to be assumed equal: the summary line counted
+        non-blank LINES, so a file whose records were every one of them
+        skipped printed the same "N records — ok" as a file that was fully
+        checked.
+
+        A record whose kind has no schema is a FAILURE, not a skip. It is by
+        definition unvalidated, and reporting it as validated is the exact
+        confusion this function exists to prevent.
+        """
         if not path.exists():
-            return True
-        schema_cache: dict[str, dict] = {}
+            return True, 0, 0
+        validator_cache: dict[str, Any] = {}
         file_ok = True
         error_count = 0
+        read = 0
+        validated = 0
 
         with path.open(encoding="utf-8") as f:
             for lineno, raw_line in enumerate(f, start=1):
                 raw_line = raw_line.strip()
                 if not raw_line:
                     continue
+                read += 1
                 try:
                     rec = json.loads(raw_line)
                 except json.JSONDecodeError as exc:
@@ -159,17 +140,35 @@ def validate_corpus(
 
                 sname = schema_name_for(rec)
                 if sname is None:
-                    continue  # unknown kind — skip, don't fail
+                    log(
+                        f"  line {lineno}: no schema for kind {rec.get('kind')!r} — "
+                        "the record cannot be validated. Add the kind to its "
+                        "manifest schema's `properties.kind`."
+                    )
+                    file_ok = False
+                    error_count += 1
+                    if error_count >= max_errors:
+                        log(f"  (truncated after {max_errors} errors)")
+                        break
+                    continue
 
-                if sname not in schema_cache:
+                if sname not in validator_cache:
                     try:
-                        schema_cache[sname] = sc.load(sname)
+                        # Built once per schema, not once per record. Schema
+                        # compilation and $ref resolution are not free, and
+                        # this loop runs per line of a corpus manifest.
+                        validator_cache[sname] = Validator(sc.load(sname))
                     except KeyError:
-                        continue  # schema not found — skip
+                        log(f"  line {lineno}: schema {sname!r} is not installed")
+                        file_ok = False
+                        error_count += 1
+                        if error_count >= max_errors:
+                            log(f"  (truncated after {max_errors} errors)")
+                            break
+                        continue
 
-                schema = schema_cache[sname]
-                validator = Validator(schema)
-                errors = list(validator.iter_errors(rec))
+                errors = list(validator_cache[sname].iter_errors(rec))
+                validated += 1
                 if errors:
                     file_ok = False
                     for err in errors[:3]:
@@ -180,127 +179,59 @@ def validate_corpus(
                         log(f"  (truncated after {max_errors} errors)")
                         break
 
-        return file_ok
+        return file_ok, validated, read
 
-    # --- manifest.jsonl ---
+    def _report(path: Path, schema_name_for: Callable[[dict], str | None]) -> bool:
+        """Validate one file and print its one-line summary."""
+        log(f"Validating {path.relative_to(out_dir)} ...")
+        ok, validated, read = _validate_file(path, schema_name_for)
+        log(f"  {validated} of {read} records validated — {'ok' if ok else 'FAILED'}")
+        return ok
+
+    # One file, one schema. The exceptions come first because they are the
+    # only two that are not a fixed name: manifest.jsonl picks per record, and
+    # answers.jsonl picks per record from a small dict.
+    #
+    # Everything after that used to be twelve copies of the same six lines,
+    # each hardcoding a path and a schema, each accumulating `any_error`
+    # separately. Adding one output file meant copying the block and editing
+    # four call sites inside it correctly — the same copy-paste shape that
+    # produced the forgotten-kind bug this commit also fixes. The file already
+    # demonstrated the table form twice, at the bottom, for state-assembly and
+    # entity outputs.
     manifest = out_dir / "manifest.jsonl"
     if manifest.exists():
-        log(f"Validating {manifest.relative_to(out_dir)} ...")
-        ok = _validate_file(manifest, _pick_schema_name)
-        status = "ok" if ok else "FAILED"
-        n = sum(1 for line in manifest.read_text(encoding="utf-8").splitlines() if line.strip())
-        log(f"  {n} records — {status}")
-        any_error = any_error or (not ok)
+        any_error |= not _report(manifest, _pick_schema_name)
     else:
         log("manifest.jsonl not found — skipping")
 
-    # --- _runs.jsonl ---
-    runs_path = out_dir / "_runs.jsonl"
-    if runs_path.exists():
-        log(f"Validating {runs_path.relative_to(out_dir)} ...")
-        ok = _validate_file(runs_path, lambda _: "runs")
-        n = sum(1 for line in runs_path.read_text(encoding="utf-8").splitlines() if line.strip())
-        log(f"  {n} records — {'ok' if ok else 'FAILED'}")
-        any_error = any_error or (not ok)
-
-    # --- _windows.jsonl ---
-    windows_path = out_dir / "_windows.jsonl"
-    if windows_path.exists():
-        log(f"Validating {windows_path.relative_to(out_dir)} ...")
-        ok = _validate_file(windows_path, lambda _: "windows")
-        n = sum(1 for line in windows_path.read_text(encoding="utf-8").splitlines() if line.strip())
-        log(f"  {n} records — {'ok' if ok else 'FAILED'}")
-        any_error = any_error or (not ok)
-
-    # --- answers.jsonl ---
     answers_path = out_dir / "answers.jsonl"
     if answers_path.exists():
-        log(f"Validating {answers_path.relative_to(out_dir)} ...")
-        ok = _validate_file(answers_path, lambda r: _schema_for_answers_kind(r.get("kind", "")))
-        n = sum(1 for line in answers_path.read_text(encoding="utf-8").splitlines() if line.strip())
-        log(f"  {n} records — {'ok' if ok else 'FAILED'}")
-        any_error = any_error or (not ok)
+        any_error |= not _report(
+            answers_path, lambda r: _schema_for_answers_kind(r.get("kind", ""))
+        )
 
-    # --- questions_list.jsonl ---
-    questions_list_path = out_dir / "questions_list.jsonl"
-    if questions_list_path.exists():
-        log(f"Validating {questions_list_path.relative_to(out_dir)} ...")
-        ok = _validate_file(questions_list_path, lambda _: "question_list_row")
-        n = sum(1 for line in questions_list_path.read_text(encoding="utf-8").splitlines() if line.strip())
-        log(f"  {n} records — {'ok' if ok else 'FAILED'}")
-        any_error = any_error or (not ok)
-
-    # --- outsourcing_rows.jsonl ---
-    outsourcing_path = out_dir / "outsourcing_rows.jsonl"
-    if outsourcing_path.exists():
-        log(f"Validating {outsourcing_path.relative_to(out_dir)} ...")
-        ok = _validate_file(outsourcing_path, lambda _: "outsourcing_row")
-        n = sum(1 for line in outsourcing_path.read_text(encoding="utf-8").splitlines() if line.strip())
-        log(f"  {n} records — {'ok' if ok else 'FAILED'}")
-        any_error = any_error or (not ok)
-
-    # --- neva_district_rows.jsonl ---
-    neva_rows_path = out_dir / "neva_district_rows.jsonl"
-    if neva_rows_path.exists():
-        log(f"Validating {neva_rows_path.relative_to(out_dir)} ...")
-        ok = _validate_file(neva_rows_path, lambda _: "neva_district_row")
-        n = sum(1 for line in neva_rows_path.read_text(encoding="utf-8").splitlines() if line.strip())
-        log(f"  {n} records — {'ok' if ok else 'FAILED'}")
-        any_error = any_error or (not ok)
-
-    # --- town_amenity_rows.jsonl ---
-    town_rows_path = out_dir / "town_amenity_rows.jsonl"
-    if town_rows_path.exists():
-        log(f"Validating {town_rows_path.relative_to(out_dir)} ...")
-        ok = _validate_file(town_rows_path, lambda _: "dchb_town_amenity")
-        n = sum(1 for line in town_rows_path.read_text(encoding="utf-8").splitlines() if line.strip())
-        log(f"  {n} records — {'ok' if ok else 'FAILED'}")
-        any_error = any_error or (not ok)
-
-    # --- vacancy_rows.jsonl ---
-    vacancy_path = out_dir / "vacancy_rows.jsonl"
-    if vacancy_path.exists():
-        log(f"Validating {vacancy_path.relative_to(out_dir)} ...")
-        ok = _validate_file(vacancy_path, lambda _: "vacancy_row")
-        n = sum(1 for line in vacancy_path.read_text(encoding="utf-8").splitlines() if line.strip())
-        log(f"  {n} records — {'ok' if ok else 'FAILED'}")
-        any_error = any_error or (not ok)
-
-    # --- atr_linkage.jsonl ---
-    atr_path = out_dir / "atr_linkage.jsonl"
-    if atr_path.exists():
-        log(f"Validating {atr_path.relative_to(out_dir)} ...")
-        ok = _validate_file(atr_path, lambda _: "atr_linkage")
-        n = sum(1 for line in atr_path.read_text(encoding="utf-8").splitlines() if line.strip())
-        log(f"  {n} records — {'ok' if ok else 'FAILED'}")
-        any_error = any_error or (not ok)
-
-    # --- committee_members.jsonl ---
-    cm_path = out_dir / "committee_members.jsonl"
-    if cm_path.exists():
-        log(f"Validating {cm_path.relative_to(out_dir)} ...")
-        ok = _validate_file(cm_path, lambda _: "committee_members")
-        n = sum(1 for line in cm_path.read_text(encoding="utf-8").splitlines() if line.strip())
-        log(f"  {n} records — {'ok' if ok else 'FAILED'}")
-        any_error = any_error or (not ok)
-
-    # --- state-assembly outputs ---
-    state_assembly_map = {
+    fixed_schema_files = {
+        "_runs.jsonl": "runs",
+        "_windows.jsonl": "windows",
+        "questions_list.jsonl": "question_list_row",
+        "outsourcing_rows.jsonl": "outsourcing_row",
+        "neva_district_rows.jsonl": "neva_district_row",
+        "town_amenity_rows.jsonl": "dchb_town_amenity",
+        "vacancy_rows.jsonl": "vacancy_row",
+        "atr_linkage.jsonl": "atr_linkage",
+        "committee_members.jsonl": "committee_members",
+        # state-assembly outputs
         "questions.jsonl": "state_assembly_question",
         "questions_unlisted.jsonl": "state_assembly_question_unlisted",
         "members.jsonl": "state_assembly_member",
         "papers_laid.jsonl": "state_assembly_paper_laid",
     }
-    for fname, sname in state_assembly_map.items():
+    for fname, sname in fixed_schema_files.items():
         fpath = out_dir / fname
         if fpath.exists():
-            log(f"Validating {fpath.relative_to(out_dir)} ...")
-            ok = _validate_file(fpath, lambda _, s=sname: s)
-            n = sum(1 for line in fpath.read_text(encoding="utf-8").splitlines() if line.strip())
-            log(f"  {n} records — {'ok' if ok else 'FAILED'}")
-            any_error = any_error or (not ok)
+            any_error |= not _report(fpath, lambda _, s=sname: s)
 
-    # --- entities/*.jsonl ---
     entity_map = {
         "people.jsonl": "entities_person",
         "mp_memberships.jsonl": "entities_mp_membership",
@@ -313,10 +244,6 @@ def validate_corpus(
         for fname, sname in entity_map.items():
             ep = entities_dir / fname
             if ep.exists():
-                log(f"Validating entities/{fname} ...")
-                ok = _validate_file(ep, lambda _, s=sname: s)
-                n = sum(1 for line in ep.read_text(encoding="utf-8").splitlines() if line.strip())
-                log(f"  {n} records — {'ok' if ok else 'FAILED'}")
-                any_error = any_error or (not ok)
+                any_error |= not _report(ep, lambda _, s=sname: s)
 
     return not any_error
