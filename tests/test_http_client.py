@@ -27,7 +27,7 @@ class _FakeResp:
     def __exit__(self, *exc):
         return False
 
-    def read(self) -> bytes:
+    def read(self, size: int = -1) -> bytes:
         return self._body
 
 
@@ -283,7 +283,7 @@ def test_stdlib_session_rate_limits_per_domain(monkeypatch):
     monkeypatch.setattr(hc, "_get_robot_parser", lambda url, user_agent: _AllowAll())
     waits = []
     monkeypatch.setattr(hc, "_rate_limit", lambda domain, interval: waits.append((domain, interval)))
-    monkeypatch.setattr(hc.urllib.request, "urlopen", _ok_urlopen)
+    _patch_transport(monkeypatch, _ok_urlopen)
     hc.StdlibSession(rate_limit_sec=2.5).get("https://example.gov.in/a")
     assert waits == [("example.gov.in", 2.5)]
 
@@ -301,8 +301,20 @@ def test_stdlib_session_can_opt_out_of_robots_like_retry_session(monkeypatch):
 
     monkeypatch.setattr(hc, "_get_robot_parser", _explode)
     monkeypatch.setattr(hc, "_rate_limit", lambda domain, interval: None)
-    monkeypatch.setattr(hc.urllib.request, "urlopen", _ok_urlopen)
+    _patch_transport(monkeypatch, _ok_urlopen)
     assert hc.StdlibSession().get("https://example.gov.in/a", respect_robots=False).status_code == 200
+
+
+def _patch_transport(monkeypatch, fake):
+    """Patch the opener, not `urlopen`.
+
+    StdlibSession builds an opener so it can re-check redirect targets against
+    the SSRF guard; `urlopen` is no longer on the path.
+    """
+    monkeypatch.setattr(
+        hc.urllib.request.OpenerDirector, "open",
+        lambda self, req, timeout=None: fake(req, timeout=timeout),
+    )
 
 
 class _AllowAll:
@@ -314,7 +326,7 @@ def _ok_urlopen(req, timeout=None):
     class _Resp:
         status = 200
 
-        def read(self):
+        def read(self, size=-1):
             return b"{}"
 
         def __enter__(self):
@@ -338,7 +350,7 @@ def test_stdlib_session_supports_post(monkeypatch):
     class FakeResp:
         status = 200
 
-        def read(self):
+        def read(self, size=-1):
             return b"{}"
 
         def __enter__(self):
@@ -353,7 +365,7 @@ def test_stdlib_session_supports_post(monkeypatch):
         captured["auth"] = req.get_header("Authorization")
         return FakeResp()
 
-    monkeypatch.setattr(hc.urllib.request, "urlopen", fake_urlopen)
+    _patch_transport(monkeypatch, fake_urlopen)
     r = session.post("https://api.example.org/search/", headers={"Authorization": "Token x"})
     assert captured["method"] == "POST"
     assert captured["auth"] == "Token x"
@@ -553,8 +565,150 @@ def test_generic_request_is_guarded(monkeypatch):
 
 
 @pytest.mark.skipif(not hasattr(hc, "RetrySession"), reason="requests not installed")
+def test_head_does_not_start_following_redirects(monkeypatch):
+    """`requests.Session.head` defaults to allow_redirects=False; routing it
+    through `request()` flipped that, so a HEAD size check began fetching the
+    redirect target instead of reporting the 302."""
+    session = hc.make_session()
+    monkeypatch.setattr(hc, "is_safe_url", lambda url: True)
+    monkeypatch.setattr(hc, "_get_robot_parser", lambda url, user_agent: _AllowAll())
+    monkeypatch.setattr(hc, "_rate_limit", lambda domain, interval: None)
+    seen = {}
+
+    def _capture(self, method, url, **kwargs):
+        seen.update(method=method, **kwargs)
+
+        class _R:
+            status_code = 302
+        return _R()
+
+    monkeypatch.setattr(hc.requests.Session, "request", _capture)
+    session.head("https://example.gov.in/big.pdf")
+    assert seen["allow_redirects"] is False
+    session.head("https://example.gov.in/big.pdf", allow_redirects=True)
+    assert seen["allow_redirects"] is True
+    session.get("https://example.gov.in/page")
+    assert "allow_redirects" not in seen or seen["allow_redirects"] is True
+
+
+def test_stdlib_session_checks_robots_under_the_ua_it_will_send(monkeypatch):
+    """A per-request User-Agent override made the probe ask permission as one
+    identity and fetch as another."""
+    monkeypatch.setattr(hc, "is_safe_url", lambda url: True)
+    monkeypatch.setattr(hc, "_rate_limit", lambda domain, interval: None)
+    _patch_transport(monkeypatch, _ok_urlopen)
+    asked = []
+
+    class _Recording:
+        def can_fetch(self, ua, url):
+            asked.append(ua)
+            return True
+
+    monkeypatch.setattr(hc, "_get_robot_parser", lambda url, user_agent: _Recording())
+    hc.StdlibSession().get("https://example.gov.in/a", headers={"User-Agent": "other-ua/1.0"})
+    assert asked == ["other-ua/1.0"]
+
+
+def test_stdlib_session_rechecks_the_redirect_target(monkeypatch):
+    """urllib follows redirects itself, so the SSRF guard saw only the first
+    URL. A public URL redirecting to link-local reached the metadata service."""
+    monkeypatch.setattr(hc, "is_safe_url", lambda url: "169.254." not in url)
+    session = hc.StdlibSession()
+    handler = session._redirect_handler()
+    req = hc.urllib.request.Request("https://example.gov.in/a")
+    with pytest.raises(ValueError, match="SSRF guard"):
+        handler.redirect_request(req, None, 302, "Found", {}, "http://169.254.169.254/latest/meta-data/")
+    assert handler.redirect_request(req, None, 302, "Found", {}, "https://example.gov.in/b") is not None
+
+
+@pytest.mark.skipif(not hasattr(hc, "RetrySession"), reason="requests not installed")
 def test_an_unwrapped_verb_is_refused_rather_than_forwarded():
     """The next requests verb must not silently inherit the old behaviour."""
     session = hc.make_session()
     with pytest.raises(AttributeError, match="bypass"):
         session.options
+
+
+# ---------------------------------------------------------------------------
+# Response-size cap. `b"".join(resp.iter_content(...))` passes stream=True and
+# then buffers the whole body anyway, so a mis-served 20 GB file is a 20 GB
+# allocation. The zip reader already learned this: a declared size is a number
+# the server supplies about itself. Count the bytes that actually arrive.
+# ---------------------------------------------------------------------------
+
+
+class _Streaming:
+    def __init__(self, chunks):
+        self._chunks = chunks
+        self.consumed = 0
+
+    def raise_for_status(self):
+        return None
+
+    def iter_content(self, chunk_size=16384):
+        for chunk in self._chunks:
+            self.consumed += len(chunk)
+            yield chunk
+
+
+def test_read_capped_returns_a_body_under_the_ceiling():
+    resp = _Streaming([b"abc", b"def"])
+    assert hc.read_capped_response(resp, max_bytes=100) == b"abcdef"
+
+
+def test_read_capped_stops_at_the_ceiling_rather_than_truncating():
+    """Truncating would hand the caller a short file that looks complete —
+    the same silent success the atomic-write fix exists to prevent."""
+    resp = _Streaming([b"x" * 1000] * 50)
+    with pytest.raises(hc.ResponseTooLarge, match="exceeds"):
+        hc.read_capped_response(resp, max_bytes=2048)
+    assert resp.consumed <= 2048 + 1000, "the whole body was read before refusing"
+
+
+def test_iter_capped_refuses_mid_stream_without_buffering():
+    resp = _Streaming([b"y" * 500] * 20)
+    written = 0
+    with pytest.raises(hc.ResponseTooLarge):
+        for chunk in hc.iter_capped(resp, max_bytes=1200):
+            written += len(chunk)
+    assert written <= 1200
+
+
+def test_get_capped_streams_and_returns_bytes():
+    class _S:
+        def __init__(self):
+            self.kwargs = None
+
+        def get(self, url, **kwargs):
+            self.kwargs = kwargs
+            return _Streaming([b"ab", b"cd"])
+
+    session = _S()
+    assert hc.get_capped(session, "https://example.gov.in/f.pdf", timeout=5) == b"abcd"
+    assert session.kwargs["stream"] is True
+    assert session.kwargs["timeout"] == 5
+
+
+def test_stdlib_session_body_read_is_bounded(monkeypatch):
+    """The zero-dep path buffers in urlopen, so the ceiling has to apply to
+    the read itself — `stream=True` means nothing there."""
+    monkeypatch.setattr(hc, "is_safe_url", lambda url: True)
+    monkeypatch.setattr(hc, "_get_robot_parser", lambda url, user_agent: _AllowAll())
+    monkeypatch.setattr(hc, "_rate_limit", lambda domain, interval: None)
+
+    class _Huge:
+        status = 200
+
+        def read(self, size=-1):
+            return b"x" * (size if size and size > 0 else 10)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    _patch_transport(monkeypatch, lambda req, timeout=None: _Huge())
+    monkeypatch.setattr(hc, "MAX_RESPONSE_BYTES", 1024)
+    with pytest.raises(hc.ResponseTooLarge):
+        hc.StdlibSession().get("https://example.gov.in/huge")

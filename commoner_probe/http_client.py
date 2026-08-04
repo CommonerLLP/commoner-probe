@@ -234,6 +234,62 @@ class StdlibResponse:
             yield self._body[i : i + chunk_size]
 
 
+#: Ceiling for a response body read into memory or written to disk. Government
+#: portals mis-serve: a redirect to a video, a directory listing generated
+#: forever, a 20 GB dump behind a link that looks like a PDF. Large enough for
+#: the biggest artefact this package legitimately fetches (a ~200 MB census
+#: ZIP), small enough that the failure is an exception rather than the machine.
+MAX_RESPONSE_BYTES = 512 * 1024 * 1024
+
+
+class ResponseTooLarge(RuntimeError):
+    """A response body outran its ceiling. Raised, never truncated.
+
+    Truncating would hand the caller a short file that looks complete — the
+    same silent success the atomic-PDF-write fix exists to prevent.
+    """
+
+
+def iter_capped(resp: Any, *, max_bytes: int = MAX_RESPONSE_BYTES, chunk_size: int = 16384):
+    """Yield a response's chunks, refusing once *max_bytes* have arrived.
+
+    Counts the bytes that actually arrive rather than trusting Content-Length,
+    which is a number the server supplies about itself.
+    """
+    seen = 0
+    for chunk in resp.iter_content(chunk_size=chunk_size):
+        if not chunk:
+            continue
+        seen += len(chunk)
+        if seen > max_bytes:
+            raise ResponseTooLarge(
+                f"response exceeds the {max_bytes} byte ceiling (stopped at {seen})"
+            )
+        yield chunk
+
+
+def read_capped_response(resp: Any, *, max_bytes: int = MAX_RESPONSE_BYTES, chunk_size: int = 16384) -> bytes:
+    """The whole body, or ``ResponseTooLarge`` before it is all in memory.
+
+    ``b"".join(resp.iter_content(...))`` passes ``stream=True`` and then
+    buffers everything anyway, so streaming bought nothing.
+    """
+    return b"".join(iter_capped(resp, max_bytes=max_bytes, chunk_size=chunk_size))
+
+
+def get_capped(session: Any, url: str, *, max_bytes: int = MAX_RESPONSE_BYTES, **kwargs: Any) -> bytes:
+    """GET *url* and return the body, bounded by *max_bytes*.
+
+    For the ``body = session.get(...).content`` shape, which buffers whatever
+    the server sends. Requests streams; :class:`StdlibSession` cannot, so it
+    applies the same ceiling to its own read.
+    """
+    kwargs.setdefault("stream", True)
+    resp = session.get(url, **kwargs)
+    resp.raise_for_status()
+    return read_capped_response(resp, max_bytes=max_bytes)
+
+
 class StdlibSession:
     """The session a default ``pip install commoner-probe`` gets.
 
@@ -273,11 +329,16 @@ class StdlibSession:
         # Same order as RetrySession._request: reject, then ask permission,
         # then wait our turn. Checked BEFORE the params are appended, because
         # the scheme and host are what the guard judges and neither changes.
+        headers = {**self.headers, **(kwargs.get("headers") or {})}
+        # Ask permission as the identity we will actually send. A per-request
+        # or mutated User-Agent made the robots check answer for a crawler that
+        # never made the request.
+        user_agent = headers.get("User-Agent") or self._user_agent
         if not is_safe_url(url):
             raise ValueError(f"URL rejected by SSRF guard: {url}")
         if respect_robots:
-            rp = _get_robot_parser(url, user_agent=self._user_agent)
-            if not rp.can_fetch(self._user_agent, url):
+            rp = _get_robot_parser(url, user_agent=user_agent)
+            if not rp.can_fetch(user_agent, url):
                 raise PermissionError(f"Disallowed by robots.txt: {url}")
         _rate_limit(urlparse(url).netloc, self.rate_limit_sec)
 
@@ -285,17 +346,41 @@ class StdlibSession:
         if params:
             sep = "&" if "?" in url else "?"
             url = url + sep + urlencode(params)
-        headers = {**self.headers, **(kwargs.get("headers") or {})}
         timeout = kwargs.get("timeout") or 60
         body = kwargs.get("data")
         if isinstance(body, str):
             body = body.encode("utf-8")
         req = urllib.request.Request(url, data=body, headers=headers, method=method)
+        opener = urllib.request.build_opener(self._redirect_handler())
         try:
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
-                return StdlibResponse(url, resp.status, resp.read())
+            with opener.open(req, timeout=timeout) as resp:
+                # Bounded read: urllib buffers, so `stream=True` cannot help
+                # here. One byte past the ceiling is enough to tell.
+                body = resp.read(MAX_RESPONSE_BYTES + 1)
+                if len(body) > MAX_RESPONSE_BYTES:
+                    raise ResponseTooLarge(
+                        f"{url} exceeds the {MAX_RESPONSE_BYTES} byte ceiling"
+                    )
+                return StdlibResponse(url, resp.status, body)
         except urllib.error.HTTPError as exc:
             return StdlibResponse(url, exc.code, exc.read())
+
+    @staticmethod
+    def _redirect_handler() -> urllib.request.HTTPRedirectHandler:
+        """Re-run the SSRF guard on every redirect target.
+
+        urllib follows redirects inside ``urlopen``, so the guard saw only the
+        first URL. A public host answering 302 to ``http://169.254.169.254/``
+        reached the cloud metadata service with the guard none the wiser.
+        """
+
+        class _GuardedRedirects(urllib.request.HTTPRedirectHandler):
+            def redirect_request(self, req, fp, code, msg, headers, newurl):
+                if not is_safe_url(newurl):
+                    raise ValueError(f"Redirect target rejected by SSRF guard: {newurl}")
+                return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+        return _GuardedRedirects()
 
 
 if requests is not None:
@@ -386,6 +471,11 @@ if requests is not None:
         # post records that this trap was already hit once; wrapping the rest
         # closes the general case rather than the next instance of it.
         def head(self, url: str, *, respect_robots: bool = True, **kwargs: Any) -> Any:
+            # requests.Session.head defaults allow_redirects to False and
+            # Session.request defaults it to True. Routing HEAD through request
+            # silently flipped it, so a size check on a redirecting URL started
+            # fetching the target instead of reporting the 302.
+            kwargs.setdefault("allow_redirects", False)
             return self._request("HEAD", url, respect_robots=respect_robots, **kwargs)
 
         def put(self, url: str, *, respect_robots: bool = True, **kwargs: Any) -> Any:
