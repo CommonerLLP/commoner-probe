@@ -1,6 +1,19 @@
 # Changelog
 
-## Unreleased
+## 0.14.0 (2026-08-04)
+
+**A minor on the breaking changes alone — no new acquisition surface.** The
+subcommand count is unchanged at 36, no new adapter module ships, and the only
+schema touched was edited rather than added. Everything here is a fix or a
+contract change to a surface that already existed. The precedent is 0.10.0 and
+0.13.0, each of which took the minor slot for one contract change.
+
+The headline is a data defect: every question-list row acquired by **0.10.0
+through 0.13.0** carries the *next* question's subject heading at the end of its
+text — 97.9% of adjacent pairs on a live seven-day corpus. The range is the
+adapter's whole released life: `questions-list` first shipped in 0.10.0, and the
+body has run to the next question's *head* since the file was written.
+**Corpora acquired with any of those versions need a re-parse; see Changed.**
 
 ### Breaking
 
