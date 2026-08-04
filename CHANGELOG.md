@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.14.1 (2026-08-04)
+
+**A patch: one regression fix and one internal dedupe, no contract change.**
+Nothing a working caller does changes behaviour, which is what keeps this out
+of the minor slot.
 
 ### Fixed
 
@@ -13,6 +17,16 @@
   share one helper, which treats extraction as advisory and acquisition as not:
   the file is kept, its hash recorded, and `text_layer` is `None` — unknown,
   which is not the same claim as `False`.
+
+### Changed
+
+- One PDF text chain instead of two. `academia`'s private
+  `pdftotext -> pdfminer` fallback now delegates to `textparse`, which the rest
+  of the package already used; the two had drifted, and only the shared one had
+  the OCR rung. `extract_text` and `extract_text_flow` are unchanged for
+  callers. `has_pdftotext` and `_PDFTOTEXT`, which nothing outside that module
+  used, are gone. The pdftotext timeout for academia moves 120s -> the shared
+  60s, so a slow PDF falls through to pdfminer rather than failing.
 
 ## 0.14.0 (2026-08-04)
 
