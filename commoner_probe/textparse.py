@@ -172,6 +172,7 @@ def _pdf_page_count(path: Path) -> int:
 def extract_pdf_text(
     path: Path,
     *,
+    layout: bool = True,
     ocr: bool = False,
     ocr_lang: str = "eng",
     ocr_max_pages: int = 50,
@@ -184,6 +185,11 @@ def extract_pdf_text(
     the same empty string, because a crawl over a thousand PDFs would
     otherwise write a thousand empty text files and report success.
 
+    ``layout`` keeps pdftotext's column geometry, which the two-column Q/A
+    splitters depend on. Turn it off where -layout mashes a two-column annexure
+    into unreadable order and reading order is what the parser wants; it only
+    affects the pdftotext rung, since pdfminer has no equivalent flag.
+
     ``ocr`` wires in the last rung for documents whose text layer is absent or
     untrustworthy. It is opt-in: rasterising and running tesseract costs
     orders of magnitude more than reading an embedded text layer, and it needs
@@ -194,7 +200,7 @@ def extract_pdf_text(
     backend_ran = False
     try:
         out = subprocess.run(
-            ["pdftotext", "-layout", str(path), "-"],
+            ["pdftotext", *(["-layout"] if layout else []), str(path), "-"],
             capture_output=True,
             text=True,
             timeout=60,

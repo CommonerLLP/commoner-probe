@@ -16,8 +16,6 @@ parsers need). Two differences from the origin:
 from __future__ import annotations
 
 import re
-import shutil
-import subprocess
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -25,15 +23,10 @@ from typing import Any
 
 from ..base import safe_filename_segment
 from ..http_client import read_capped_response
-
-_PDFTOTEXT = shutil.which("pdftotext")
+from ..textparse import extract_pdf_text
 
 # Lower bound on accepted deadline years (see origin constants.py).
 _HARD_FLOOR_DEADLINE_YEAR = 2020
-
-
-def has_pdftotext() -> bool:
-    return _PDFTOTEXT is not None
 
 
 class Fetcher:
@@ -131,46 +124,30 @@ def _strip_pagination_noise(text: str) -> str:
     return text
 
 
-def _run_pdftotext(args: list[str], pdf_path: Path) -> str | None:
-    if not has_pdftotext():
-        return None
-    cmd = [_PDFTOTEXT, *args, str(pdf_path), "-"]
+def _extract(pdf_path: Path, *, layout: bool) -> str | None:
+    """The shared pdftotext -> pdfminer chain, with this package's noise strip.
+
+    A second copy of that chain used to live here. It drifted: the shared one
+    grew an OCR rung and learned to tell a missing toolchain from a wordless
+    PDF, and this one did not. These parsers want ``None`` where the shared
+    chain raises or returns "", because a recruitment ad with no readable text
+    still yields a record — just without an excerpt.
+    """
     try:
-        out = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=120)
-        return _strip_pagination_noise(out.stdout)
-    except Exception:
+        text = extract_pdf_text(pdf_path, layout=layout)
+    except Exception:  # includes PdfTextUnavailable: no backend is also no excerpt
         return None
+    return _strip_pagination_noise(text) if text and text.strip() else None
 
 
 def extract_text(pdf_path: Path) -> str | None:
-    """Layout-preserved text of a PDF, or None. pdftotext -> pdfminer fallback."""
-    text = _run_pdftotext(["-layout"], pdf_path)
-    if text and text.strip():
-        return text
-    try:
-        from pdfminer.high_level import extract_text as _pdfminer_extract  # type: ignore
-    except ImportError:
-        return None
-    try:
-        return _strip_pagination_noise(_pdfminer_extract(str(pdf_path)))
-    except Exception:
-        return None
+    """Layout-preserved text of a PDF, or None — best for the tabular ads."""
+    return _extract(pdf_path, layout=True)
 
 
 def extract_text_flow(pdf_path: Path) -> str | None:
-    """Reading-order text (no -layout) — used when -layout column-mashes a
-    two-column annexure (IIT Madras). pdftotext -> pdfminer fallback."""
-    text = _run_pdftotext([], pdf_path)
-    if text and text.strip():
-        return text
-    try:
-        from pdfminer.high_level import extract_text as _pdfminer_extract  # type: ignore
-    except ImportError:
-        return None
-    try:
-        return _strip_pagination_noise(_pdfminer_extract(str(pdf_path)))
-    except Exception:
-        return None
+    """Reading-order text, for annexures that -layout column-mashes (IIT Madras)."""
+    return _extract(pdf_path, layout=False)
 
 
 # --- field extraction (regexes verbatim from origin pdf_extractor.py) --------
