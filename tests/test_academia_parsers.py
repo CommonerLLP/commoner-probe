@@ -427,3 +427,42 @@ def test_jnu_listing_fallback_without_fetcher():
     assert ads[0]["pdf_parsed"] is False
     assert ads[0]["post_type"] == "Faculty"
     assert ads[0]["original_url"].endswith("JNU_AdvtNo_RC_75_2026.pdf")
+
+
+# --- the extraction chain is the shared one -------------------------------
+#
+# This module carried a second pdftotext -> pdfminer chain. It drifted: the
+# shared one grew an OCR rung and learned to tell a missing toolchain from a
+# wordless PDF, and this copy did not.
+
+
+def test_academia_extraction_routes_through_the_shared_chain(monkeypatch, tmp_path):
+    from commoner_probe.academia import pdf_text
+
+    seen = []
+    monkeypatch.setattr(
+        pdf_text, "extract_pdf_text",
+        lambda path, *, layout=True: seen.append(layout) or "Advertisement\fPage 1 of 2\ntext",
+    )
+    pdf = tmp_path / "ad.pdf"
+
+    out = pdf_text.extract_text(pdf)
+    assert "Advertisement" in out and "text" in out
+    assert "\f" not in out and "Page 1 of 2" not in out, "pagination noise must still be stripped"
+    assert pdf_text.extract_text_flow(pdf) is not None
+    assert seen == [True, False], "layout must be on for tables, off for annexures"
+
+
+def test_academia_extraction_returns_none_when_nothing_can_read_it(monkeypatch, tmp_path):
+    """These parsers degrade to an excerpt-less record; the shared chain raises."""
+    from commoner_probe.academia import pdf_text
+    from commoner_probe.textparse import PdfTextUnavailable
+
+    def _no_backend(path, *, layout=True):
+        raise PdfTextUnavailable("no PDF text backend available")
+
+    monkeypatch.setattr(pdf_text, "extract_pdf_text", _no_backend)
+    assert pdf_text.extract_text(tmp_path / "ad.pdf") is None
+
+    monkeypatch.setattr(pdf_text, "extract_pdf_text", lambda path, *, layout=True: "   ")
+    assert pdf_text.extract_text(tmp_path / "ad.pdf") is None
