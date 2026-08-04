@@ -48,9 +48,14 @@
     },
     "question_rows_extracted": { "type": "integer", "minimum": 0 },
     "question_rows_expected": { "type": ["integer", "null"], "minimum": 0 },
+    "question_rows_bleeding": {
+      "description": "rows whose text ends with another row's subject heading",
+      "type": "integer",
+      "minimum": 0
+    },
     "parse_status": {
       "type": "string",
-      "enum": ["no_stated_total", "reconciled", "count_mismatch"]
+      "enum": ["no_stated_total", "reconciled", "count_mismatch", "boundary_bleed"]
     },
     "corrigenda_present": { "type": "boolean" },
     "fetched_at": { "type": "string" },

@@ -1202,6 +1202,10 @@ class ManifestQuestionListRecord:
     pdf_path: str | None = None
     sha256: str | None = None
     question_rows_extracted: int | None = None
+    question_rows_expected: int | None = None
+    question_rows_bleeding: int | None = None
+    parse_status: str | None = None
+    corrigenda_present: bool | None = None
 
     @classmethod
     def from_dict(cls, d: dict) -> "ManifestQuestionListRecord":

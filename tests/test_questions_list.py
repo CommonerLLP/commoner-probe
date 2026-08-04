@@ -4,6 +4,7 @@ import hashlib
 import json
 from urllib.parse import parse_qs, urlparse
 
+from commoner_probe import questions_list as questions_list_module
 from commoner_probe.questions_list import QuestionsListProbe, parse_question_rows
 
 PDF_BODY = b"%PDF-1.4 fake questions list body that is over one thousand bytes " + b"x" * 1100
@@ -30,6 +31,11 @@ class FakeResponse:
     def raise_for_status(self):
         if self.status_code >= 400:
             raise RuntimeError(f"HTTP {self.status_code}")
+
+    def iter_content(self, chunk_size=16384):
+        body = self.content or b""
+        for i in range(0, len(body), chunk_size):
+            yield body[i : i + chunk_size]
 
 
 class FakeSession:
@@ -354,6 +360,100 @@ def test_count_mismatch_rerun_reparses_without_duplicates(tmp_path, monkeypatch)
 
     # once reconciled, the document is terminal again
     assert _probe(tmp_path, house="ls").probe(download=True) == []
+
+
+def test_row_text_stops_before_the_next_subject_heading():
+    """A row's body ran to the next question's head, swallowing the
+    heading line in between — 98.4% of adjacent pairs on the live lists."""
+    from commoner_probe.questions_list import rows_with_subject_bleed
+
+    ls = parse_question_rows(
+        LS_COMBINED_SAMPLE,
+        house="Lok Sabha", sitting_date="2026-07-20",
+        list_type="question_list", source_pdf="pdfs/q.pdf",
+    )
+    rs = parse_question_rows(
+        RS_UNSTARRED_SAMPLE,
+        house="Rajya Sabha", sitting_date="2026-07-23",
+        list_type="question_list_unstarred", source_pdf="pdfs/q.pdf",
+    )
+    assert [r["text"] for r in rs] == [
+        "(a) an unstarred limb?",
+        "(a) another limb?",
+        "(a) a third limb?",
+    ]
+    assert [r["text"] for r in ls] == [
+        "(a) some starred limb?",
+        "(a) another starred limb?",
+        "(a) a written limb?",
+        "(a) a second written limb?",
+        "(a) a third written limb?",
+    ]
+    # the subjects themselves are unchanged by the stop
+    assert [r["subject"] for r in rs] == [
+        "Passport Ranking", "Corruption in Federations", "Football Promotion",
+    ]
+    assert rows_with_subject_bleed(ls) == []
+    assert rows_with_subject_bleed(rs) == []
+
+
+def test_subject_bleed_detector_sees_what_a_count_cannot():
+    from commoner_probe.questions_list import rows_with_subject_bleed
+
+    bleeding = [
+        {"qno": "1", "subject": "Public Libraries", "text": "(a) limb?\nPaika Rebellion Memorial"},
+        {"qno": "2", "subject": "Paika Rebellion Memorial", "text": "(a) limb?"},
+    ]
+    assert rows_with_subject_bleed(bleeding) == ["1"]
+    # a row ending with its OWN subject is not a bleed, and neither is a row
+    # whose tail merely resembles prose
+    assert rows_with_subject_bleed([
+        {"qno": "3", "subject": "Model Libraries", "text": "(a) limb?\nModel Libraries"},
+        {"qno": "4", "subject": "Airport Works", "text": "(a) an ordinary tail line"},
+    ]) == []
+
+
+def test_boundary_bleed_refuses_to_reconcile_on_a_matching_count(tmp_path, monkeypatch):
+    """Acceptance 3: the count is right and every body is wrong at the tail."""
+    monkeypatch.setattr(
+        "commoner_probe.questions_list.extract_pdf_text",
+        lambda path: LS_COMBINED_SAMPLE,
+    )
+    real = questions_list_module.parse_question_rows
+
+    def bleeding(*args, **kwargs):
+        rows = real(*args, **kwargs)
+        for row, nxt in zip(rows, rows[1:]):
+            row["text"] = f"{row['text']}\n{nxt['subject']}"
+        return rows
+
+    monkeypatch.setattr("commoner_probe.questions_list.parse_question_rows", bleeding)
+    records = _probe(tmp_path, house="ls").probe(download=True)
+    rec = next(r for r in records if r["document_kind"] == "question_list")
+    assert rec["question_rows_extracted"] == rec["question_rows_expected"] == 5
+    assert rec["parse_status"] == "boundary_bleed"
+    assert rec["question_rows_bleeding"] == 4
+
+
+def test_reparse_of_an_existing_corpus_reuses_the_pdfs_on_disk(tmp_path, monkeypatch):
+    """The re-parse of an existing corpus must not re-download the PDFs."""
+    monkeypatch.setattr(
+        "commoner_probe.questions_list.extract_pdf_text",
+        lambda path: LS_COMBINED_SAMPLE,
+    )
+    _probe(tmp_path, house="ls").probe(download=True)
+
+    # what `--reset` does: drop the manifest and the rows, keep pdfs/
+    (tmp_path / "manifest.jsonl").unlink()
+    (tmp_path / "questions_list.jsonl").unlink()
+    probe = _probe(tmp_path, house="ls")
+    records = probe.probe(download=True)
+
+    assert next(r for r in records if r["document_kind"] == "question_list")["parse_status"] == "reconciled"
+    assert not [url for url in probe.session.calls if "getFile" in url]
+    rows = [json.loads(line) for line in (tmp_path / "questions_list.jsonl").read_text().splitlines()]
+    assert len(rows) == 5
+    assert {r["extractor"] for r in rows} == {"commoner_probe.questions_list.parse_question_rows.v3"}
 
 
 def test_replace_question_rows_clears_stale_rows_on_empty_reparse(tmp_path):
