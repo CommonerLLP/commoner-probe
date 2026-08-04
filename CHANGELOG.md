@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **A missing PDF text backend no longer kills a crawl mid-download.** 0.14.0
+  made `extract_pdf_text` raise where it had returned `""`, and the `cag`,
+  `ministry-ddg` and `doe-pay-allowances` adapters called it unguarded inside
+  their download path — so on a machine with neither poppler nor pdfminer the
+  exception escaped a download that had already written a good file, losing the
+  record and ending the run. The four adapters that record a text layer now
+  share one helper, which treats extraction as advisory and acquisition as not:
+  the file is kept, its hash recorded, and `text_layer` is `None` — unknown,
+  which is not the same claim as `False`.
+
 ## 0.14.0 (2026-08-04)
 
 **A minor on the breaking changes alone — no new acquisition surface.** The

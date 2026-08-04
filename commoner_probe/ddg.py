@@ -49,7 +49,6 @@ lines out of the downloaded PDFs is a public-finance concern.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import re
 import time
@@ -60,9 +59,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urljoin, urlparse
 
-from .base import safe_filename_segment
+from .base import note_text_layer, safe_filename_segment
 from .http_client import TOOL_VERSION, make_session, read_capped_response
-from .textparse import extract_pdf_text
 from .wayback import attach_snapshot
 
 # dea.gov.in returned a plain HTTP listing page (no WAF interstitial
@@ -450,9 +448,7 @@ class MinistryDDGProbe:
         }
 
     def _finalize(self, record: dict[str, Any], dest: Path, body: bytes) -> None:
-        record["sha256"] = hashlib.sha256(body).hexdigest()
-        text = extract_pdf_text(dest)
-        record["text_layer"] = len(text.strip()) >= TEXT_LAYER_MIN_CHARS
+        note_text_layer(record, dest, body, min_chars=TEXT_LAYER_MIN_CHARS)
 
     def _attach_wayback(self, record: dict[str, Any]) -> dict[str, Any]:
         """Record the document URL's Wayback state, when asked to."""

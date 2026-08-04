@@ -89,9 +89,10 @@ def test_parse_listing_enumerates_years_and_titles(tmp_path):
 
 
 def test_probe_downloads_with_provenance_and_text_layer(tmp_path, monkeypatch):
-    from commoner_probe import doe as doe_mod
+    from commoner_probe import base as base_mod
+    from commoner_probe import doe as doe_mod  # noqa: F401
     monkeypatch.setattr(
-        doe_mod, "extract_pdf_text",
+        base_mod, "extract_pdf_text",
         lambda p: "extracted text " * 50 if "202324" in str(p) else "",
     )
     probe = _probe(tmp_path, pdf_for_url={
@@ -115,8 +116,8 @@ def test_probe_downloads_with_provenance_and_text_layer(tmp_path, monkeypatch):
 
 
 def test_probe_skips_existing_file(tmp_path, monkeypatch):
-    from commoner_probe import doe as doe_mod
-    monkeypatch.setattr(doe_mod, "extract_pdf_text", lambda p: "")
+    from commoner_probe import base as base_mod
+    monkeypatch.setattr(base_mod, "extract_pdf_text", lambda p: "")
     probe = _probe(tmp_path, pdf_for_url={URL_2223: PDF_SCANNED})
     first = probe.probe(years=["2022-23"])
     second = probe.probe(years=["2022-23"])
@@ -152,9 +153,9 @@ def test_records_validate_against_schema(tmp_path, monkeypatch):
     except ImportError:
         import pytest
         pytest.skip("jsonschema not installed")
-    from commoner_probe import doe as doe_mod
+    from commoner_probe import base as base_mod
     from commoner_probe import schemas
-    monkeypatch.setattr(doe_mod, "extract_pdf_text", lambda p: "")
+    monkeypatch.setattr(base_mod, "extract_pdf_text", lambda p: "")
     schema = schemas.load("manifest_doe_pay_allowances")
     probe = _probe(tmp_path, pdf_for_url={URL_2223: PDF_SCANNED})
     for record in probe.probe(years=["2022-23"]):
