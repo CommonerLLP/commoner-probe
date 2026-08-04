@@ -68,16 +68,27 @@ def manifest_schema_by_kind() -> dict[str, str]:
 
 def _pick_schema_name(rec: dict) -> str | None:
     """Choose the schema name for a manifest record based on kind + house."""
-    return manifest_schema_by_kind().get(rec.get("kind"))
+    return _schema_by_kind(manifest_schema_by_kind(), rec.get("kind"))
 
 
-def _schema_for_answers_kind(kind: str) -> str | None:
-    return {
+def _schema_by_kind(mapping: dict[str, str], kind: object) -> str | None:
+    """Look a kind up without trusting it to be hashable.
+
+    ``kind`` is read off disk. A record carrying a list or an object for it
+    made this lookup raise ``TypeError: unhashable type`` and abort the whole
+    run; an unusable kind is an unvalidatable record, which is a reported
+    failure, not a crash.
+    """
+    return mapping.get(kind) if isinstance(kind, str) else None
+
+
+def _schema_for_answers_kind(kind: object) -> str | None:
+    return _schema_by_kind({
         "qa_response": "answers_qa_response",
         "atr_response": "answers_atr_response",
         "dfg_recommendation": "answers_dfg_recommendation",
         "neva_qa_response": "answers_neva_qa_response",
-    }.get(kind)
+    }, kind)
 
 
 def validate_corpus(
@@ -120,6 +131,7 @@ def validate_corpus(
         error_count = 0
         read = 0
         validated = 0
+        truncated = False
 
         with path.open(encoding="utf-8") as f:
             for lineno, raw_line in enumerate(f, start=1):
@@ -135,6 +147,7 @@ def validate_corpus(
                     error_count += 1
                     if error_count >= max_errors:
                         log(f"  (truncated after {max_errors} errors)")
+                        truncated = True
                         break
                     continue
 
@@ -149,6 +162,7 @@ def validate_corpus(
                     error_count += 1
                     if error_count >= max_errors:
                         log(f"  (truncated after {max_errors} errors)")
+                        truncated = True
                         break
                     continue
 
@@ -164,6 +178,7 @@ def validate_corpus(
                         error_count += 1
                         if error_count >= max_errors:
                             log(f"  (truncated after {max_errors} errors)")
+                            truncated = True
                             break
                         continue
 
@@ -177,7 +192,14 @@ def validate_corpus(
                     error_count += len(errors)
                     if error_count >= max_errors:
                         log(f"  (truncated after {max_errors} errors)")
+                        truncated = True
                         break
+
+            if truncated:
+                # `read` is the summary's denominator. Stopping it at the error
+                # limit turned a 40-record file into "0 of 3", which reads like
+                # a small clean file rather than a truncated bad one.
+                read += sum(1 for line in f if line.strip())
 
         return file_ok, validated, read
 

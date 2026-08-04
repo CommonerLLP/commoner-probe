@@ -41,6 +41,11 @@ class FakeResponse:
         if self.status_code >= 400:
             raise RuntimeError(f"HTTP {self.status_code}")
 
+    def iter_content(self, chunk_size=16384):
+        body = self.content or b""
+        for i in range(0, len(body), chunk_size):
+            yield body[i : i + chunk_size]
+
 
 class FakeSession:
     def __init__(self, *, pdf_for_url=None, fail_listing=False):

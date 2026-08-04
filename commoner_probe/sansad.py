@@ -15,7 +15,8 @@ if TYPE_CHECKING:
     from .members import MPRoster
 from urllib.parse import urlencode
 
-from .base import BaseProbe, now, safe_filename_segment
+from .base import BaseProbe, _private_tmp_path, now, safe_filename_segment
+from .http_client import iter_capped
 from .topics import TopicProfile
 
 LS_API_BASE = "https://elibrary.sansad.in/server/api"
@@ -321,10 +322,10 @@ class SansadProbe(BaseProbe):
         r = self.session.get(url, headers=headers, timeout=120, stream=True)
         if r.status_code != 200:
             return False
-        tmp_path = path.with_suffix(path.suffix + ".tmp")
+        tmp_path = _private_tmp_path(path)
         try:
             with tmp_path.open("wb") as f:
-                for chunk in r.iter_content(chunk_size=16384):
+                for chunk in iter_capped(r):
                     f.write(chunk)
             if tmp_path.stat().st_size <= 1000:
                 return False

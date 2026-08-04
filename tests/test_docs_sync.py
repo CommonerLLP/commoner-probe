@@ -13,6 +13,7 @@ import unittest
 from contextlib import redirect_stdout
 from io import StringIO
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from commoner_probe import __version__
@@ -89,6 +90,27 @@ class CliCommandSyncTests(unittest.TestCase):
             },
         )
 
+    def test_readme_subcommand_count_comes_from_the_parser(self):
+        """The README states a count. It has been written from memory twice and
+        been wrong twice. Ask the parser."""
+        parser = build_parser()
+        actual = len(parser._subparsers._group_actions[0].choices)  # type: ignore[attr-defined]
+        readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+        claimed = re.search(r"(\d+)\s+subcommands", readme)
+        self.assertIsNotNone(claimed, "README no longer states a subcommand count")
+        self.assertEqual(int(claimed.group(1)), actual)
+
+    def test_readme_doc_links_are_packaged(self):
+        """A README link to a repo doc dangles in the sdist unless MANIFEST.in
+        ships that doc. The README is packaged; its targets must be too."""
+        readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+        manifest = (REPO_ROOT / "MANIFEST.in").read_text(encoding="utf-8")
+        included = {line.split(None, 1)[1].strip() for line in manifest.splitlines()
+                    if line.startswith("include ")}
+        linked = {m for m in re.findall(r"\]\((docs/[A-Za-z0-9_./-]+\.md)\)", readme)}
+        self.assertTrue(linked, "README links to no docs — the guard would be vacuous")
+        self.assertEqual(linked - included, set())
+
     def test_sansad_has_no_classifier_flag(self):
         parser = build_parser()
         crawl = parser._subparsers._group_actions[0].choices["sansad"]  # type: ignore[attr-defined]
@@ -153,3 +175,58 @@ class CliCommandSyncTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CliErrorHandlingTests(unittest.TestCase):
+    """A domain error reached the user as a traceback, discarding the message
+    the exception carries and printing local paths."""
+
+    def _run(self, argv, exc):
+        from commoner_probe import cli as cli_mod
+
+        err = StringIO()
+        with patch("sys.argv", ["commoner-probe", *argv]), \
+             patch.object(cli_mod, "build_parser") as bp, \
+             patch("sys.stderr", err):
+            def _raise(_args):
+                raise exc
+
+            bp.return_value.parse_args.return_value = SimpleNamespace(
+                func=_raise, traceback=False
+            )
+            with self.assertRaises(SystemExit) as raised:
+                cli_mod.main()
+        return raised.exception.code, err.getvalue()
+
+    def test_a_domain_error_is_a_message_and_an_exit_code(self):
+        from commoner_probe.census import CensusApiError
+
+        code, err = self._run(["census"], CensusApiError("refusing the shared sample key"))
+        self.assertEqual(code, 1)
+        self.assertIn("refusing the shared sample key", err)
+        self.assertNotIn("Traceback", err)
+
+    def test_ctrl_c_is_not_a_crash(self):
+        code, err = self._run(["sansad"], KeyboardInterrupt())
+        self.assertEqual(code, 130)
+        self.assertNotIn("Traceback", err)
+
+    def test_an_unexpected_error_still_reports_its_type(self):
+        code, err = self._run(["sansad"], ValueError("bad range"))
+        self.assertEqual(code, 1)
+        self.assertIn("bad range", err)
+
+    def test_traceback_flag_opts_back_in(self):
+        from commoner_probe import cli as cli_mod
+        from commoner_probe.census import CensusApiError
+
+        with patch("sys.argv", ["commoner-probe", "census", "--traceback"]), \
+             patch.object(cli_mod, "build_parser") as bp:
+            def _raise(_args):
+                raise CensusApiError("boom")
+
+            bp.return_value.parse_args.return_value = SimpleNamespace(
+                func=_raise, traceback=True
+            )
+            with self.assertRaises(CensusApiError):
+                cli_mod.main()

@@ -154,10 +154,10 @@ class TestSampleKeyGuard:
         org's registered credential, which is how the first cut of this module
         failed.
 
-        NOT pinned, because it cannot be from inside this repo: whether the
-        shipped SAMPLE_KEY_SHA256 is the digest of the key data.gov.in
-        actually publishes. Verifying that needs the live page, which returned
-        403 on 2026-08-01. See the plan doc.
+        NOT pinned, because pinning it needs the network: whether the shipped
+        SAMPLE_KEY_SHA256 is the digest of the key data.gov.in publishes. It
+        was verified out of band on 2026-08-04 — see the note on the constant
+        — and an assertion here would pass whatever the constant held.
         """
         some_key = "579b464db66eDEADBEEF" + "0" * 38
         monkeypatch.setattr(

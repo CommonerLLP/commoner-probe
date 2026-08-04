@@ -1,5 +1,83 @@
 # Changelog
 
+## Unreleased
+
+### Breaking
+
+- **`extract_pdf_text` raises when no PDF text backend is available.** It
+  returned `""` for both "poppler and pdfminer are missing" and "this PDF has
+  no words", so a crawl over a thousand PDFs wrote a thousand empty text files
+  and reported success. A missing toolchain now raises `PdfTextUnavailable`; a
+  working backend that finds nothing still returns `""`. The OCR rung the
+  package documents is wired in behind `ocr=True` and, when asked for and
+  unavailable, raises rather than returning nothing.
+- **A response body has a ceiling.** `MAX_RESPONSE_BYTES` (512 MB) applies at
+  15 call sites through `iter_capped` / `read_capped_response` / `get_capped`,
+  and `StdlibSession` bounds its own read since it cannot stream. A body past
+  the ceiling raises `ResponseTooLarge` instead of being truncated into a short
+  file that looks complete. The downloads that feed it now request
+  `stream=True`, without which requests buffers the whole body before the cap
+  sees a chunk, and the ceiling resolves at call time so raising or lowering
+  the constant actually changes it.
+- **`RetrySession.head()` no longer follows redirects by default.** It was
+  routed through `request()`, whose default is the opposite of
+  `requests.Session.head`, so a HEAD size check fetched the redirect target.
+
+### Fixed
+
+- **`questions-list` row text no longer carries the next question's subject
+  heading.** The body ran to the next question's *head*; the subject printed
+  between the two rows was swallowed as the previous row's last limb. Measured
+  on the 27 Jul – 4 Aug 2026 lists, both Houses, 2,975 rows: **2,913 of 2,974
+  adjacent pairs (97.9%) bled before the fix, 0 after** — same PDFs, both
+  parsers. RS 2026-07-30 Q.1308 ("Public libraries") ended with Q.1309's subject
+  and now ends at its own last limb. The body stops at the next row's subject
+  line, which is the same line the next row's `subject` is read from: a line
+  cannot be both.
+- **A count match alone no longer reports `reconciled`.** Every affected
+  document reconciled at 250 of 250 for months, because the check compared row
+  counts and the defect was in every row's tail. `parse_status` gains
+  `boundary_bleed`, records carry `question_rows_bleeding`, and a bled document
+  stays retryable instead of reading as terminal.
+
+- **The zero-dependency session re-checks redirect targets and asks robots
+  under the User-Agent it will send.** `urllib` follows redirects inside
+  `urlopen`, so the SSRF guard saw only the first URL; a public host answering
+  302 to `http://169.254.169.254/` reached the metadata service. A per-request
+  UA override also made the probe ask permission as one identity and fetch as
+  another.
+- **Two writers sharing an output directory no longer share a temp path.**
+  Both wrote `<name>.tmp`, so one truncated the other's partial download and
+  the loser's cleanup deleted work already renamed away.
+- **`validate` survives a non-string `kind`** (a list or object raised
+  `TypeError: unhashable type` and aborted the run) **and reports the file's
+  real size after truncation** — the `read` count stopped at the error limit,
+  turning a 40-record file into "0 of 3".
+- **A domain error is a message and an exit code, not a traceback.** `main()`
+  maps known failures to exit 1 and Ctrl-C to 130, printing the explanation the
+  exception carries instead of a stack and the operator's local paths.
+  `--traceback` opts back in.
+- **`make verify-release` no longer cries wolf during propagation.** The index
+  read was retried six times and the install once, but pip reads the simple
+  index, which lags the JSON route the retry loop watched. The install now gets
+  the same patience; a genuine install failure still fails at once.
+- `academia`'s PDF downloads keep their existing filenames: the shared
+  sanitiser's `collapse` no longer implies trimming, so `_report_.pdf` stays
+  `_report_.pdf` rather than being renamed and re-downloaded.
+- `docs/CLI.md` and `docs/GOV_SITE_PLATFORMS.md` are packaged, so the README's
+  links do not dangle in the sdist, and the README's subcommand count (36) is
+  now asserted against the parser.
+- The packaging guard scans every tracked file in the package, not only `*.py`
+  — the shipped JSON schemas were outside the scan it exists to perform.
+
+### Changed
+
+- `extractor` on `question_list_row` records is now
+  `commoner_probe.questions_list.parse_question_rows.v3`. **Corpora acquired
+  with v2 need a re-parse**: delete `manifest.jsonl` and `questions_list.jsonl`
+  (or pass `--reset`) and re-run the same `questions-list` command. The PDFs on
+  disk are reused — the re-parse re-reads them and downloads nothing.
+
 ## 0.13.0 (2026-08-01)
 
 **A minor, on the breaking changes alone — no new acquisition surface.** The

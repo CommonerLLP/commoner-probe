@@ -73,7 +73,7 @@ from urllib.parse import urljoin, urlparse
 
 from . import textparse
 from .base import safe_filename_segment
-from .http_client import make_session
+from .http_client import make_session, read_capped_response
 
 DEFAULT_BASE_URL = "https://microdata.gov.in/NADA"
 #: Per-study download bound. Study 150 alone lists 63 resources, so ten studies
@@ -581,7 +581,7 @@ class NadaProbe:
         try:
             resp = self.client.session.get(record["url"], timeout=120, stream=True)
             resp.raise_for_status()
-            blob = b"".join(resp.iter_content(8192))
+            blob = read_capped_response(resp, chunk_size=8192)
             target.parent.mkdir(parents=True, exist_ok=True)
             tmp = target.with_suffix(target.suffix + ".tmp")
             tmp.write_bytes(blob)

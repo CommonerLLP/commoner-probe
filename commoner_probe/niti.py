@@ -40,7 +40,7 @@ from typing import Any
 from urllib.parse import unquote, urljoin, urlparse
 
 from commoner_probe.base import safe_filename_segment
-from commoner_probe.http_client import make_session
+from commoner_probe.http_client import get_capped, make_session
 
 #: The canonical path, NOT the `/index.php/` alias. Both serve the same 34
 #: PDFs, but the shared HTTP client refuses the alias under NITI's robots.txt,
@@ -233,9 +233,7 @@ class NitiAnnualReportProbe:
             record["bytes"] = dest.stat().st_size
             record["sha256"] = hashlib.sha256(dest.read_bytes()).hexdigest()
             return record
-        r = self.session.get(report["url"], timeout=180)
-        r.raise_for_status()
-        body = r.content
+        body = get_capped(self.session, report["url"], timeout=180)
         if not body.startswith(b"%PDF"):
             raise ValueError(
                 f"{report['url']} did not return a PDF (first bytes {body[:8]!r}). The listing's "

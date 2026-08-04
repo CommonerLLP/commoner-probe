@@ -28,7 +28,7 @@ from html import unescape
 from pathlib import Path
 from typing import Any, Iterator
 
-from .http_client import make_session
+from .http_client import get_capped, make_session
 
 DEFAULT_HANDLE_PREFIX = "123456789"
 
@@ -213,9 +213,7 @@ class LegacyDSpaceProbe:
             if dest.exists() and dest.stat().st_size > 0:
                 body = dest.read_bytes()
             else:
-                r = self.session.get(self.base_url + path, timeout=120)
-                r.raise_for_status()
-                body = r.content
+                body = get_capped(self.session, self.base_url + path, timeout=120)
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 dest.write_bytes(body)
                 if self.sleep:

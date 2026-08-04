@@ -44,7 +44,7 @@ from typing import Iterator
 from urllib.parse import urlencode
 
 from .base import safe_filename_segment
-from .http_client import make_session
+from .http_client import get_capped, make_session
 from .runlog import RunLog
 from .sansad import date_in_range
 
@@ -284,9 +284,7 @@ class DebateProbe:
             body = dest.read_bytes()
             return str(dest.relative_to(self.out_dir)), hashlib.sha256(body).hexdigest()
         try:
-            r = self.session.get(url, headers=PDF_HEADERS, timeout=120)
-            r.raise_for_status()
-            body = r.content
+            body = get_capped(self.session, url, headers=PDF_HEADERS, timeout=120)
         except Exception as exc:  # noqa: BLE001
             self.runlog.record_error(f"download:{url}", exc)
             return None, None

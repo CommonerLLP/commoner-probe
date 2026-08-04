@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Any
 
 from ..base import safe_filename_segment
+from ..http_client import read_capped_response
 
 _PDFTOTEXT = shutil.which("pdftotext")
 
@@ -69,6 +70,19 @@ class Fetcher:
         return self.rel(path), extract_text(path)
 
 
+def _pdf_basename(url: str) -> str:
+    """The on-disk name for a PDF URL.
+
+    ``strip=False`` keeps this caller's existing mapping: it squashed runs of
+    disallowed characters and never trimmed underscores, so trimming now would
+    rename every ``_advt_.pdf`` already downloaded and fetch it again under the
+    new name.
+    """
+    basename = url.split("?")[0].split("/")[-1]
+    name = safe_filename_segment(basename, collapse=True, strip=False)[:200] if basename else "doc.pdf"
+    return name if name.lower().endswith(".pdf") else name + ".pdf"
+
+
 def download_pdf(session: Any, url: str, dest_dir: Path, *, timeout: float = 60.0) -> Path | None:
     """Download a PDF via the probe session. Returns the local path or None.
 
@@ -76,26 +90,23 @@ def download_pdf(session: Any, url: str, dest_dir: Path, *, timeout: float = 60.
     SSRF guard, so no separate url-safety check is needed here.
     """
     dest_dir.mkdir(parents=True, exist_ok=True)
-    basename = url.split("?")[0].split("/")[-1]
-    name = safe_filename_segment(basename, collapse=True)[:200] if basename else "doc.pdf"
-    if not name.lower().endswith(".pdf"):
-        name += ".pdf"
-    path = dest_dir / name
+    path = dest_dir / _pdf_basename(url)
     if path.exists() and path.stat().st_size > 0:
         return path
     try:
-        r = session.get(url, timeout=timeout)
+        r = session.get(url, timeout=timeout, stream=True)
     except Exception:
         return None
     status = getattr(r, "status_code", 200)
     if status != 200:
         return None
-    content = getattr(r, "content", None)
-    if content is None:
-        try:
-            content = b"".join(r.iter_content(16384))
-        except Exception:
-            return None
+    # Unconditionally through the capped reader. `.content` is always present
+    # on a requests response, so a fallback-only cap was never reached on the
+    # path that ships — and reading it is itself the unbounded allocation.
+    try:
+        content = read_capped_response(r)
+    except Exception:
+        return None
     if not content or not content.startswith(b"%PDF"):
         return None
     path.write_bytes(content)

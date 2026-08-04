@@ -137,6 +137,36 @@ def test_the_count_reports_records_validated_not_lines_read():
     assert "1 of 2" in joined, f"the count must distinguish validated from read:\n{joined}"
 
 
+def test_a_non_string_kind_is_reported_not_raised():
+    """`kind` comes off disk. A list or object made the schema lookup raise
+    TypeError: unhashable type, killing the whole run at that line."""
+    with tempfile.TemporaryDirectory() as tmp:
+        m = Path(tmp) / "manifest.jsonl"
+        m.write_text(
+            "\n".join(json.dumps({"key": "K|1", "kind": k}) for k in ([], {}, None, 7))
+            + "\n",
+            encoding="utf-8",
+        )
+        ok, lines = _run_validate(Path(tmp))
+    joined = "\n".join(lines)
+    assert not ok
+    assert "0 of 4" in joined, f"every record is unvalidatable:\n{joined}"
+
+
+def test_the_read_count_survives_truncation():
+    """`read` stopped counting at the error limit, so a 40-line file reported
+    "0 of 3" — a partial denominator that reads like a small file."""
+    bad = json.dumps({"key": "K|1", "kind": "future_kind"})
+    with tempfile.TemporaryDirectory() as tmp:
+        m = Path(tmp) / "manifest.jsonl"
+        m.write_text("\n".join([bad] * 40) + "\n", encoding="utf-8")
+        ok, lines = _run_validate(Path(tmp), max_errors=3)
+    joined = "\n".join(lines)
+    assert not ok
+    assert "truncated" in joined
+    assert "of 40" in joined, f"the denominator must be the file, not the prefix:\n{joined}"
+
+
 def test_every_manifest_schema_is_reachable():
     """The kind -> schema map must cover every manifest schema that ships.
 

@@ -1,10 +1,12 @@
 include LICENSE
 include README.md
 include CHANGELOG.md
+include docs/CLI.md
 include docs/SCHEMAS.md
 include docs/INTEGRATION_SMOKE.md
 include docs/RATIONALE.md
 include docs/ENDPOINTS.md
+include docs/GOV_SITE_PLATFORMS.md
 prune .beads
 prune .ai
 prune .claude

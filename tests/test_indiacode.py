@@ -182,6 +182,10 @@ class FakeResponse:
         if self.status_code >= 400:
             raise RuntimeError(f"HTTP {self.status_code}")
 
+    def iter_content(self, chunk_size=16384):
+        for i in range(0, len(self.content), chunk_size):
+            yield self.content[i : i + chunk_size]
+
 
 class FakeSession:
     def __init__(self, routes: dict[str, FakeResponse]):

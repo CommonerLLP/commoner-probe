@@ -23,6 +23,11 @@ class FakeResponse:
     def raise_for_status(self):
         pass
 
+    def iter_content(self, chunk_size=16384):
+        body = self.content or b""
+        for i in range(0, len(body), chunk_size):
+            yield body[i : i + chunk_size]
+
 
 class FakeSession:
     def __init__(self):

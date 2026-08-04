@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import quote, unquote, urljoin
 
-from .http_client import make_session
+from .http_client import get_capped, make_session
 
 BASE_URL = "https://prsindia.org"
 PRS_CRAWL_DELAY_SEC = 10.0
@@ -275,9 +275,7 @@ class PrsProbe:
         }
 
     def fetch_mptrack_csv(self, csv_url: str) -> bytes:
-        r = self.session.get(csv_url, timeout=120)
-        r.raise_for_status()
-        return r.content
+        return get_capped(self.session, csv_url, timeout=120)
 
     def _record(
         self,
@@ -471,9 +469,7 @@ class PrsProbe:
                 if self.sleep:
                     time.sleep(self.sleep)
                 try:
-                    r = self.session.get(item["pdf_url"], timeout=120)
-                    r.raise_for_status()
-                    body = r.content
+                    body = get_capped(self.session, item["pdf_url"], timeout=120)
                     if not body.startswith(b"%PDF"):
                         raise ValueError("response is not a PDF (WAF interstitial?)")
                 except Exception as exc:

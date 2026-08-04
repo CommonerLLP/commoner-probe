@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+import itertools
 import json
 import os
 import re
@@ -9,7 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from urllib.parse import quote, urlsplit, urlunsplit
 
-from .http_client import make_session
+from .http_client import iter_capped, make_session
 from .runlog import RunLog
 
 if TYPE_CHECKING:
@@ -21,7 +22,7 @@ def now() -> str:
     return datetime.now().isoformat(timespec="seconds")
 
 
-def safe_filename_segment(value: object, *, collapse: bool = False) -> str:
+def safe_filename_segment(value: object, *, collapse: bool = False, strip: bool = True) -> str:
     """Sanitize an attacker-controllable string for use in a filesystem path.
 
     Server-supplied fields — sansad.in's ``reportNo``/``uuid``/``qslno``, a
@@ -33,12 +34,13 @@ def safe_filename_segment(value: object, *, collapse: bool = False) -> str:
     Replaces every character outside ``[A-Za-z0-9._-]`` with ``_``, strips
     leading dots, and returns ``"unknown"`` rather than an empty string.
 
-    ``collapse`` squashes each run of disallowed characters to a single ``_``
-    and trims trailing ones. It exists because callers that already did that
-    would otherwise rename every file they have on disk: ``"a  b"`` is
-    ``"a__b"`` without it and ``"a_b"`` with it. Pick whichever matches the
-    filenames the caller already wrote; the safety properties are the same
-    either way.
+    ``collapse`` squashes each run of disallowed characters to a single ``_``,
+    and ``strip`` then trims leading and trailing ones. They are separate
+    because the callers genuinely wrote different names: two squashed and
+    trimmed, one squashed only, so trimming for it turns ``"_report_.pdf"``
+    into ``"report_.pdf"`` and orphans the file already on disk. Pick whichever
+    matches the filenames the caller already wrote; the safety properties are
+    the same either way.
 
     This is the ONE implementation. Eight near-copies of the regex existed
     across the package and only this one carried the leading-dot and empty
@@ -52,12 +54,26 @@ def safe_filename_segment(value: object, *, collapse: bool = False) -> str:
         return "unknown"
     pattern = r"[^A-Za-z0-9._-]+" if collapse else r"[^A-Za-z0-9._-]"
     sanitized = re.sub(pattern, "_", s)
-    if collapse:
+    if collapse and strip:
         sanitized = sanitized.strip("_")
     # Strip leading dots so the segment cannot become a hidden file or a
     # parent-directory reference even after sanitisation.
     sanitized = sanitized.lstrip(".")
     return sanitized or "unknown"
+
+
+_tmp_counter = itertools.count()
+
+
+def _private_tmp_path(dest_path: Path) -> Path:
+    """A temp path no other writer will pick.
+
+    Two runs sharing an output directory both wrote ``<name>.tmp``: one
+    truncated the other's partial file, and the loser's ``unlink`` deleted work
+    the winner had already renamed away from. The pid and an object id make the
+    path private to this writer within this process.
+    """
+    return dest_path.with_suffix(f"{dest_path.suffix}.{os.getpid()}.{next(_tmp_counter)}.tmp")
 
 
 def _encode_url_path(url: str) -> str:
@@ -191,12 +207,15 @@ class BaseProbe:
             return True
         dest_path.parent.mkdir(parents=True, exist_ok=True)
         encoded_url = _encode_url_path(url)
-        tmp_path = dest_path.with_suffix(dest_path.suffix + ".tmp")
+        tmp_path = _private_tmp_path(dest_path)
         try:
-            r = self.session.get(encoded_url, headers=headers, timeout=60)
+            # stream=True or requests buffers the whole body before iter_capped
+            # sees a chunk, and the ceiling fires after the allocation it
+            # exists to prevent.
+            r = self.session.get(encoded_url, headers=headers, timeout=60, stream=True)
             r.raise_for_status()
             with tmp_path.open("wb") as f:
-                for chunk in r.iter_content(chunk_size=16384):
+                for chunk in iter_capped(r):
                     f.write(chunk)
             if tmp_path.stat().st_size <= 1000:
                 return False

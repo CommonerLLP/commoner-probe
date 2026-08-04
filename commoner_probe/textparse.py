@@ -32,6 +32,10 @@ DEFAULT_OCR_PSM = "6"
 OCR_PRESERVE_SPACES = ("-c", "preserve_interword_spaces=1")
 
 
+class PdfTextUnavailable(RuntimeError):
+    """No PDF text backend could run. Distinct from "the PDF has no text"."""
+
+
 class OcrUnavailable(RuntimeError):
     """The OCR toolchain is missing or failed. Never silently empty text.
 
@@ -135,7 +139,59 @@ def ocr_toolchain_missing() -> list[str]:
     return [tool for tool in ("pdftoppm", "tesseract") if shutil.which(tool) is None]
 
 
-def extract_pdf_text(path: Path) -> str:
+def _pdfminer_extract(path: Path) -> str:
+    """pdfminer rung, or None at module level when pdfminer is not installed.
+
+    Bound as a module attribute so the chain can tell "pdfminer is missing"
+    from "pdfminer read the file and found nothing" — the distinction the bare
+    ``except Exception: return ""`` erased.
+    """
+    from pdfminer.high_level import extract_text  # type: ignore
+
+    return extract_text(str(path))
+
+
+try:  # pragma: no cover - import-time capability probe
+    import pdfminer  # type: ignore  # noqa: F401
+except ImportError:  # pragma: no cover
+    _pdfminer_extract = None  # type: ignore[assignment]
+
+
+def _pdf_page_count(path: Path) -> int:
+    """Page count via pdfinfo, 1 if it cannot be determined."""
+    try:
+        out = subprocess.run(
+            ["pdfinfo", str(path)], capture_output=True, text=True, timeout=30, check=False
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return 1
+    match = re.search(r"^Pages:\s+(\d+)", out.stdout or "", re.MULTILINE)
+    return int(match.group(1)) if match else 1
+
+
+def extract_pdf_text(
+    path: Path,
+    *,
+    ocr: bool = False,
+    ocr_lang: str = "eng",
+    ocr_max_pages: int = 50,
+) -> str:
+    """Text from a PDF: pdftotext, then pdfminer, then optionally OCR.
+
+    Returns ``""`` only when a backend ran and the document genuinely carries
+    no text. If NO backend is usable — poppler absent and pdfminer not
+    installed — this raises :class:`PdfTextUnavailable` rather than returning
+    the same empty string, because a crawl over a thousand PDFs would
+    otherwise write a thousand empty text files and report success.
+
+    ``ocr`` wires in the last rung for documents whose text layer is absent or
+    untrustworthy. It is opt-in: rasterising and running tesseract costs
+    orders of magnitude more than reading an embedded text layer, and it needs
+    poppler plus tesseract. When it is asked for and cannot run, the
+    :class:`OcrUnavailable` it raises reaches the caller — an OCR rung that
+    silently returns nothing is the failure this module already refuses.
+    """
+    backend_ran = False
     try:
         out = subprocess.run(
             ["pdftotext", "-layout", str(path), "-"],
@@ -144,16 +200,34 @@ def extract_pdf_text(path: Path) -> str:
             timeout=60,
             check=False,
         )
+        backend_ran = True
         if out.returncode == 0 and out.stdout.strip():
             return out.stdout
     except (FileNotFoundError, subprocess.TimeoutExpired):
         pass
-    try:
-        from pdfminer.high_level import extract_text  # type: ignore
 
-        return extract_text(str(path))
-    except Exception:  # noqa: BLE001
-        return ""
+    if _pdfminer_extract is not None:
+        try:
+            text = _pdfminer_extract(path)
+            backend_ran = True
+            if text and text.strip():
+                return text
+        except Exception:  # noqa: BLE001 - a malformed PDF is not a missing toolchain
+            backend_ran = True
+
+    if ocr:
+        pages = min(_pdf_page_count(path), ocr_max_pages)
+        return "\n".join(
+            ocr_pdf_text(path, page=page, lang=ocr_lang)
+            for page in range(1, pages + 1)
+        )
+
+    if not backend_ran:
+        raise PdfTextUnavailable(
+            f"no PDF text backend available for {path.name}: install poppler "
+            "(pdftotext) or `pip install commoner-probe[pdf]`"
+        )
+    return ""
 
 
 def read_jsonl(path: Path) -> list[dict[str, Any]]:
