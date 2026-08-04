@@ -33,6 +33,30 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+
+class IndexLag(RuntimeError):
+    """pip could not see the version yet. Retryable, unlike a broken package.
+
+    pip reads the *simple* index; the retry loop below watches the version-JSON
+    endpoint. The two do not update together, so the JSON route can answer 200
+    while `pip install` still reports "no matching distribution". Both 0.12.1
+    and 0.13.0 reported FAIL here and passed unchanged 45 seconds later.
+    """
+
+
+#: Substrings pip prints when the requested version is not on the index it
+#: reads. Anything else — a build failure, a dependency conflict, an import
+#: error — is a real failure and must not be retried for minutes.
+INDEX_LAG_MARKERS = (
+    "No matching distribution found",
+    "Could not find a version that satisfies the requirement",
+)
+
+
+def _is_index_lag(stderr: str) -> bool:
+    return any(marker in (stderr or "") for marker in INDEX_LAG_MARKERS)
+
+
 PROJECT = "commoner-probe"
 IMPORT_NAME = "commoner_probe"
 ATTEMPTS = 6
@@ -84,13 +108,19 @@ def _install_check(version: str) -> str:
         }
         for key in ("PIP_FIND_LINKS", "PIP_EXTRA_INDEX_URL", "PIP_TARGET"):
             env.pop(key, None)
-        subprocess.run(
-            [str(pip), "install", "--no-cache-dir", "--index-url", "https://pypi.org/simple/",
-             "-q", f"{PROJECT}=={version}"],
-            check=True,
-            capture_output=True,
-            env=env,
-        )
+        try:
+            subprocess.run(
+                [str(pip), "install", "--no-cache-dir", "--index-url", "https://pypi.org/simple/",
+                 "-q", f"{PROJECT}=={version}"],
+                check=True,
+                capture_output=True,
+                env=env,
+            )
+        except subprocess.CalledProcessError as exc:
+            stderr = exc.stderr.decode() if isinstance(exc.stderr, bytes) else (exc.stderr or "")
+            if _is_index_lag(stderr):
+                raise IndexLag(stderr.strip().splitlines()[-1] if stderr.strip() else "") from None
+            raise
 
         # cwd=tmp, NOT the repo. `python -c` puts the working directory on
         # sys.path, so running this from the checkout imported the local source
@@ -159,10 +189,31 @@ def main(argv: list[str]) -> int:
     for file_info in payload.get("urls", []):
         print(f"  {file_info['packagetype']:<12} {file_info['filename']}  {file_info['size']} bytes")
 
-    try:
-        installed = _install_check(version)
-    except (RuntimeError, subprocess.CalledProcessError) as exc:
-        print(f"FAIL: {exc}", file=sys.stderr)
+    installed = None
+    for attempt in range(1, ATTEMPTS + 1):
+        try:
+            installed = _install_check(version)
+            break
+        except IndexLag as exc:
+            # The load-bearing check gets the same patience as the index read.
+            # Reporting FAIL here while the simple index catches up is what
+            # taught the operator to re-run rather than read.
+            print(
+                f"  pip cannot see {version} yet ({attempt}/{ATTEMPTS}): {exc} — "
+                f"waiting {BACKOFF_SEC}s. The simple index lags the JSON route.",
+                file=sys.stderr,
+            )
+            if attempt < ATTEMPTS:
+                time.sleep(BACKOFF_SEC)
+        except (RuntimeError, subprocess.CalledProcessError) as exc:
+            print(f"FAIL: {exc}", file=sys.stderr)
+            return 1
+    if installed is None:
+        print(
+            f"FAIL: pip could not install {PROJECT}=={version} after "
+            f"{ATTEMPTS * BACKOFF_SEC}s of index propagation.",
+            file=sys.stderr,
+        )
         return 1
     if installed != version:
         print(
