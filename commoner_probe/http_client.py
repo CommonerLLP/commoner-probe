@@ -250,12 +250,18 @@ class ResponseTooLarge(RuntimeError):
     """
 
 
-def iter_capped(resp: Any, *, max_bytes: int = MAX_RESPONSE_BYTES, chunk_size: int = 16384):
+def iter_capped(resp: Any, *, max_bytes: int | None = None, chunk_size: int = 16384):
     """Yield a response's chunks, refusing once *max_bytes* have arrived.
 
     Counts the bytes that actually arrive rather than trusting Content-Length,
     which is a number the server supplies about itself.
+
+    The ceiling defaults to ``MAX_RESPONSE_BYTES`` read at CALL time. A default
+    argument would freeze the value at import, so raising or lowering the
+    constant would change nothing — a knob that cannot turn.
     """
+    if max_bytes is None:
+        max_bytes = MAX_RESPONSE_BYTES
     seen = 0
     for chunk in resp.iter_content(chunk_size=chunk_size):
         if not chunk:
@@ -268,7 +274,7 @@ def iter_capped(resp: Any, *, max_bytes: int = MAX_RESPONSE_BYTES, chunk_size: i
         yield chunk
 
 
-def read_capped_response(resp: Any, *, max_bytes: int = MAX_RESPONSE_BYTES, chunk_size: int = 16384) -> bytes:
+def read_capped_response(resp: Any, *, max_bytes: int | None = None, chunk_size: int = 16384) -> bytes:
     """The whole body, or ``ResponseTooLarge`` before it is all in memory.
 
     ``b"".join(resp.iter_content(...))`` passes ``stream=True`` and then
@@ -277,7 +283,7 @@ def read_capped_response(resp: Any, *, max_bytes: int = MAX_RESPONSE_BYTES, chun
     return b"".join(iter_capped(resp, max_bytes=max_bytes, chunk_size=chunk_size))
 
 
-def get_capped(session: Any, url: str, *, max_bytes: int = MAX_RESPONSE_BYTES, **kwargs: Any) -> bytes:
+def get_capped(session: Any, url: str, *, max_bytes: int | None = None, **kwargs: Any) -> bytes:
     """GET *url* and return the body, bounded by *max_bytes*.
 
     For the ``body = session.get(...).content`` shape, which buffers whatever

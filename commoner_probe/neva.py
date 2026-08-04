@@ -264,7 +264,7 @@ class StateAssemblyCrawler(BaseProbe):
         elif url.startswith("/"):
             url = CMS_BASE + url
         try:
-            r = self.session.get(url, timeout=60)
+            r = self.session.get(url, timeout=60, stream=True)
             if r.status_code != 200:
                 self.log(f"Warning: PDF {r.status_code} {url}")
                 return False

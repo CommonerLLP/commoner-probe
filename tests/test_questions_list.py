@@ -469,3 +469,31 @@ def test_replace_question_rows_clears_stale_rows_on_empty_reparse(tmp_path):
     (tmp_path / "questions_list.jsonl").unlink()
     probe.replace_question_rows("pdfs/a.pdf", [])
     assert not (tmp_path / "questions_list.jsonl").exists()
+
+
+def test_bleed_outranks_a_missing_stated_total(tmp_path, monkeypatch):
+    """A list with no "Total Number of Questions" line and bled rows was filed
+    as `no_stated_total`, which `_resume_status` treats as terminal — so the
+    corrupted rows would never be re-parsed by a later fix."""
+    no_total = LS_COMBINED_SAMPLE.replace("Total Number of Questions - 2", "").replace(
+        "Total Number of Questions - 3", ""
+    )
+    monkeypatch.setattr(
+        "commoner_probe.questions_list.extract_pdf_text", lambda path: no_total
+    )
+    real = questions_list_module.parse_question_rows
+
+    def bleeding(*args, **kwargs):
+        rows = real(*args, **kwargs)
+        for row, nxt in zip(rows, rows[1:]):
+            row["text"] = f"{row['text']}\n{nxt['subject']}"
+        return rows
+
+    monkeypatch.setattr("commoner_probe.questions_list.parse_question_rows", bleeding)
+    records = _probe(tmp_path, house="ls").probe(download=True)
+    rec = next(r for r in records if r["document_kind"] == "question_list")
+    assert rec["question_rows_expected"] is None
+    assert rec["parse_status"] == "boundary_bleed"
+
+    # and the document stays retryable, which is the point
+    assert _probe(tmp_path, house="ls").probe(download=True) != []

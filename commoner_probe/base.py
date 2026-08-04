@@ -209,7 +209,10 @@ class BaseProbe:
         encoded_url = _encode_url_path(url)
         tmp_path = _private_tmp_path(dest_path)
         try:
-            r = self.session.get(encoded_url, headers=headers, timeout=60)
+            # stream=True or requests buffers the whole body before iter_capped
+            # sees a chunk, and the ceiling fires after the allocation it
+            # exists to prevent.
+            r = self.session.get(encoded_url, headers=headers, timeout=60, stream=True)
             r.raise_for_status()
             with tmp_path.open("wb") as f:
                 for chunk in iter_capped(r):

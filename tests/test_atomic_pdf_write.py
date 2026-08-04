@@ -53,9 +53,11 @@ class _Session:
     def __init__(self, response: _Response) -> None:
         self._response = response
         self.calls = 0
+        self.kwargs: dict = {}
 
     def get(self, url, **kwargs):
         self.calls += 1
+        self.kwargs = kwargs
         return self._response
 
 
@@ -198,3 +200,49 @@ class SansadOverrideTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class StreamingRequestTests(unittest.TestCase):
+    """The ceiling only bounds memory if the body is not already in memory.
+
+    `iter_capped` counts chunks as they arrive, but requests buffers the whole
+    response unless the GET asked for `stream=True` — so the cap fired after
+    the allocation it exists to prevent. Same shape as the zip-bomb fix: the
+    exception must arrive before the bytes, not after.
+    """
+
+    def test_base_probe_asks_for_a_streamed_body(self):
+        with TemporaryDirectory() as tmp:
+            probe = _probe(Path(tmp), _Response(GOOD_PDF))
+            probe.write_pdf("https://example.gov.in/a.pdf", Path(tmp) / "pdfs" / "d.pdf", {})
+            self.assertTrue(probe.session.kwargs.get("stream"))
+
+    def test_academia_download_asks_for_a_streamed_body(self):
+        from commoner_probe.academia import pdf_text
+
+        with TemporaryDirectory() as tmp:
+            session = _Session(_Response(GOOD_PDF))
+            path = pdf_text.download_pdf(session, "https://example.gov.in/a.pdf", Path(tmp))
+            self.assertIsNotNone(path)
+            self.assertEqual(path.read_bytes(), GOOD_PDF)
+            self.assertTrue(session.kwargs.get("stream"))
+
+    def test_academia_download_caps_a_requests_response(self):
+        """`.content` is always present on a requests response, so the capped
+        reader was never reached on the path that actually ships."""
+        from commoner_probe import http_client as hc
+        from commoner_probe.academia import pdf_text
+
+        class _Oversized(_Response):
+            content = b"%PDF-" + b"x" * 4000
+
+        with TemporaryDirectory() as tmp:
+            session = _Session(_Oversized(GOOD_PDF))
+            original = hc.MAX_RESPONSE_BYTES
+            hc.MAX_RESPONSE_BYTES = 64
+            try:
+                self.assertIsNone(
+                    pdf_text.download_pdf(session, "https://example.gov.in/a.pdf", Path(tmp))
+                )
+            finally:
+                hc.MAX_RESPONSE_BYTES = original

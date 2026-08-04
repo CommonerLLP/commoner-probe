@@ -15,7 +15,10 @@
   15 call sites through `iter_capped` / `read_capped_response` / `get_capped`,
   and `StdlibSession` bounds its own read since it cannot stream. A body past
   the ceiling raises `ResponseTooLarge` instead of being truncated into a short
-  file that looks complete.
+  file that looks complete. The downloads that feed it now request
+  `stream=True`, without which requests buffers the whole body before the cap
+  sees a chunk, and the ceiling resolves at call time so raising or lowering
+  the constant actually changes it.
 - **`RetrySession.head()` no longer follows redirects by default.** It was
   routed through `request()`, whose default is the opposite of
   `requests.Session.head`, so a HEAD size check fetched the redirect target.

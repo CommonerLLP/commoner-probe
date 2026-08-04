@@ -573,7 +573,19 @@ class QuestionsListProbe:
                 rec["corrigenda_present"] = corrigenda_present(text)
                 bleeding = rows_with_subject_bleed(rows)
                 rec["question_rows_bleeding"] = len(bleeding)
-                if not expected:
+                if bleeding:
+                    # First, and ahead of the missing-total case: a bled
+                    # document filed as `no_stated_total` reads as terminal, so
+                    # a later parser fix would skip the corrupted rows.
+                    rec["parse_status"] = "boundary_bleed"
+                    self.runlog.record_error(
+                        f"parse:{rel}",
+                        ValueError(
+                            f"{len(bleeding)} of {len(rows)} rows end with another "
+                            f"row's subject heading (qnos {bleeding[:5]})"
+                        ),
+                    )
+                elif not expected:
                     rec["parse_status"] = "no_stated_total"
                 elif sum(expected) != len(rows):
                     # the list itself declares its size; a mismatch is a parse
@@ -584,17 +596,6 @@ class QuestionsListProbe:
                         ValueError(
                             f"stated totals {expected} (sum {sum(expected)}) != "
                             f"{len(rows)} parsed rows"
-                        ),
-                    )
-                elif bleeding:
-                    # the count is right and the bodies are wrong at the tail:
-                    # a count-only check reported this as reconciled for months
-                    rec["parse_status"] = "boundary_bleed"
-                    self.runlog.record_error(
-                        f"parse:{rel}",
-                        ValueError(
-                            f"{len(bleeding)} of {len(rows)} rows end with another "
-                            f"row's subject heading (qnos {bleeding[:5]})"
                         ),
                     )
                 else:
