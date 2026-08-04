@@ -48,7 +48,7 @@ from pathlib import Path
 from typing import Iterator
 
 from .base import safe_filename_segment
-from .http_client import make_session
+from .http_client import make_session, read_capped_response
 
 BASE_URL = "https://indiacode.nic.in"
 
@@ -431,10 +431,12 @@ class IndiaCodeProbe:
             record["sha256"] = hashlib.sha256(dest.read_bytes()).hexdigest()
             return record
         try:
-            r = self.session.get(record["source_url"], headers=HEADERS, timeout=60, respect_robots=False)
+            r = self.session.get(record["source_url"], headers=HEADERS, timeout=60,
+                                 respect_robots=False, stream=True)
             r.raise_for_status()
             dest.parent.mkdir(parents=True, exist_ok=True)
-            body = r.content if hasattr(r, "content") else r.text.encode("utf-8")
+            body = (read_capped_response(r) if hasattr(r, "iter_content")
+                    else r.text.encode("utf-8"))
             dest.write_bytes(body)
             record["dest"] = str(dest.relative_to(self.out_dir))
             record["status"] = "downloaded"

@@ -388,3 +388,73 @@ def test_ocr_quality_and_text_source_survive_schema_and_typed_api():
     }
     jsonschema.validate(qa, schemas.load("answers_neva_qa_response"))
     assert AnswerNevaQaResponse.from_dict(qa).text_source == "ocr"
+
+
+# ---------------------------------------------------------------------------
+# The chain itself: "the toolchain is missing" and "this PDF has no words"
+# were the same empty string. Nine modules read that result and record an
+# empty text file either way.
+# ---------------------------------------------------------------------------
+
+
+def _pdf(tmp_path):
+    p = tmp_path / "doc.pdf"
+    p.write_bytes(b"%PDF-1.4 fake")
+    return p
+
+
+def test_a_missing_toolchain_raises_instead_of_returning_empty(tmp_path, monkeypatch):
+    from commoner_probe import textparse as tp
+
+    def no_pdftotext(argv, **kwargs):
+        raise FileNotFoundError("pdftotext")
+
+    monkeypatch.setattr(tp.subprocess, "run", no_pdftotext)
+    monkeypatch.setattr(tp, "_pdfminer_extract", None)
+    with pytest.raises(tp.PdfTextUnavailable, match="no PDF text backend"):
+        tp.extract_pdf_text(_pdf(tmp_path))
+
+
+def test_a_pdf_with_no_text_layer_still_returns_empty(tmp_path, monkeypatch):
+    """A working backend that finds no words is a fact about the document."""
+    from commoner_probe import textparse as tp
+
+    monkeypatch.setattr(
+        tp.subprocess, "run",
+        lambda argv, **kw: type("R", (), {"returncode": 0, "stdout": "", "stderr": ""})(),
+    )
+    monkeypatch.setattr(tp, "_pdfminer_extract", lambda path: "")
+    assert tp.extract_pdf_text(_pdf(tmp_path)) == ""
+
+
+def test_ocr_is_the_next_rung_and_only_when_asked(tmp_path, monkeypatch):
+    from commoner_probe import textparse as tp
+
+    monkeypatch.setattr(
+        tp.subprocess, "run",
+        lambda argv, **kw: type("R", (), {"returncode": 0, "stdout": "", "stderr": ""})(),
+    )
+    monkeypatch.setattr(tp, "_pdfminer_extract", lambda path: "")
+    monkeypatch.setattr(tp, "_pdf_page_count", lambda path: 2)
+    monkeypatch.setattr(tp, "ocr_pdf_text", lambda path, *, page, **kw: f"page {page} text")
+
+    assert tp.extract_pdf_text(_pdf(tmp_path)) == ""
+    assert tp.extract_pdf_text(_pdf(tmp_path), ocr=True) == "page 1 text\npage 2 text"
+
+
+def test_an_ocr_rung_that_cannot_run_is_not_an_empty_page(tmp_path, monkeypatch):
+    from commoner_probe import textparse as tp
+
+    monkeypatch.setattr(
+        tp.subprocess, "run",
+        lambda argv, **kw: type("R", (), {"returncode": 0, "stdout": "", "stderr": ""})(),
+    )
+    monkeypatch.setattr(tp, "_pdfminer_extract", lambda path: "")
+    monkeypatch.setattr(tp, "_pdf_page_count", lambda path: 1)
+
+    def _missing(path, *, page, **kw):
+        raise OcrUnavailable("tesseract missing")
+
+    monkeypatch.setattr(tp, "ocr_pdf_text", _missing)
+    with pytest.raises(OcrUnavailable):
+        tp.extract_pdf_text(_pdf(tmp_path), ocr=True)

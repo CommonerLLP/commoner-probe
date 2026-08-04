@@ -120,6 +120,52 @@ class AtomicWriteTests(unittest.TestCase):
             self.assertEqual(probe.session.calls, 0)
 
 
+class ConcurrentWriterTests(unittest.TestCase):
+    """Two runs sharing an output directory must not share a temp path.
+
+    Both wrote `doc.pdf.tmp`. The slower writer's `os.replace` then published
+    a file the faster one was still writing into, and its own `unlink` could
+    delete the other's work in flight.
+    """
+
+    def test_two_probes_do_not_collide_on_one_temp_path(self):
+        seen = []
+
+        class _Watching(_Response):
+            def iter_content(self, chunk_size=16384):
+                seen.extend(p.name for p in dest.parent.glob("*.tmp*"))
+                yield from _Response.iter_content(self, chunk_size)
+
+        with TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "pdfs" / "doc.pdf"
+            dest.parent.mkdir(parents=True)
+            (dest.parent / "doc.pdf.tmp").write_bytes(b"another writer's work")
+            probe = _probe(Path(tmp), _Watching(GOOD_PDF))
+            self.assertTrue(probe.write_pdf("https://example.gov.in/a.pdf", dest, {}))
+            self.assertEqual(dest.read_bytes(), GOOD_PDF)
+            self.assertEqual(
+                (dest.parent / "doc.pdf.tmp").read_bytes(),
+                b"another writer's work",
+                "the other writer's temp file was overwritten",
+            )
+            self.assertTrue(seen, "the watcher never ran")
+            self.assertTrue(
+                [name for name in seen if name != "doc.pdf.tmp"],
+                f"the writer used the shared temp path: {seen}",
+            )
+
+    def test_sansad_override_also_uses_a_private_temp_path(self):
+        with TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "pdfs" / "doc.pdf"
+            dest.parent.mkdir(parents=True)
+            (dest.parent / "doc.pdf.tmp").write_bytes(b"another writer's work")
+            probe = _sansad_probe(Path(tmp), _Response(GOOD_PDF))
+            self.assertTrue(probe.write_pdf("https://example.gov.in/a.pdf", dest, {}))
+            self.assertEqual(
+                (dest.parent / "doc.pdf.tmp").read_bytes(), b"another writer's work"
+            )
+
+
 class SansadOverrideTests(unittest.TestCase):
     """SansadProbe overrides write_pdf, so it needs the same guarantee.
 

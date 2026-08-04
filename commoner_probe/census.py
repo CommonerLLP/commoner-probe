@@ -72,6 +72,15 @@ KEY_FILE_ENV = "COMMONER_PROBE_KEY_FILE"
 #: A digest, and NOT a prefix: every data.gov.in key begins ``579b464db66e``,
 #: registered ones included, so a prefix test rejects the correct credential.
 #: The first cut of this module did exactly that and refused the org's real key.
+#:
+#: Provenance checked 2026-08-04, because a constant matching nothing would let
+#: every crawl through and no test could tell. data.gov.in answers 403 to this
+#: egress even from a real browser, so the check ran against the Internet
+#: Archive's index of ``api.data.gov.in`` request URLs instead: of 15 distinct
+#: ``api-key`` values across 569 captures, the most frequent — 296 captures,
+#: earliest 2021-10-21 — hashes to exactly this digest. That establishes the
+#: key as the widely-circulated public one; it does not prove the current
+#: /apis page still prints this same string.
 SAMPLE_KEY_SHA256 = "149027a69a838520183f92d985e79c28ca979b79c4b7fa94a22230d819fe08a0"
 
 

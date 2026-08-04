@@ -105,6 +105,31 @@ class SafeFilenameSegmentTests(unittest.TestCase):
     def test_int_input_stringified(self):
         self.assertEqual(safe_filename_segment(42), "42")
 
+    def test_collapse_can_keep_underscores_the_caller_already_wrote(self):
+        """One caller squashed runs and never trimmed. Trimming its names
+        renames every such file on disk, and the file is then re-downloaded
+        under the new name — so both copies exist and neither is authoritative.
+        """
+        for name in ("_report_.pdf", "__advt__2024.pdf", "_.pdf"):
+            self.assertEqual(
+                safe_filename_segment(name, collapse=True, strip=False), name
+            )
+        # squashing still happens, which is why the caller passes collapse
+        self.assertEqual(
+            safe_filename_segment("a  b.pdf", collapse=True, strip=False), "a_b.pdf"
+        )
+        # and the safety properties do not depend on strip
+        self.assertEqual(safe_filename_segment("..", collapse=True, strip=False), "unknown")
+        self.assertNotIn("/", safe_filename_segment("../../etc/passwd", collapse=True, strip=False))
+
+    def test_academia_download_keeps_its_existing_filename_mapping(self):
+        from commoner_probe.academia.pdf_text import _pdf_basename
+
+        for name in ("_report_.pdf", "__advt__2024.pdf", "ordinary.pdf"):
+            self.assertEqual(_pdf_basename(f"https://x.example/files/{name}"), name)
+        self.assertEqual(_pdf_basename("https://x.example/a%20b.pdf"), "a_20b.pdf")
+        self.assertEqual(_pdf_basename("https://x.example/"), "doc.pdf")
+
 
 if __name__ == "__main__":
     unittest.main()

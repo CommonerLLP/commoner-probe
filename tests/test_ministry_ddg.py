@@ -79,6 +79,11 @@ class FakeResponse:
         if self.status_code >= 400:
             raise RuntimeError(f"HTTP {self.status_code}")
 
+    def iter_content(self, chunk_size=16384):
+        body = self.content or b""
+        for i in range(0, len(body), chunk_size):
+            yield body[i : i + chunk_size]
+
 
 class FakeSession:
     def __init__(self, *, pdf_for_url=None, fail_listing=False):
@@ -545,6 +550,10 @@ class _PdfResponse:
 
     def raise_for_status(self):
         return None
+
+    def iter_content(self, chunk_size=16384):
+        for i in range(0, len(self.content), chunk_size):
+            yield self.content[i : i + chunk_size]
 
 
 def test_wayback_is_off_by_default(tmp_path, monkeypatch):

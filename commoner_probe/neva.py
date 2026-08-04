@@ -25,6 +25,7 @@ from html.parser import HTMLParser
 from pathlib import Path
 
 from .base import BaseProbe, now, safe_filename_segment
+from .http_client import iter_capped
 
 NEVA_UA = "commoner-probe/0.3.0 (research)"
 CMS_BASE = "https://cms.neva.gov.in"
@@ -268,7 +269,7 @@ class StateAssemblyCrawler(BaseProbe):
                 self.log(f"Warning: PDF {r.status_code} {url}")
                 return False
             with dest.open("wb") as f:
-                for chunk in r.iter_content(chunk_size=16384):
+                for chunk in iter_capped(r):
                     f.write(chunk)
             time.sleep(self.sleep)
             return dest.exists() and dest.stat().st_size > 1000

@@ -55,7 +55,20 @@ FORBIDDEN = (
 
 
 def _shipped_sources() -> list[Path]:
-    return sorted(PACKAGE_ROOT.rglob("*.py"))
+    """Every file the wheel ships, not only the Python ones.
+
+    The package ships JSON schemas alongside its modules, and four of them
+    carried internal ids that a `*.py` glob could not see. A guard's scope is
+    part of the guard.
+    """
+    out = subprocess.run(
+        ["git", "ls-files", "commoner_probe"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return [REPO_ROOT / line for line in out.stdout.split("\n") if line]
 
 
 def _tracked_public_docs() -> list[Path]:
@@ -77,7 +90,11 @@ def _tracked_public_docs() -> list[Path]:
 
 def test_the_package_has_sources_to_scan():
     """Guard the guard: an empty glob would make every scan below vacuous."""
-    assert len(_shipped_sources()) > 50
+    scanned = _shipped_sources()
+    assert len(scanned) > 50
+    # and the non-Python shipped files are in scope, which is the whole point
+    suffixes = {path.suffix for path in scanned}
+    assert ".py" in suffixes and ".json" in suffixes
 
 
 def test_there_are_tracked_docs_to_scan():

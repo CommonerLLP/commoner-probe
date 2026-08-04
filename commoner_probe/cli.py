@@ -1184,6 +1184,14 @@ def build_parser() -> argparse.ArgumentParser:
         action="version",
         version=f"commoner-probe {__version__}",
     )
+    # Placed before the subparsers so it reads `commoner-probe --traceback
+    # sansad ...`; every subcommand also accepts it after the name via the
+    # parent below, because that is where operators reach for it.
+    parser.add_argument(
+        "--traceback",
+        action="store_true",
+        help="Print the full stack instead of a one-line error",
+    )
     sub = parser.add_subparsers(dest="command", required=True)
 
     sansad = sub.add_parser("sansad", help="Probe Lok Sabha / Rajya Sabha parliamentary questions")
@@ -2179,13 +2187,44 @@ def build_parser() -> argparse.ArgumentParser:
     )
     init_topic.set_defaults(func=init_topic_cmd)
 
+    # Accepted after the subcommand name too, which is where an operator
+    # reaches for it. SUPPRESS on the default so that `commoner-probe
+    # --traceback census ...` is not overwritten by the subparser's own False.
+    for subparser in sub.choices.values():
+        subparser.add_argument(
+            "--traceback", action="store_true",
+            default=argparse.SUPPRESS, help=argparse.SUPPRESS,
+        )
+
     return parser
 
 
 def main() -> None:
+    """Run a subcommand, turning known failures into a message and an exit code.
+
+    Every adapter raises errors that carry a written explanation — which key to
+    register, which host is unreachable, which bound is missing. Letting them
+    reach the terminal as a traceback buried that text under a stack and
+    printed the operator's local paths. ``--traceback`` opts back in.
+
+    Exit codes: 0 success, 1 a failure the tool understood, 130 Ctrl-C.
+    """
     parser = build_parser()
     args = parser.parse_args()
-    args.func(args)
+    try:
+        args.func(args)
+    except KeyboardInterrupt:
+        print("\ninterrupted", file=sys.stderr)
+        raise SystemExit(130) from None
+    except (BrokenPipeError, SystemExit):
+        raise
+    except Exception as exc:
+        if getattr(args, "traceback", False):
+            raise
+        name = type(exc).__name__
+        print(f"error: {exc}" if str(exc) else f"error: {name}", file=sys.stderr)
+        print(f"  ({name} — re-run with --traceback for the full stack)", file=sys.stderr)
+        raise SystemExit(1) from None
 
 
 if __name__ == "__main__":

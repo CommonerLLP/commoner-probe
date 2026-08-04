@@ -20,7 +20,7 @@ from typing import Any
 from urllib.parse import unquote, urljoin, urlparse
 
 from .base import safe_filename_segment
-from .http_client import make_session
+from .http_client import make_session, read_capped_response
 from .textparse import extract_pdf_text
 
 DOE_LISTING_URL = "https://doe.gov.in/annual-report-pay-and-allowances"
@@ -132,9 +132,9 @@ class DoePayAllowancesProbe:
             record["status"] = "skipped_exists"
             self._finalize(record, dest, dest.read_bytes())
             return record
-        r = self.session.get(report["url"], timeout=180)
+        r = self.session.get(report["url"], timeout=180, stream=True)
         r.raise_for_status()
-        body = r.content
+        body = read_capped_response(r)
         if not body.startswith(b"%PDF"):
             record["status"] = "error"
             record["error"] = "response is not a PDF (WAF interstitial?)"
