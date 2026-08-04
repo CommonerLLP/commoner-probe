@@ -163,10 +163,10 @@ def test_parse_listing_enumerates_years_titles_and_urls(tmp_path):
 
 
 def test_probe_downloads_with_provenance_and_text_layer(tmp_path, monkeypatch):
-    from commoner_probe import ddg as ddg_mod
+    from commoner_probe import base as base_mod
 
     monkeypatch.setattr(
-        ddg_mod, "extract_pdf_text",
+        base_mod, "extract_pdf_text",
         lambda p: "" if "2022-23" in str(p) else "extracted text " * 50,
     )
     probe = _probe(tmp_path, pdf_for_url={
@@ -188,9 +188,9 @@ def test_probe_downloads_with_provenance_and_text_layer(tmp_path, monkeypatch):
 
 
 def test_probe_skips_existing_file(tmp_path, monkeypatch):
-    from commoner_probe import ddg as ddg_mod
 
-    monkeypatch.setattr(ddg_mod, "extract_pdf_text", lambda p: "")
+    from commoner_probe import base as base_mod
+    monkeypatch.setattr(base_mod, "extract_pdf_text", lambda p: "")
     probe = _probe(tmp_path, pdf_for_url={URL_2223: PDF_SCANNED})
     first = probe.probe(years=["2022-23"])
     second = probe.probe(years=["2022-23"])
@@ -274,9 +274,9 @@ def test_multi_volume_per_year_does_not_collide(tmp_path, monkeypatch):
     fixed key must disambiguate them instead of colliding (2026-07-09 bug
     caught while expanding the registry beyond dea.gov.in's one-doc-per-year
     shape)."""
-    from commoner_probe import ddg as ddg_mod
 
-    monkeypatch.setattr(ddg_mod, "extract_pdf_text", lambda p: "")
+    from commoner_probe import base as base_mod
+    monkeypatch.setattr(base_mod, "extract_pdf_text", lambda p: "")
     mha_portal = get_portal("mha")
     probe = MinistryDDGProbe(tmp_path, portal=mha_portal, sleep=0)
 
@@ -392,10 +392,9 @@ def test_records_validate_against_schema(tmp_path, monkeypatch):
     except ImportError:
         import pytest
         pytest.skip("jsonschema not installed")
-    from commoner_probe import ddg as ddg_mod
+    from commoner_probe import base as base_mod
     from commoner_probe import schemas
-
-    monkeypatch.setattr(ddg_mod, "extract_pdf_text", lambda p: "")
+    monkeypatch.setattr(base_mod, "extract_pdf_text", lambda p: "")
     schema = schemas.load("manifest_ministry_ddg")
     probe = _probe(tmp_path, pdf_for_url={URL_2223: PDF_SCANNED})
     for record in probe.probe(years=["2022-23"]):
@@ -539,7 +538,8 @@ def _wayback_probe(tmp_path, monkeypatch, **kwargs):
          "url": "https://data.dae.gov.in/Accounts/Detailed_Demand_for_Grants/DDG2021-22.pdf"}
     ])
     monkeypatch.setattr(probe.session, "get", lambda *a, **k: _PdfResponse(b"%PDF-1.4 body"))
-    monkeypatch.setattr(ddg_mod, "extract_pdf_text", lambda p: "x" * 500)
+    from commoner_probe import base as base_mod
+    monkeypatch.setattr(base_mod, "extract_pdf_text", lambda p: "x" * 500)
     return probe, calls
 
 

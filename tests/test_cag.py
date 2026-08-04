@@ -187,9 +187,9 @@ def test_parse_empty_when_no_finance_accounts_tab():
 
 
 def test_probe_vol2_download_with_provenance_and_text_layer(tmp_path, monkeypatch):
-    from commoner_probe import cag as cag_mod
 
-    monkeypatch.setattr(cag_mod, "extract_pdf_text", lambda p: "extracted " * 50)
+    from commoner_probe import base as base_mod
+    monkeypatch.setattr(base_mod, "extract_pdf_text", lambda p: "extracted " * 50)
     probe = _probe(tmp_path, pdf_for_url={VOL2_2425: PDF_WITH_TEXT, VOL2_2324: PDF_WITH_TEXT})
     records = probe.probe(GJ, volumes=["II"])
     assert [r["status"] for r in records] == ["downloaded", "downloaded"]
@@ -205,9 +205,9 @@ def test_probe_vol2_download_with_provenance_and_text_layer(tmp_path, monkeypatc
 
 
 def test_probe_year_and_volume_filters(tmp_path, monkeypatch):
-    from commoner_probe import cag as cag_mod
 
-    monkeypatch.setattr(cag_mod, "extract_pdf_text", lambda p: "")
+    from commoner_probe import base as base_mod
+    monkeypatch.setattr(base_mod, "extract_pdf_text", lambda p: "")
     probe = _probe(tmp_path, pdf_for_url={VOL2_2324: PDF_WITH_TEXT})
     records = probe.probe(GJ, years=["2023-24"], volumes=["II"])
     assert len(records) == 1
@@ -225,9 +225,9 @@ def test_probe_dry_run_lists_without_downloading(tmp_path):
 
 
 def test_probe_skips_existing_file(tmp_path, monkeypatch):
-    from commoner_probe import cag as cag_mod
 
-    monkeypatch.setattr(cag_mod, "extract_pdf_text", lambda p: "")
+    from commoner_probe import base as base_mod
+    monkeypatch.setattr(base_mod, "extract_pdf_text", lambda p: "")
     probe = _probe(tmp_path, pdf_for_url={VOL2_2425: PDF_WITH_TEXT})
     first = probe.probe(GJ, years=["2024-25"], volumes=["II"])
     second = probe.probe(GJ, years=["2024-25"], volumes=["II"])
@@ -250,10 +250,9 @@ def test_records_validate_against_schema(tmp_path, monkeypatch):
     except ImportError:
         import pytest
         pytest.skip("jsonschema not installed")
-    from commoner_probe import cag as cag_mod
+    from commoner_probe import base as base_mod
     from commoner_probe import schemas
-
-    monkeypatch.setattr(cag_mod, "extract_pdf_text", lambda p: "")
+    monkeypatch.setattr(base_mod, "extract_pdf_text", lambda p: "")
     schema = schemas.load("manifest_cag_state_account")
     probe = _probe(tmp_path, pdf_for_url={VOL2_2425: PDF_WITH_TEXT, VOL2_2324: PDF_WITH_TEXT})
     for record in probe.probe(GJ, volumes=["II"]):
@@ -298,3 +297,34 @@ def test_schema_registered_for_validation_and_corpus(tmp_path):
     assert rows[0].state == "Gujarat"
     assert rows[0].volume == "II"
     assert rows[0].year == "2023-24"
+
+
+# --- text-layer detection is advisory; acquisition is not -------------------
+#
+# 0.14.0 made `extract_pdf_text` RAISE when no PDF text backend is installed,
+# where it had returned "". Three adapters called it unguarded inside their
+# download path, so on a machine with neither poppler nor pdfminer the
+# exception escapes a download that has already written a good file: the record
+# is lost and the crawl dies. niti was the only one that guarded it.
+
+
+def test_a_missing_text_backend_does_not_kill_a_good_download(tmp_path, monkeypatch):
+    import pathlib
+
+    from commoner_probe import base as base_mod
+    from commoner_probe.textparse import PdfTextUnavailable
+
+    def _no_backend(path, **kwargs):
+        raise PdfTextUnavailable("no PDF text backend available")
+
+    # patched where the shared helper calls it — which is the point of the helper
+    monkeypatch.setattr(base_mod, "extract_pdf_text", _no_backend)
+    probe = _probe(tmp_path, pdf_for_url={VOL2_2324: PDF_WITH_TEXT})
+    records = probe.probe(GJ, years=["2023-24"], volumes=["II"])
+
+    downloaded = [r for r in records if r["status"] == "downloaded"]
+    assert downloaded, "the download itself must still succeed"
+    rec = downloaded[0]
+    assert rec["sha256"], "the file was written; its hash must be recorded"
+    assert rec["text_layer"] is None, "unknown, not False — nothing read the file"
+    assert pathlib.Path(rec["dest"]).exists(), "the PDF is on disk regardless"

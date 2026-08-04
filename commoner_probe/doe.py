@@ -9,7 +9,6 @@ verified live 2026-07-08), so the listing page is the whole universe.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import re
 import time
@@ -19,9 +18,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urljoin, urlparse
 
-from .base import safe_filename_segment
+from .base import note_text_layer, safe_filename_segment
 from .http_client import make_session, read_capped_response
-from .textparse import extract_pdf_text
 
 DOE_LISTING_URL = "https://doe.gov.in/annual-report-pay-and-allowances"
 
@@ -119,9 +117,7 @@ class DoePayAllowancesProbe:
         }
 
     def _finalize(self, record: dict[str, Any], dest: Path, body: bytes) -> None:
-        record["sha256"] = hashlib.sha256(body).hexdigest()
-        text = extract_pdf_text(dest)
-        record["text_layer"] = len(text.strip()) >= TEXT_LAYER_MIN_CHARS
+        note_text_layer(record, dest, body, min_chars=TEXT_LAYER_MIN_CHARS)
 
     def download_report(self, report: dict[str, Any], *, dry_run: bool) -> dict[str, Any]:
         record = self._record(report, status="dry_run" if dry_run else "pending")

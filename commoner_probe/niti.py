@@ -39,7 +39,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urljoin, urlparse
 
-from commoner_probe.base import safe_filename_segment
+from commoner_probe.base import note_text_layer, safe_filename_segment
 from commoner_probe.http_client import get_capped, make_session
 
 #: The canonical path, NOT the `/index.php/` alias. Both serve the same 34
@@ -242,15 +242,9 @@ class NitiAnnualReportProbe:
         self.out_dir.mkdir(parents=True, exist_ok=True)
         dest.write_bytes(body)
         record["bytes"] = len(body)
-        record["sha256"] = hashlib.sha256(body).hexdigest()
         # Whether the PDF carries a text layer decides if the Young
         # Professionals table can be read without OCR. Recorded, never assumed.
-        try:
-            from .textparse import extract_pdf_text
-
-            record["text_layer"] = len((extract_pdf_text(dest) or "").strip()) >= TEXT_LAYER_MIN_CHARS
-        except Exception:  # noqa: BLE001 — extraction is advisory, acquisition is not
-            record["text_layer"] = None
+        note_text_layer(record, dest, body, min_chars=TEXT_LAYER_MIN_CHARS)
         record["status"] = "downloaded"
         return record
 

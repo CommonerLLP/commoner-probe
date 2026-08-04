@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+import hashlib
 import itertools
 import json
 import os
@@ -12,6 +13,7 @@ from urllib.parse import quote, urlsplit, urlunsplit
 
 from .http_client import iter_capped, make_session
 from .runlog import RunLog
+from .textparse import extract_pdf_text
 
 if TYPE_CHECKING:
     from .resolver import Resolver
@@ -94,6 +96,28 @@ def _encode_url_path(url: str) -> str:
     return urlunsplit(
         (parts.scheme, parts.netloc, encoded_path, encoded_query, parts.fragment)
     )
+
+
+def note_text_layer(record: dict, dest: Path, body: bytes, *, min_chars: int) -> None:
+    """Record the download's hash, and whether the PDF carries a text layer.
+
+    One copy for four adapters, which each had their own. Three of those called
+    ``extract_pdf_text`` unguarded, and 0.14.0 made it RAISE where it had
+    returned "" — so on a machine with neither poppler nor pdfminer the
+    exception escaped a download that had already written a good file, losing
+    the record and ending the crawl.
+
+    **Extraction is advisory here; acquisition is not.** A file that cannot be
+    read is still acquired, and ``text_layer`` is ``None`` — unknown, which is
+    not the same claim as ``False``.
+    """
+    record["sha256"] = hashlib.sha256(body).hexdigest()
+    try:
+        text = extract_pdf_text(dest) or ""
+    except Exception:  # noqa: BLE001 - see the docstring
+        record["text_layer"] = None
+        return
+    record["text_layer"] = len(text.strip()) >= min_chars
 
 
 class BaseProbe:

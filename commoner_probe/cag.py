@@ -39,7 +39,6 @@ self-contained ddg.py precedent, with its own per-adapter manifest schema.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import re
 import time
@@ -50,8 +49,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urljoin, urlparse
 
+from .base import note_text_layer
 from .http_client import make_session, read_capped_response
-from .textparse import extract_pdf_text
 
 # cag.gov.in is a live government CMS served from behind a CDN; keep a polite
 # gap between requests, same posture as ddg.py's DEFAULT_SLEEP.
@@ -293,9 +292,7 @@ class CAGAccountsProbe:
         }
 
     def _finalize(self, record: dict[str, Any], dest: Path, body: bytes) -> None:
-        record["sha256"] = hashlib.sha256(body).hexdigest()
-        text = extract_pdf_text(dest)
-        record["text_layer"] = len(text.strip()) >= TEXT_LAYER_MIN_CHARS
+        note_text_layer(record, dest, body, min_chars=TEXT_LAYER_MIN_CHARS)
 
     def download_document(self, doc: dict[str, Any], *, dry_run: bool) -> dict[str, Any]:
         record = self._record(doc, status="dry_run" if dry_run else "pending")
