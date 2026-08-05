@@ -1,5 +1,26 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **`text_layer: null` now validates.** 0.14.1 made the four text-layer adapters
+  record `null` when nothing could read a PDF — but `manifest_cag_state_account`,
+  `manifest_doe_pay_allowances` and `manifest_ministry_ddg` declared
+  `"type": "boolean"`, so the fix's own success path emitted records that
+  `commoner-probe validate` rejects. The three schemas now carry
+  `["boolean", "null"]`, as `manifest_niti_annual_report` already did.
+- **`ManifestRenderedPageRecord.dry_run` moved to the end of the field list.**
+  0.14.2 inserted it in the middle, which shifts the position of every field
+  after it for anyone constructing the record positionally.
+
+### Documentation
+
+- **The 0.14.0 entry named the wrong affected range.** `questions-list` first
+  shipped in **0.8.0**, not 0.10.0, so bled corpora go back that far. The wrong
+  range came from `git tag --contains | head -1`, which sorts lexically —
+  "v0.10.0" precedes "v0.8.0" as a string.
+
 ## 0.14.2 (2026-08-04)
 
 **A patch for readers, not crawlers.** Nothing about acquisition changes. If you
@@ -56,12 +77,16 @@ schema touched was edited rather than added. Everything here is a fix or a
 contract change to a surface that already existed. The precedent is 0.10.0 and
 0.13.0, each of which took the minor slot for one contract change.
 
-The headline is a data defect: every question-list row acquired by **0.10.0
+The headline is a data defect: every question-list row acquired by **0.8.0
 through 0.13.0** carries the *next* question's subject heading at the end of its
 text — 97.9% of adjacent pairs on a live seven-day corpus. The range is the
-adapter's whole released life: `questions-list` first shipped in 0.10.0, and the
-body has run to the next question's *head* since the file was written.
+adapter's whole released life: `questions-list` first shipped in **0.8.0**, and
+the body has run to the next question's *head* since the file was written.
 **Corpora acquired with any of those versions need a re-parse; see Changed.**
+
+*(This entry first said 0.10.0. That came from `git tag --contains | head -1`,
+which sorts lexically — "v0.10.0" precedes "v0.8.0" as a string. Sorted by date,
+the first tag carrying the adapter is v0.8.0. Corrected in 0.14.3.)*
 
 ### Breaking
 

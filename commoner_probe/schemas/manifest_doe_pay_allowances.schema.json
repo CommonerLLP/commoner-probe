@@ -75,7 +75,8 @@
       "type": "string"
     },
     "text_layer": {
-      "type": "boolean"
+      "type": ["boolean", "null"],
+      "description": "Whether the PDF reads back as text. Null means extraction was not attempted, or the toolchain could not run — never assume false: a file that cannot be read is still acquired."
     },
     "error": {
       "type": "string"
