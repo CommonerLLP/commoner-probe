@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **`ManifestRenderedPageRecord` was missing `dry_run`.** The schema calls that
+  field load-bearing — "a mode must never overwrite a verdict" — but the
+  dataclass that reads `rendered_page` records back did not carry it, so a
+  consumer using `Corpus` could not tell a preview run from a real capture.
+
+### Added
+
+- A guard that walks every `kind` -> record pairing in `corpus.py` and fails
+  when a dataclass lacks a field its schema declares. The two representations
+  are maintained by hand in different files and nothing connected them; the gap
+  above was the only one in 38 pairs, found by measuring rather than assuming.
+
 ## 0.14.1 (2026-08-04)
 
 **A patch: one regression fix and one internal dedupe, no contract change.**
