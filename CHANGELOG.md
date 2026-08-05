@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.14.2 (2026-08-04)
+
+**A patch for readers, not crawlers.** Nothing about acquisition changes. If you
+do not import `Corpus` or the record dataclasses, 0.14.2 is identical to 0.14.1
+for you.
 
 ### Fixed
 
