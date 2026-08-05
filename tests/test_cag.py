@@ -328,3 +328,24 @@ def test_a_missing_text_backend_does_not_kill_a_good_download(tmp_path, monkeypa
     assert rec["sha256"], "the file was written; its hash must be recorded"
     assert rec["text_layer"] is None, "unknown, not False — nothing read the file"
     assert pathlib.Path(rec["dest"]).exists(), "the PDF is on disk regardless"
+
+
+def test_a_null_text_layer_still_validates(tmp_path, monkeypatch):
+    """The guard writes `text_layer: null` when nothing could read the PDF —
+    so the schema must permit it. Three schemas declared plain `boolean`, which
+    made the fix's own success path emit a record `validate` rejects."""
+    import pytest
+
+    pytest.importorskip("jsonschema")
+    from commoner_probe import base as base_mod
+    from commoner_probe.textparse import PdfTextUnavailable
+    from commoner_probe.validate import validate_corpus
+
+    def _no_backend(path, **kwargs):
+        raise PdfTextUnavailable("no PDF text backend available")
+
+    monkeypatch.setattr(base_mod, "extract_pdf_text", _no_backend)
+    probe = _probe(tmp_path, pdf_for_url={VOL2_2324: PDF_WITH_TEXT})
+    records = probe.probe(GJ, years=["2023-24"], volumes=["II"])
+    assert any(r.get("text_layer") is None for r in records)
+    assert validate_corpus(tmp_path, log=lambda _: None), "a null text_layer must validate"

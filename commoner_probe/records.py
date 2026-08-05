@@ -910,9 +910,6 @@ class ManifestRenderedPageRecord:
     reason: str | None = None
     text_chars: int | None = None
     html_bytes: int | None = None
-    #: A mode, never a verdict. Omitting it left a consumer unable to tell a
-    #: preview run from a real capture — see the schema's own description.
-    dry_run: bool | None = None
     frameworks: list = field(default_factory=list)
     missing_text: list = field(default_factory=list)
     http_status: int | None = None
@@ -920,6 +917,12 @@ class ManifestRenderedPageRecord:
     dest: str | None = None
     sha256: str | None = None
     error: str | None = None
+
+    #: A mode, never a verdict. Omitting it left a consumer unable to tell a
+    #: preview run from a real capture — see the schema's own description.
+    #: APPENDED, not inserted: a new field in the middle shifts every later
+    #: field's position for anyone constructing this record positionally.
+    dry_run: bool | None = None
 
     @classmethod
     def from_dict(cls, d: dict) -> "ManifestRenderedPageRecord":
