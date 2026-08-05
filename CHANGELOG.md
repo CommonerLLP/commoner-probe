@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.14.3 (2026-08-04)
+
+**Take this one if you run `cag`, `ministry-ddg` or `doe-pay-allowances`.**
+0.14.1 and 0.14.2 can write a record that `commoner-probe validate` rejects on
+the path where a PDF cannot be read at all.
 
 ### Fixed
 
