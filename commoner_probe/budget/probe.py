@@ -10,14 +10,14 @@ Two source families:
 
 * ``union-budget`` — a *static* table of per-fiscal-year URL templates
   (``UNION_BUDGET_YEARS``, ported verbatim from
-  ``budget-crawler/publicfinance/union_budget_scraper.py``) expanded across the
+  ``public-finance/publicfinance/union_budget_scraper.py``) expanded across the
   requested demand numbers. No network needed to enumerate; ``--dry-run`` is
   fully offline.
 * ``rbi-state-finances`` — *discovered* by fetching the RBI publication page and
   parsing its document table (:func:`parse_rbi_documents`, lazy-imports lxml).
 
 Acquisition only — the XLS→rows parsing (``parse_demand_xls`` and friends) stays
-in ``budget-crawler``; it is an analysis concern and needs pandas, which the
+in ``public-finance``; it is an analysis concern and needs pandas, which the
 acquisition path deliberately avoids.
 """
 
@@ -49,7 +49,7 @@ BUDGET_USER_AGENT = (
 # Per-fiscal-year URL templates with a ``{demand}`` placeholder. The current
 # year is served from the site root; archived years live under a
 # ``budget{fy}/`` path segment. Extensions vary (.xls before 2023-24, .xlsx
-# after). Ported from budget-crawler/publicfinance/union_budget_scraper.py.
+# after). Ported from public-finance/publicfinance/union_budget_scraper.py.
 UNION_BUDGET_YEARS: tuple[tuple[str, str], ...] = (
     ("2026-27", "https://www.indiabudget.gov.in/doc/eb/sbe{demand}.xlsx"),
     ("2025-26", "https://www.indiabudget.gov.in/budget2025-26/doc/eb/sbe{demand}.xlsx"),
@@ -66,7 +66,7 @@ RBI_STATE_FINANCES_URL = (
 )
 
 # RBI publication-table XPaths, ported from
-# budget-crawler/publicfinance/rbi_budgets_scraper.py.
+# public-finance/publicfinance/rbi_budgets_scraper.py.
 _RBI_TABLE_ROWS_XPATH = "//table[@class='tablebg']/tr"
 _RBI_HEADER_XPATH = "./td[@class='tableheader']//text()"
 _RBI_TITLE_XPATH = "./td[@style]//text()"
