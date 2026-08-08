@@ -2,7 +2,7 @@
 """Union & state public-finance acquisition.
 
 Consolidates the static / known-URL acquisition that previously lived in the
-``budget-crawler`` repo into commoner-probe's Layer 0. The first migration
+``public-finance`` repo into commoner-probe's Layer 0. The first migration
 covers the pieces whose source URLs are stable and enumerable:
 
 * **Union Budget** — Statement of Budget Estimates (SBE) "Demand for Grants"
@@ -15,7 +15,7 @@ covers the pieces whose source URLs are stable and enumerable:
 Stateful / JavaScript-driven state portals (Gujarat ASP.NET ``__VIEWSTATE``
 postback, Tamil Nadu / UP / Rajasthan ASPX) are intentionally **not** migrated
 here — they need session/ViewState/browser machinery the probe HTTP layer does
-not provide. They remain in ``budget-crawler`` pending a dedicated source.
+not provide. They remain in ``public-finance`` pending a dedicated source.
 """
 
 from .probe import (
