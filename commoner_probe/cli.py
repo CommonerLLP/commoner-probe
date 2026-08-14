@@ -141,10 +141,23 @@ def sansad_cmd(args: argparse.Namespace) -> None:
     if args.all:
         if args.topic or args.member or args.entity_id or args.mp_code is not None:
             raise SystemExit("--all cannot be combined with --topic, --member, --entity-id, or --mp-code.")
-        if args.house in ("both", "ls") and not (args.from_date and args.to_date):
-            raise SystemExit("--all requires --from-date and --to-date for the Lok Sabha crawl.")
+        if args.house in ("both", "ls") and args.loksabha is None and not (args.from_date and args.to_date):
+            raise SystemExit(
+                "--all requires --from-date and --to-date for the Lok Sabha DSpace crawl, "
+                "or --loksabha N --sessions RANGE for the portal question-list crawl."
+            )
+        if args.house in ("both", "ls") and args.loksabha is not None and not args.sessions:
+            raise SystemExit("--loksabha requires an explicit --sessions range.")
         if args.house in ("both", "rs") and not args.sessions:
             raise SystemExit("--all requires an explicit --sessions range for the Rajya Sabha crawl.")
+    if args.loksabha is not None and not args.all:
+        raise SystemExit("--loksabha applies to --all enumeration only.")
+    if args.loksabha is not None and args.house == "both":
+        raise SystemExit(
+            "--loksabha requires --house ls: it selects a Lok Sabha term, and "
+            "--sessions would then mean two different things at once (LS-relative "
+            "session numbers and continuous RS session numbers)."
+        )
     if args.mp_code is not None:
         if args.member or args.entity_id:
             raise SystemExit("--mp-code cannot be combined with --member or --entity-id.")
@@ -212,7 +225,19 @@ def sansad_cmd(args: argparse.Namespace) -> None:
         _exit_on_failed_runs(probe)
         return
     if args.house in ("both", "ls"):
-        if args.all:
+        if args.all and args.loksabha is not None:
+            added += probe.probe_ls_sessions(
+                seen,
+                loksabha=args.loksabha,
+                sessions=parse_session_range(args.sessions),
+                from_date=args.from_date,
+                to_date=args.to_date,
+                qtype_filter=qtype_filter,
+                max_records=args.max_records,
+                download=not args.no_download,
+                reset_windows=reset_windows,
+            )
+        elif args.all:
             added += probe.probe_ls_all(
                 seen,
                 from_date=args.from_date,
@@ -1234,7 +1259,22 @@ def build_parser() -> argparse.ArgumentParser:
         default="both",
         help="Filter to starred or unstarred questions at crawl time.",
     )
-    sansad.add_argument("--sessions", default=None, help="Rajya Sabha sessions, e.g. 230-267 (default 1-267; must be explicit with --all)")
+    sansad.add_argument(
+        "--sessions",
+        default=None,
+        help="Session numbers, e.g. 230-267. Rajya Sabha: continuous since 1952 "
+             "(default 1-267; must be explicit with --all). Lok Sabha: LS-relative "
+             "session numbers within the --loksabha term.",
+    )
+    sansad.add_argument(
+        "--loksabha",
+        type=int,
+        default=None,
+        help="Lok Sabha term number, e.g. 18. With --all --house ls, enumerates via the "
+             "portal question list one session at a time instead of eLibrary DSpace "
+             "calendar months: ~5 requests per session, and the record carries the "
+             "answer PDF URL that the DSpace record omits. Requires --sessions.",
+    )
     sansad.add_argument("--limit", type=int, help="Max raw API records per bucket")
     sansad.add_argument("--max-buckets", type=int, help="First N search/ministry buckets (smoke-test brake)")
     sansad.add_argument("--max-records", type=int, help="Stop after N new records per house crawl (smoke-test brake)")

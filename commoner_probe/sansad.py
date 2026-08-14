@@ -40,6 +40,14 @@ LS_PORTAL_ROSTER_API = "https://sansad.in/api_ls/member/member-list"
 RS_PORTAL_ROSTER_API = "https://sansad.in/api_rs/member/member-list"
 LS_PORTAL_SOURCE = "sansad.in/api_ls/question"
 
+#: Page size for member-less LS session enumeration. Live-verified 2026-08-14
+#: against lkNo 18 session 8: sizes 100/500/1000 are all honoured, and 1000
+#: returns a whole session in five requests (1000/1000/1000/1000/500, then
+#: empty) for 4,500 records. There is no per-session cap — an earlier note
+#: read `totalRecordSize: 1000` as a session total; it echoes the page size.
+#: The per-member path keeps the 100 default, where paging is not the cost.
+LS_PORTAL_PAGE_SIZE = 1000
+
 HEADERS = {
     "Accept": "application/json",
     "User-Agent": "commoner-probe/0.5.0 (+https://github.com/CommonerLLP/commoner-probe; public-interest research; rate-limited)",
@@ -797,7 +805,23 @@ class SansadProbe(BaseProbe):
         except ValueError:
             return value[:10]
 
-    def _ls_portal_record(self, row: dict, *, run_id: str, loksabha: int, session_number: int, mp_code: int) -> dict:
+    def _ls_portal_record(
+        self,
+        row: dict,
+        *,
+        run_id: str,
+        loksabha: int,
+        session_number: int,
+        mp_code: int | None = None,
+    ) -> dict:
+        """One portal question-list row as a manifest record.
+
+        `mp_code` is None for member-less session enumeration: the LS question
+        list carries member NAMES and no code, so a code is only known when the
+        caller pinned one. Recording 0 would assert a member that does not
+        exist, so the field stays absent and `found_via_query` names the
+        session instead.
+        """
         date = self._ls_portal_date(row.get("date"))
         qtype = (row.get("type") or "").strip()
         qno = str(row.get("quesNo") or "").strip()
@@ -817,7 +841,10 @@ class SansadProbe(BaseProbe):
             "pdf_url_hindi": row.get("questionsFilePathHindi"),
             "mp_code": mp_code,
             "source": LS_PORTAL_SOURCE,
-            "found_via_query": f"mp_code:{mp_code}",
+            "found_via_query": (
+                f"mp_code:{mp_code}" if mp_code is not None
+                else f"ls_session:{loksabha}:{session_number}"
+            ),
             "session": str(session_number),
             "loksabhanumber": str(loksabha),
             "probed_at": now(),
@@ -1122,6 +1149,166 @@ class SansadProbe(BaseProbe):
             self.record_window({
                 "window_id": window_id,
                 "house": "rs",
+                "ses_no": ses_no,
+                "from_date": from_date,
+                "to_date": to_date,
+                "qtype": qtype_filter,
+                "status": "suspect" if bkt_error else "complete",
+                "kept": bkt_kept,
+                "errors": 1 if bkt_error else 0,
+                "run_id": run_id,
+                "recorded_at": now(),
+            })
+        self.runlog.finish(added=added)
+        return added
+
+    def probe_ls_sessions(
+        self,
+        seen: set[str],
+        *,
+        loksabha: int,
+        sessions: Iterable[int],
+        from_date: str | None,
+        to_date: str | None,
+        qtype_filter: str | None,
+        max_records: int | None,
+        download: bool,
+        page_size: int = LS_PORTAL_PAGE_SIZE,
+        reset_windows: frozenset[str] = frozenset(),
+    ) -> int:
+        """Member-less LS enumeration through the portal question list, by session.
+
+        The sibling of `probe_ls_all`, which walks eLibrary DSpace in calendar
+        months. This path asks the Lok Sabha's own question API for a whole
+        session at a time, and the difference is not marginal (measured
+        2026-08-14, lkNo 18 session 8, 4,500 records both ways):
+
+        * **5 requests** here against ~18 per calendar month there;
+        * the row carries `questionsFilePath`, so `pdf_url` is populated on
+          100% of records. The DSpace record carries none, and every download
+          from that path must first resolve item -> bundle -> bitstream. At the
+          one-request-per-second floor that per-question saving outweighs the
+          enumeration saving across a full backfill.
+
+        Neither path carries text: `questionText` and `answerText` are null on
+        every row (see `ls_question_list_page`). DSpace stays the right tool
+        when the session calendar is unknown, and it alone carries
+        `uuid`/`handle`/`uri`.
+
+        The session-drift guard from `probe_ls_mpcode` is kept and matters more
+        here: the endpoint silently ignores an unknown `sessionNumber` and
+        answers from the latest session instead. Enumerating a Lok Sabha that
+        never had session N would otherwise file Monsoon-2026 rows under it.
+        """
+        sessions_list = list(sessions)
+        run_id = self.runlog.start(
+            kind="qa",
+            scope={
+                "house": "ls",
+                "mode": "all",
+                "loksabha": loksabha,
+                "sessions": sessions_list,
+                "from_date": from_date,
+                "to_date": to_date,
+                "qtype": qtype_filter,
+                "max_records": max_records,
+                "download": download,
+            },
+            topic_name=self.topic.name,
+            topic_path=self.topic_path,
+            classifier_config=self.topic.classifier_config,
+        )
+        states = self.load_window_states()
+        added = 0
+        for ses_no in sessions_list:
+            window_id = f"ls:{loksabha}:{ses_no}"
+            prior = states.get(window_id)
+            if (
+                window_id not in reset_windows
+                and prior is not None
+                and prior.get("status") == "complete"
+                and prior.get("qtype") == qtype_filter
+                and prior.get("from_date") == from_date
+                and prior.get("to_date") == to_date
+            ):
+                self.log(f"LS window {window_id} already complete — skipping")
+                continue
+            self.log(f"LS window {window_id} (portal question list)")
+            bkt_t0 = time.monotonic()
+            bkt_raw = bkt_after_date = bkt_kept = bkt_skipped_seen = 0
+            bkt_drifted = 0
+            bkt_error: str | None = None
+            try:
+                page_no = 1
+                while True:
+                    rows = self.ls_question_list_page(loksabha, ses_no, page_no, page_size)
+                    if not rows:
+                        break
+                    for row in rows:
+                        bkt_raw += 1
+                        row_ses = (row.get("sessionNo") or "").strip()
+                        if row_ses and row_ses != str(ses_no):
+                            bkt_drifted += 1
+                            continue
+                        date = self._ls_portal_date(row.get("date"))
+                        if not date_in_range(date, from_date, to_date):
+                            continue
+                        qtype = (row.get("type") or "").strip()
+                        if qtype_filter and qtype.lower() != qtype_filter:
+                            continue
+                        bkt_after_date += 1
+                        rec = self._ls_portal_record(
+                            row, run_id=run_id, loksabha=loksabha, session_number=ses_no
+                        )
+                        if rec["key"] in seen:
+                            bkt_skipped_seen += 1
+                            continue
+                        if download and rec.get("pdf_url"):
+                            qtype_seg = safe_filename_segment((rec["qtype"] or "U").upper()[:1])
+                            qno_seg = safe_filename_segment(rec["qno"] or "X")
+                            pdf_path = self.pdf_dir / "ls" / f"{qtype_seg}{qno_seg}_{loksabha}_{ses_no}.pdf"
+                            if self.write_pdf(rec["pdf_url"], pdf_path, PDF_HEADERS):
+                                rec["pdf_path"] = str(pdf_path.relative_to(self.out_dir))
+                            time.sleep(self.sleep)
+                        rec.setdefault("language_classified", ["en"])
+                        self._enrich_askers(rec)
+                        self.append(rec)
+                        seen.add(rec["key"])
+                        added += 1
+                        bkt_kept += 1
+                        if max_records is not None and added >= max_records:
+                            self.runlog.record_bucket(
+                                kind="ls_qa_sessions", window=window_id, session=ses_no,
+                                raw_returned=bkt_raw, after_date_filter=bkt_after_date,
+                                kept=bkt_kept, skipped_seen=bkt_skipped_seen,
+                                elapsed_ms=round((time.monotonic() - bkt_t0) * 1000, 1),
+                                error=None,
+                            )
+                            self.log(f"LS window {window_id} stopped at max_records — window left incomplete")
+                            self.runlog.finish(added=added)
+                            return added
+                    page_no += 1
+                    time.sleep(self.sleep)
+            except Exception as exc:  # noqa: BLE001
+                bkt_error = f"{type(exc).__name__}: {exc}"
+                self.log(f"LS window {window_id} failed: {exc}")
+                self.runlog.record_error(where=f"ls/{window_id}", exc=exc)
+            if bkt_drifted:
+                self.log(
+                    f"WARNING: LS window {window_id}: {bkt_drifted} row(s) carried a different "
+                    "sessionNo — skipped (endpoint session drift; the session may not exist)."
+                )
+            self.runlog.record_bucket(
+                kind="ls_qa_sessions", window=window_id, session=ses_no,
+                raw_returned=bkt_raw, after_date_filter=bkt_after_date,
+                kept=bkt_kept, skipped_seen=bkt_skipped_seen,
+                elapsed_ms=round((time.monotonic() - bkt_t0) * 1000, 1),
+                error=bkt_error,
+            )
+            self.record_window({
+                "window_id": window_id,
+                "house": "ls",
+                "loksabha": loksabha,
                 "ses_no": ses_no,
                 "from_date": from_date,
                 "to_date": to_date,
