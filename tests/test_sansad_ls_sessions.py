@@ -209,3 +209,93 @@ def test_cli_rejects_loksabha_without_sessions():
         ["sansad", "--all", "--house", "ls", "--loksabha", "18", "--out", "x"]
     )
     assert args.loksabha == 18 and args.sessions is None
+
+
+# ---- inline text on older sessions -------------------------------------------
+
+def _row_with_text(qno: str, *, ses_no: int = 10) -> dict:
+    """A pre-2015 row. The portal carried question and answer text until
+    LS 16 session 4 (May 2015); every session after returns null on both."""
+    r = _row(qno, ses_no=ses_no)
+    r["questionText"] = f"<p>(a) whether question {qno} was asked?</p>"
+    r["answerText"] = f"<p>THE MINISTER: (a) Yes, for {qno}.</p>"
+    r["answerTextHindi"] = None
+    return r
+
+
+def test_inline_text_is_carried_not_dropped(tmp_path):
+    """The mapper used to emit 18 fields and none of them the text.
+
+    Harmless while the only caller was the per-member path on the current
+    term, where both fields are always null. Extended to historical sessions
+    it silently discarded the entire value of the record.
+    """
+    session = FakePortalSession({10: [_row_with_text("101")]})
+    _run(_probe(tmp_path, session), sessions=[10])
+    rec = _manifest(tmp_path)[0]
+    assert rec["question_text"].startswith("<p>(a) whether")
+    assert rec["answer_text"].startswith("<p>THE MINISTER")
+    assert rec["answer_text_hindi"] is None
+
+
+def test_a_modern_row_keeps_the_keys_with_null_values(tmp_path):
+    """Absent text must be visible as null, never an absent field: a consumer
+    has to be able to tell 'this session served no text' from 'we dropped it'."""
+    session = FakePortalSession({8: [_row("101")]})
+    _run(_probe(tmp_path, session))
+    rec = _manifest(tmp_path)[0]
+    assert "question_text" in rec and rec["question_text"] is None
+    assert "answer_text" in rec and rec["answer_text"] is None
+
+
+# ---- pagination that fails mid-session ---------------------------------------
+
+class FailAfterPage(FakePortalSession):
+    """Answers page 1, then raises — the LS 15 session 10 shape."""
+
+    def __init__(self, rows_by_session, *, fail_from_page: int = 2):
+        super().__init__(rows_by_session)
+        self.fail_from_page = fail_from_page
+
+    def get(self, url, params=None, **kwargs):
+        if int((params or {})["pageNo"]) >= self.fail_from_page:
+            raise RuntimeError("HTTP 500 https://sansad.in/api_ls/question/qetAllQuestions")
+        return super().get(url, params=params, **kwargs)
+
+
+def test_a_failing_page_keeps_earlier_records(tmp_path):
+    session = FailAfterPage({10: [_row(str(100 + i), ses_no=10) for i in range(4)]})
+    added = _run(_probe(tmp_path, session), sessions=[10], page_size=2)
+    assert added == 2, "records from the pages that did work must be kept"
+
+
+def test_a_failing_page_does_NOT_mark_the_window_complete(tmp_path):
+    """A 500 is not proof the session ended. Calling it done would silently
+    truncate the session and report success on the next resume."""
+    session = FailAfterPage({10: [_row(str(100 + i), ses_no=10) for i in range(4)]})
+    _run(_probe(tmp_path, session), sessions=[10], page_size=2)
+    w = _windows(tmp_path)[-1]
+    assert w["status"] == "suspect"
+    assert w["window_id"] == "ls:18:10"
+
+
+def test_a_suspect_window_is_recrawled_on_the_next_run(tmp_path):
+    session = FailAfterPage({10: [_row(str(100 + i), ses_no=10) for i in range(4)]})
+    probe = _probe(tmp_path, session)
+    _run(probe, sessions=[10], page_size=2)
+    before = len(session.calls)
+    probe2 = _probe(tmp_path, session)
+    probe2.probe_ls_sessions(
+        {r["key"] for r in _manifest(tmp_path)},
+        loksabha=18, sessions=[10], from_date=None, to_date=None,
+        qtype_filter=None, max_records=None, download=False, page_size=2,
+    )
+    assert len(session.calls) > before, "a suspect window must be retried, not skipped"
+
+
+def test_failure_on_page_one_still_raises(tmp_path):
+    """Nothing was fetched, so there is no partial result to preserve."""
+    session = FailAfterPage({10: [_row("101", ses_no=10)]}, fail_from_page=1)
+    _run(_probe(tmp_path, session), sessions=[10])
+    assert _manifest(tmp_path) == []
+    assert _windows(tmp_path)[-1]["status"] == "suspect"
