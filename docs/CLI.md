@@ -67,6 +67,29 @@ commoner-probe sansad --all \
   --no-download
 ```
 
+**Lok Sabha by term and session** (`--loksabha`) takes a second route for the
+same records: the LS portal's own question list, one session at a time, instead
+of DSpace calendar months. Prefer it whenever the session numbers are known.
+Measured 2026-08-14 on lkNo 18 session 8, 4,500 records both ways:
+
+| | DSpace (`--from-date`/`--to-date`) | portal list (`--loksabha`) |
+|---|---|---|
+| requests | ~18 per calendar month | **5 for the session** |
+| `pdf_url` on the record | none — every download resolves item → bundle → bitstream | **present on every row** |
+
+Neither carries question or answer text; both leave it in the PDF. Session
+numbers here are **LS-relative** (`8` for Monsoon 2026, not the continuous
+`271`), so window ids carry the term: `ls:18:8`. `--loksabha` requires
+`--house ls` and an explicit `--sessions`.
+
+```bash
+commoner-probe sansad --all \
+  --out data/ls-18 \
+  --house ls \
+  --loksabha 18 --sessions 1-8 \
+  --no-download
+```
+
 ### `commoner-probe sansad tabled` — tabled papers / title search
 
 The Parliament Digital Library holds more than Q&A — Papers Laid on the

@@ -373,11 +373,12 @@ a re-crawl. Produced by `commoner_probe/sansad.py`.
 
 | Field | Type | Required | Enum / format | Provenance |
 |---|---|---|---|---|
-| `window_id` | string | yes | `ls:{from}..{to}` (calendar-month-clipped) or `rs:{ses_no}` | sansad.py |
+| `window_id` | string | yes | `ls:{from}..{to}` (DSpace, calendar-month-clipped), `ls:{lkNo}:{ses_no}` (LS portal question list), or `rs:{ses_no}` | sansad.py |
 | `house` | string | yes | `"ls"` or `"rs"` | sansad.py |
-| `from_date` | string\|null | no | ISO date window lower bound (LS: always set; RS: run-level filter if any) | sansad.py |
+| `from_date` | string\|null | no | ISO date window lower bound (LS DSpace: always set; LS session and RS: run-level filter if any) | sansad.py |
 | `to_date` | string\|null | no | ISO date window upper bound | sansad.py |
-| `ses_no` | integer\|null | no | RS session number (RS only) | sansad.py |
+| `ses_no` | integer\|null | no | Session number (RS: continuous; LS session path: LS-relative) | sansad.py |
+| `loksabha` | integer\|null | no | Lok Sabha term (LS session path only). Session numbers are LS-relative, so `ls:18:8` and `ls:17:8` are different windows | sansad.py |
 | `qtype` | string\|null | no | qtype filter active for this window's run; null = both | sansad.py |
 | `status` | string | yes | `"complete"` or `"suspect"` (run recorded errors in this window) | sansad.py |
 | `kept` | integer | yes | Records written to manifest by this window attempt | sansad.py |

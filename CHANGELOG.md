@@ -1,5 +1,53 @@
 # Changelog
 
+## 0.14.4 (2026-08-14)
+
+**Take this one if you enumerate Lok Sabha questions.** A second route to the
+same records, ~5x cheaper per session, and it carries the answer PDF URL that
+the existing route omits entirely.
+
+### Added
+
+- **`sansad --all --house ls --loksabha N --sessions RANGE`** enumerates the
+  Lok Sabha through its own portal question list, one session at a time,
+  instead of eLibrary DSpace calendar-month windows. Measured on lkNo 18
+  session 8, 4,500 records both ways: **5 requests against ~18 per calendar
+  month**, and `pdf_url` present on 100% of records against 0% from DSpace.
+  That second number is the larger saving — a DSpace record carries no PDF
+  link at all, so every answer download first resolves item → bundle →
+  bitstream, and at the one-request-per-second floor that cost is paid per
+  question across the whole corpus.
+
+  Session numbers here are **LS-relative** (`8` for Monsoon 2026, never the
+  continuous `271`), so window ids carry the term: `ls:18:8`. `--loksabha`
+  requires `--house ls` and an explicit `--sessions`; combining it with
+  `--house both` is refused, because `--sessions` would then mean two
+  different numbering spaces at once.
+
+  The DSpace path is unchanged and stays the right tool when the session
+  calendar is unknown — it is date-windowed, and it alone carries
+  `uuid`/`handle`/`uri`.
+
+  Neither path carries text: `questionText` and `answerText` are null on every
+  row of the portal list, verified across a full 1,000-row session. Answer text
+  remains a PDF-extraction problem.
+
+  The session-drift guard already used by `--mp-code` applies here too and
+  matters more: the endpoint silently ignores an unknown `sessionNumber` and
+  answers from the latest session instead, so a row whose `sessionNo` does not
+  match the request is skipped and counted, with a warning naming the window.
+
+- **`pageSize` is honoured up to at least 1000** on the portal question list.
+  There is no per-session record cap; pages 1-5 of lkNo 18 session 8 return
+  1000/1000/1000/1000/500 then empty. Member-less enumeration defaults to 1000;
+  the per-member path keeps 100, where paging is not the cost.
+
+### Changed
+
+- `_windows.jsonl` gains an optional `loksabha` field, and `ses_no` now also
+  carries LS-relative session numbers for the new path. `docs/SCHEMAS.md`
+  updated.
+
 ## 0.14.3 (2026-08-04)
 
 **Take this one if you run `cag`, `ministry-ddg` or `doe-pay-allowances`.**
