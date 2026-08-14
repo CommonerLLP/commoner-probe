@@ -907,14 +907,29 @@ class SansadProbe(BaseProbe):
 
     @staticmethod
     def _ls_portal_date(value: str | None) -> str:
-        """'dd.mm.yyyy' → ISO; passthrough-truncate like parse_ls_date on failure."""
+        """'dd.mm.yyyy' -> ISO; passthrough-truncate like parse_ls_date on failure.
+
+        Older rows sometimes pad a single-digit month with a space instead of a
+        zero — `25. 4.2001` for 25 April 2001. `%d.%m.%Y` rejects that, and the
+        passthrough then wrote the raw string into the record's `date`, which
+        `stable_key` embeds: the key became `LS|U|5669|25. 4.2001`. Eight rows
+        of Lok Sabha 13 carry it (8 of 34,849), so it is rare enough to have
+        survived unnoticed and damaging enough to break a key permanently.
+
+        Interior spaces are stripped before parsing rather than special-cased,
+        because the fault is padding and not a different format. The
+        passthrough is kept for anything still unparseable — a date we cannot
+        read must stay visibly wrong rather than be guessed at.
+        """
         if not value:
             return ""
         value = value.strip()
-        try:
-            return datetime.strptime(value, "%d.%m.%Y").strftime("%Y-%m-%d")
-        except ValueError:
-            return value[:10]
+        for candidate in (value, value.replace(" ", "")):
+            try:
+                return datetime.strptime(candidate, "%d.%m.%Y").strftime("%Y-%m-%d")
+            except ValueError:
+                continue
+        return value[:10]
 
     def _ls_portal_record(
         self,

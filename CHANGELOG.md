@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.14.7 (2026-08-14)
+
+### Fixed
+
+- **A space-padded month broke the record key.** Older portal rows sometimes pad
+  a single-digit month with a space rather than a zero — `25. 4.2001` for 25
+  April 2001. `%d.%m.%Y` rejects that, and the passthrough then wrote the raw
+  string into `date`, which `stable_key` embeds: the key became
+  `LS|U|5669|25. 4.2001`. Eight rows of Lok Sabha 13 carry it, out of 34,849 —
+  rare enough to go unnoticed, permanent once written.
+
+  Interior spaces are now stripped before parsing, because the fault is padding
+  rather than a different format. Anything still unparseable keeps the existing
+  passthrough: a date that cannot be read must stay visibly wrong rather than be
+  guessed into something a consumer will trust. There is a test asserting that
+  no unreadable value is ever returned in ISO shape.
+
 ## 0.14.6 (2026-08-14)
 
 **Take this one if you enumerated any Lok Sabha session before August 2015 with
