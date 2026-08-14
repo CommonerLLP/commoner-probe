@@ -948,6 +948,18 @@ class SansadProbe(BaseProbe):
             "qno": qno,
             "ministry": (row.get("ministry") or "").strip(),
             "askers": askers,
+            # The portal question list DOES carry inline text for older
+            # sessions, and this mapper used to drop it. Both fields are null
+            # on every modern row, so nothing noticed while the only caller was
+            # the per-member path on the current term. Sampled 2026-08-14: Lok
+            # Sabha 14 (2007), 15 (2010-2014) and 16 up to May 2015 return 100%
+            # on both; every session from 16/5 (Aug 2015) onward returns null.
+            # Carrying them costs nothing where they are empty and is the whole
+            # value of the record where they are not — matching `_rs_record`,
+            # which has always carried its equivalents.
+            "question_text": row.get("questionText"),
+            "answer_text": row.get("answerText"),
+            "answer_text_hindi": row.get("answerTextHindi"),
             "pdf_url": row.get("questionsFilePath"),
             "pdf_url_hindi": row.get("questionsFilePathHindi"),
             "mp_code": mp_code,
@@ -1352,7 +1364,31 @@ class SansadProbe(BaseProbe):
             try:
                 page_no = 1
                 while True:
-                    rows = self.ls_question_list_page(loksabha, ses_no, page_no, page_size)
+                    try:
+                        rows = self.ls_question_list_page(loksabha, ses_no, page_no, page_size)
+                    except Exception as exc:  # noqa: BLE001
+                        # Some older sessions answer page 2 with HTTP 500 rather
+                        # than an empty page: LS 15 session 10 does, LS 16 and 18
+                        # paginate normally. The HTTP client has already retried
+                        # 5xx, so this is structural, not transient.
+                        #
+                        # It is NOT treated as end-of-session. A 500 is
+                        # indistinguishable from a page that exists and could not
+                        # be served, so calling it "done" would silently truncate
+                        # a session and report success. The rows already fetched
+                        # are kept, the window is left SUSPECT so the next run
+                        # re-crawls it, and the log says the session may be
+                        # incomplete rather than merely naming the status code.
+                        if page_no == 1:
+                            raise
+                        bkt_error = f"{type(exc).__name__}: {exc}"
+                        self.log(
+                            f"LS window {window_id}: page {page_no} failed after retries "
+                            f"({exc}). Kept {bkt_kept} record(s) from earlier pages. "
+                            "The session may be INCOMPLETE — window left suspect for re-crawl."
+                        )
+                        self.runlog.record_error(where=f"ls/{window_id}/page{page_no}", exc=exc)
+                        break
                     if not rows:
                         break
                     for row in rows:

@@ -1,5 +1,45 @@
 # Changelog
 
+## 0.14.6 (2026-08-14)
+
+**Take this one if you enumerated any Lok Sabha session before August 2015 with
+0.14.4 or 0.14.5.** Those runs silently dropped the question and answer text.
+
+### Fixed
+
+- **The portal record mapper discarded inline text.** `_ls_portal_record` emitted
+  eighteen fields and none of them was the text, so `--loksabha` enumeration of
+  older sessions kept the metadata and threw away the answer. This was invisible
+  while the only caller was the per-member path on the current term, where both
+  fields are null on every row; extending the mapper to historical sessions in
+  0.14.4 made it a data-loss bug.
+
+  Verified against Lok Sabha 15 session 10 (May 2012): 1,000 records, 100%
+  `question_text` and 100% `answer_text` after the fix, 0% before. Records now
+  carry `question_text`, `answer_text` and `answer_text_hindi`, matching
+  `_rs_record`, which has always carried its equivalents. Modern rows keep the
+  keys with null values, so a consumer can tell "this session served no text"
+  from "we dropped it".
+
+  **The Lok Sabha served inline text until it stopped.** Sampled: LS 14 (2007),
+  LS 15 (2010, 2012, 2014) and LS 16 up to session 4 (8 May 2015) all return
+  100% on both fields; LS 16 session 5 (13 Aug 2015) onward returns null, as do
+  LS 17 and 18 entire. Three things change together at that boundary — the file
+  store moves from `Annexture_New` to `lsapps`, Hindi PDFs appear for the first
+  time, and the inline text stops.
+
+- **A page that fails mid-session no longer discards the session or claims it
+  finished.** Some older sessions answer page 2 with HTTP 500 instead of an
+  empty page — LS 15 session 10 does; LS 16 and LS 18 paginate normally. The
+  HTTP client has already retried 5xx by then, so it is structural.
+
+  A 500 is **not** treated as end-of-session: it is indistinguishable from a page
+  that exists and could not be served, so calling it "done" would truncate a
+  session and report success. Rows already fetched are kept, the window is left
+  `suspect` so the next run re-crawls it, and the log names how many records
+  survived and that the session may be incomplete. A failure on page 1 still
+  raises, because there is no partial result to preserve.
+
 ## 0.14.5 (2026-08-14)
 
 **Take this one if you enumerate any past term.** You can now ask which
