@@ -90,6 +90,44 @@ commoner-probe sansad --all \
   --no-download
 ```
 
+**The DSpace path lags.** Measured 2026-08-14 over an identical span, the portal returned
+34,724 LS records and DSpace 29,970 — with **zero** records DSpace had and the portal did
+not. The 4,754 difference is almost entirely one whole recent session: eLibrary had not yet
+indexed it, and its newest record anywhere was four months old. Use the portal path for
+anything recent, and never use DSpace as a completeness check on the current session. DSpace
+remains the right tool when session numbers are unknown, it is the only source for
+`sansad tabled`, and it alone carries `uuid`/`handle`/`uri`.
+
+### `commoner-probe sansad sessions` — which sessions exist
+
+A read-only lookup. No `--out`, no manifest, no run log.
+
+One term:
+
+```bash
+commoner-probe sansad sessions --house ls --loksabha 17
+```
+
+Every Lok Sabha term, then the continuous Rajya Sabha catalogue as JSON:
+
+```bash
+commoner-probe sansad sessions --house ls
+commoner-probe sansad sessions --house rs --json
+```
+
+The two Houses number sessions differently and the command normalises them: `--loksabha`
+selects a Lok Sabha term and is **rejected** for the Rajya Sabha, which is permanent and
+numbers continuously. `--json` emits one schema for both.
+
+Live as of 2026-08-14: the Lok Sabha catalogue knows terms **13 to 18** (1999-2026); the
+Rajya Sabha catalogue holds **271 sessions**, session 1 (1952) to 271 (2026). A Lok Sabha
+budget session is usually **split** into two periods so committees can examine the Demands
+for Grants in the recess, so `periods` is a list — reading `[0]` loses half the session.
+
+**A listed session is not a promise that questions exist for it.** RS session 264 appears in
+the catalogue with sitting dates and returns zero questions from rsdoc. This answers *when
+the House sat*, never *what can be fetched*.
+
 ### `commoner-probe sansad tabled` — tabled papers / title search
 
 The Parliament Digital Library holds more than Q&A — Papers Laid on the

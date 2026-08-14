@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import tempfile
 from pathlib import Path
 
 from . import __version__
@@ -82,6 +83,47 @@ def _build_resolver_if_requested(out_dir: Path, with_entities: bool, log):
     else:
         log(f"Loaded existing entity store: {len(store.people)} people.")
     return Resolver(store)
+
+
+def sansad_sessions_cmd(args: argparse.Namespace) -> None:
+    """Which sessions exist. A lookup, not an acquisition — no --out, no manifest.
+
+    This answers "when did the House sit", never "what can be fetched". RS
+    session 264 is in the catalogue with sitting dates and returns zero
+    questions from rsdoc, so a caller that reads coverage off this list will
+    be wrong.
+    """
+    if args.house == "rs" and args.loksabha is not None:
+        raise SystemExit(
+            "--loksabha does not apply to the Rajya Sabha: it is a permanent House "
+            "and numbers its sessions continuously since 1952, with no terms."
+        )
+
+    from .sansad import SansadProbe
+
+    probe = SansadProbe(None, Path(tempfile.mkdtemp(prefix="commoner-probe-sessions-")), sleep=args.sleep)
+    if args.house == "ls" and args.loksabha is not None:
+        known = probe.ls_portal_terms()
+        if args.loksabha not in known:
+            raise SystemExit(
+                f"Lok Sabha {args.loksabha} is not in the session catalogue. "
+                f"Known terms: {', '.join(str(k) for k in known)}."
+            )
+    entries = probe.session_catalog(args.house, loksabha=args.loksabha)
+    if args.json:
+        print(json.dumps([e.as_dict() for e in entries], indent=2))
+        return
+    if not entries:
+        raise SystemExit(f"no sessions returned for house={args.house}")
+    header = f"{'LS':>4} {'ses':>4} {'sittings':>9}  {'first':<12}{'last':<12}"
+    print(header if args.house == "ls" else f"{'ses':>4} {'sittings':>9}  {'first':<12}{'last':<12}")
+    for e in entries:
+        lk = "" if e.loksabha is None else str(e.loksabha)
+        row = f"{e.session:>4} {e.sittings:>9}  {e.first_sitting:<12}{e.last_sitting:<12}"
+        print((f"{lk:>4} " + row) if args.house == "ls" else row)
+        if len(e.periods) > 1:
+            print(f"{'':>10}split session: {' | '.join(e.periods)}")
+    print(f"\n{len(entries)} session(s). A listed session is not a promise that questions exist for it.")
 
 
 def sansad_tabled_cmd(args: argparse.Namespace) -> None:
@@ -1316,6 +1358,21 @@ def build_parser() -> argparse.ArgumentParser:
     tabled.add_argument("--sleep", type=float, default=0.25)
     tabled.add_argument("--no-download", action="store_true", help="Record metadata without downloading bitstreams")
     tabled.set_defaults(func=sansad_tabled_cmd)
+
+    sessions = sansad_sub.add_parser(
+        "sessions",
+        help="List which sessions exist, for either House. Read-only lookup, no --out.",
+    )
+    sessions.add_argument("--house", choices=["ls", "rs"], required=True)
+    sessions.add_argument(
+        "--loksabha",
+        type=int,
+        help="Lok Sabha term, e.g. 17. Omit to list every term. Rejected for --house rs, "
+             "which is permanent and numbers its sessions continuously since 1952.",
+    )
+    sessions.add_argument("--json", action="store_true", help="Emit JSON; one schema for both Houses")
+    sessions.add_argument("--sleep", type=float, default=0.25)
+    sessions.set_defaults(func=sansad_sessions_cmd)
 
     questions_list = sub.add_parser(
         "questions-list",

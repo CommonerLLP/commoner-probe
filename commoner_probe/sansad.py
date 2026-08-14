@@ -7,6 +7,7 @@ import os
 import re
 import socket
 import time
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterable, Iterator
@@ -39,6 +40,59 @@ LS_PORTAL_SESSIONS_API = "https://sansad.in/api_ls/business/AllLoksabhaAndSessio
 LS_PORTAL_ROSTER_API = "https://sansad.in/api_ls/member/member-list"
 RS_PORTAL_ROSTER_API = "https://sansad.in/api_rs/member/member-list"
 LS_PORTAL_SOURCE = "sansad.in/api_ls/question"
+
+RS_PORTAL_SESSIONS_API = "https://sansad.in/api_rs/business/sessionDates"
+
+
+def _portal_date_iso(value: str | None) -> str:
+    """'dd/mm/yyyy' -> ISO. Both session calendars use this form."""
+    value = (value or "").strip()
+    if not value:
+        return ""
+    try:
+        return datetime.strptime(value, "%d/%m/%Y").strftime("%Y-%m-%d")
+    except ValueError:
+        return ""
+
+
+@dataclass(frozen=True)
+class SessionEntry:
+    """One session of one House, in a shape that does not depend on the House.
+
+    `loksabha` is None for the Rajya Sabha, which is permanent and numbers its
+    sessions continuously since 1952. For the Lok Sabha it is required, because
+    session numbers restart each term: 18/8 and 17/8 are different sessions.
+    """
+
+    house: str            # "ls" | "rs"
+    loksabha: int | None
+    session: int
+    periods: list[str]    # LS only; a list, because a session can be split
+    sitting_dates: list[str]
+
+    @property
+    def first_sitting(self) -> str:
+        return self.sitting_dates[0] if self.sitting_dates else ""
+
+    @property
+    def last_sitting(self) -> str:
+        return self.sitting_dates[-1] if self.sitting_dates else ""
+
+    @property
+    def sittings(self) -> int:
+        return len(self.sitting_dates)
+
+    def as_dict(self) -> dict:
+        return {
+            "house": self.house,
+            "loksabha": self.loksabha,
+            "session": self.session,
+            "periods": self.periods,
+            "sittings": self.sittings,
+            "first_sitting": self.first_sitting,
+            "last_sitting": self.last_sitting,
+            "sitting_dates": self.sitting_dates,
+        }
 
 #: Page size for member-less LS session enumeration. Live-verified 2026-08-14
 #: against lkNo 18 session 8: sizes 100/500/1000 are all honoured, and 1000
@@ -742,6 +796,63 @@ class SansadProbe(BaseProbe):
             if int(block.get("loksabha") or 0) == loksabha:
                 return block.get("sessions") or []
         return []
+
+    def rs_portal_sessions(self) -> list[dict]:
+        """The Rajya Sabha session calendar: every session since 1952.
+
+        The Council of States is permanent, so its sessions are numbered
+        continuously and the catalogue is one flat list — no term to select.
+        Live-verified 2026-08-14: 271 entries, session 1 (1952) through 271
+        (2026), every one carrying `sittingDates`, none empty.
+        """
+        r = self.session.get(RS_PORTAL_SESSIONS_API, headers=HEADERS, timeout=45)
+        r.raise_for_status()
+        data = r.json()
+        return data if isinstance(data, list) else []
+
+    def session_catalog(self, house: str, loksabha: int | None = None) -> list[SessionEntry]:
+        """Both Houses' session calendars in one shape.
+
+        The two sources disagree on everything but the idea: the Lok Sabha
+        nests `sessionNo`/`sessionPeriod`/`dates` under a term block, the Rajya
+        Sabha returns `session`/`sittingDates` flat. A caller asking "which
+        sessions exist" should not have to care which it asked about.
+
+        **A catalogue is not a coverage statement.** RS session 264 appears
+        here with sitting dates and returns zero questions from rsdoc. This
+        answers "when did the House sit", never "what can be fetched".
+        """
+        out: list[SessionEntry] = []
+        if house == "rs":
+            for block in self.rs_portal_sessions():
+                dates = [_portal_date_iso(d) for d in (block.get("sittingDates") or [])]
+                out.append(SessionEntry(
+                    house="rs", loksabha=None, session=int(block.get("session") or 0),
+                    periods=[], sitting_dates=sorted(d for d in dates if d),
+                ))
+        else:
+            terms = [loksabha] if loksabha is not None else self.ls_portal_terms()
+            for lk in terms:
+                for block in self.ls_portal_sessions(lk):
+                    dates = [_portal_date_iso(d) for d in (block.get("dates") or [])]
+                    out.append(SessionEntry(
+                        house="ls", loksabha=lk, session=int(block.get("sessionNo") or 0),
+                        # sessionPeriod is a LIST: the 17th Lok Sabha's third
+                        # session carries two, the budget session split by
+                        # COVID. Reading [0] loses half a session.
+                        periods=list(block.get("sessionPeriod") or []),
+                        sitting_dates=sorted(d for d in dates if d),
+                    ))
+        return sorted(out, key=lambda e: (e.loksabha or 0, e.session))
+
+    def ls_portal_terms(self) -> list[int]:
+        """Every Lok Sabha number the session-dates endpoint knows about."""
+        r = self.session.get(LS_PORTAL_SESSIONS_API, headers=HEADERS, timeout=45)
+        r.raise_for_status()
+        return sorted(
+            int(b["loksabha"]) for b in (r.json() or [])
+            if str(b.get("loksabha") or "").strip().isdigit()
+        )
 
     def ls_question_list_page(self, loksabha: int, session_number: int, page_no: int, page_size: int = 100) -> list[dict]:
         """One page of the sansad.in LS portal question list.
