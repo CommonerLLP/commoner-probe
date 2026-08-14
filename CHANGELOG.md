@@ -1,5 +1,52 @@
 # Changelog
 
+## 0.14.5 (2026-08-14)
+
+**Take this one if you enumerate any past term.** You can now ask which
+sessions exist, instead of supplying numbers you had no way to obtain.
+
+A patch, not a minor: this adds surface and breaks no caller. The precedent is
+0.10.0/0.13.0/0.14.0, each of which took the minor slot for a *contract* change.
+
+### Added
+
+- **`commoner-probe sansad sessions --house ls|rs [--loksabha N] [--json]`** —
+  a read-only lookup over the two session calendars. Both were already
+  implemented (`ls_portal_sessions`, and the RS equivalent) and neither was
+  reachable from the CLI, so 0.14.4's session-scoped enumeration was usable
+  only on a term whose numbers you already knew.
+
+  The Houses number sessions differently and the command normalises them.
+  `--loksabha` selects a Lok Sabha term and is refused for the Rajya Sabha,
+  which is permanent and numbers continuously since 1952. `--json` emits one
+  schema for both.
+
+  Live as of release: the Lok Sabha catalogue knows terms **13 to 18**
+  (1999-2026); the Rajya Sabha catalogue holds **271 sessions**, session 1
+  (1952) through 271 (2026), every one carrying sitting dates.
+
+  A Lok Sabha budget session is usually **split** into two periods, so that
+  committees can examine the Demands for Grants during the recess. `periods` is
+  therefore a list, and a consumer reading `[0]` loses half the session. This is
+  routine — the 17th Lok Sabha split its budget session in 2020, 2021, 2022 and
+  2023 alike.
+
+  **A listed session is not a promise that questions exist for it.** RS session
+  264 is in the catalogue with sitting dates and returns zero questions from
+  rsdoc. The command answers when the House sat, never what can be fetched, and
+  the output says so.
+
+### Changed
+
+- `docs/CLI.md` now records that the **eLibrary DSpace enumeration lags**.
+  Measured over an identical span: the portal path returned 34,724 Lok Sabha
+  records against DSpace's 29,970, with **zero** records DSpace held and the
+  portal did not. The gap is almost entirely one whole recent session that
+  eLibrary had not yet indexed; its newest record anywhere was four months old.
+  DSpace is not deprecated — it needs no session calendar, it is the only source
+  for `sansad tabled`, and it alone carries `uuid`/`handle`/`uri` — but it must
+  not be used as a completeness check on a recent session.
+
 ## 0.14.4 (2026-08-14)
 
 **Take this one if you enumerate Lok Sabha questions.** A second route to the
