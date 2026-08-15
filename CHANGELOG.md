@@ -152,6 +152,50 @@ inside the page that had just failed and span on one offset until it was killed.
   guessed into something a consumer will trust. There is a test asserting that
   no unreadable value is ever returned in ISO shape.
 
+**Take this one if you need point data out of any Indian state's GeoServer.**
+It adds the module, and it documents the trap that makes the naive version of
+that job silently return a fraction of the layer.
+
+### Added
+
+- **`commoner_probe.geoserver` — point extraction from a WMS-only GeoServer.**
+  State spatial-data infrastructures are GeoServer deployments and many publish
+  WMS while disabling WFS, so there is no vector download. This sweeps a bounding
+  box with `GetFeatureInfo`, subdividing wherever the response hits the feature
+  cap.
+
+  **The trap it exists to defeat.** `GetFeatureInfo` does not query the data — it
+  hit-tests the *rendered symbol* under the pixel, using the server's default
+  style. Where that style draws a small marker, a query only returns a feature
+  when it lands inside those few pixels. Measured against Andhra Pradesh's APSAC
+  school layer: the default style yielded **19,090** schools; the same sweep with
+  a 200-pixel symbol via `SLD_BODY` yielded **58,301** — 3.05x more. The first
+  number carried no error, no warning and no missing-data indicator. Use
+  `big_symbol_sld()`, and treat any extraction that did not override the style as
+  a lower bound of unknown tightness.
+
+  - `wfs_status()` — **call this first.** If WFS is enabled, use it and ignore
+    this module: it returns real geometry, including the lines and polygons WMS
+    extraction cannot honestly recover. APSAC answers every version with
+    `org.geoserver.platform.ServiceException: Service WFS is disabled`.
+  - `big_symbol_sld()` **refuses non-point geometry.** A road line cannot be
+    recovered by hit-testing symbols; returning a style for it would invite a
+    caller to sweep a road layer and believe the result.
+  - `Tile.offset()` — the verification pass. Re-running an identical grid asks
+    the same questions and "confirms" anything; an offset grid interrogates the
+    ground between the original query points. On the APSAC school layer this
+    returned 58,301 against 58,301 with zero new features, which is what turns a
+    floor into a count.
+  - **One failing tile no longer zeroes a layer.** A single bad tile used to
+    raise out of the sweep, and the run recorded "0 rows" — indistinguishable in
+    a results table from "this layer is empty", which is the expensive kind of
+    wrong. Failed tiles are collected and the sweep reports itself PARTIAL.
+  - Deduplication across workspaces is deliberately NOT done: state portals
+    republish one dataset under several workspaces, and agreement between two
+    independently-swept copies is the best completeness check available when no
+    authoritative count exists. APSAC's anganwadi layer returns 53,682 under both
+    `gatishakti:` and `Andhra-`.
+
 ## 0.14.6 (2026-08-14)
 
 **Take this one if you enumerated any Lok Sabha session before August 2015 with
