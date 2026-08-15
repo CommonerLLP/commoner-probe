@@ -55,6 +55,18 @@ def _portal_date_iso(value: str | None) -> str:
         return ""
 
 
+def _halve_to_multiple(size: int, unit: int) -> int:
+    """Half of `size`, snapped down to a multiple of `unit` and never below it.
+
+    Page sizes must stay multiples of the floor so that every offset the walk
+    produces is also a multiple of it. Plain integer halving breaks that —
+    500 -> 250 -> 125 -> 62 -> 31 leaves offsets like 558 that no coarser page
+    boundary lands on, which is what stopped a degraded walk from ever
+    recovering its page size.
+    """
+    return max(unit, (max(size // 2, unit) // unit) * unit)
+
+
 @dataclass(frozen=True)
 class SessionEntry:
     """One session of one House, in a shape that does not depend on the House.
@@ -889,19 +901,110 @@ class SansadProbe(BaseProbe):
             rows.extend(block.get("listOfQuestions") or [])
         return rows
 
-    def paginate_ls_question_list(self, loksabha: int, session_number: int, page_size: int = 100) -> Iterator[dict]:
+    def paginate_ls_question_list(
+        self,
+        loksabha: int,
+        session_number: int,
+        page_size: int = 100,
+        *,
+        min_page_size: int = 25,
+        floor_retries: int = 4,
+        skipped: list[tuple[int, int]] | None = None,
+    ) -> Iterator[dict]:
         """Every question row for one LS session, in portal order.
 
-        Pages from 1 (the portal is 1-indexed) and stops on the first empty
-        page, pausing `self.sleep` between requests like every other crawl
-        loop here.
+        Pages from 1 (the portal is 1-indexed) and stops on the first EMPTY
+        page, pausing `self.sleep` between requests like every other crawl loop
+        here. An empty page is the only end-of-data signal; an error is not.
+
+        **A 500 is a page-size symptom, not the end of the session.** Measured
+        against Lok Sabha 13 on 2026-08-15: session 9 serves page 1 at
+        page_size 500 and returns HTTP 500 at 1000; session 12 serves at 100 and
+        fails at 500; every session from 2 to 14 serves at page_size 1. The
+        older the session, the smaller the page it will answer. Because
+        `LS_PORTAL_PAGE_SIZE` is 1000, a term-wide enumeration of LS 13 failed
+        every window from 9 to 14 and recorded them as unavailable — six
+        sessions, February 2002 to February 2004, that the portal holds and
+        will serve.
+
+        So on a 5xx this halves the page size and retries the SAME offset,
+        down to `min_page_size`. Halving preserves offset alignment exactly:
+        an offset reached as page n of size s is page 2n-1 of size s/2.
+
+        **And a page that fails at the floor is skipped, not fatal.** LS 13
+        session 8 returns 1,000 rows on page 1, HTTP 500 on page 2, and 1,000
+        rows again on page 3. Stopping at the first failure would discard
+        everything after it while looking like a completed crawl. Each skipped
+        offset range is appended to `skipped` so the caller can report the hole
+        rather than publish a total that quietly omits it.
         """
-        page_no = 1
+        page_no, size, offset = 1, page_size, 0
+        # The size to return to after stepping over a bad page. A page that
+        # fails even at the floor is bad at every size, so the failure says
+        # nothing about the pages after it; without restoring, the walk
+        # finishes the session at the floor and pays forty times the requests
+        # for the rest of it. Only a size that has actually SERVED a page in
+        # this session is restored, so a session that cannot do 1000 is never
+        # asked for 1000 twice, and `None` means nothing has worked yet.
+        last_good: int | None = None
+        # Failures at the floor are usually TRANSIENT, not structural. Measured
+        # on LS 13 session 9: twenty-five offsets were skipped as unavailable
+        # and every one of them returned its rows when asked again a minute
+        # later. Skipping on the first floor failure threw away 625 recoverable
+        # records while reporting them as a source-side hole, which is the
+        # worst kind of wrong — a loss that documents itself as a finding.
+        attempts = 0
         while True:
-            rows = self.ls_question_list_page(loksabha, session_number, page_no, page_size)
+            try:
+                rows = self.ls_question_list_page(loksabha, session_number, page_no, size)
+            except Exception as exc:  # noqa: BLE001 - re-raised below unless 5xx
+                if "HTTP 5" not in str(exc):
+                    raise
+                if size > min_page_size:
+                    size = _halve_to_multiple(size, min_page_size)
+                    page_no = offset // size + 1
+                    self.log(
+                        f"LS {loksabha}:{session_number} offset {offset}: HTTP 5xx; "
+                        f"retrying at page_size={size}")
+                    time.sleep(self.sleep)
+                    continue
+                if attempts < floor_retries:
+                    attempts += 1
+                    backoff = self.sleep * (2 ** attempts)
+                    self.log(
+                        f"LS {loksabha}:{session_number} offset {offset}: HTTP 5xx at "
+                        f"page_size={size}; retry {attempts}/{floor_retries} in {backoff:.0f}s")
+                    time.sleep(backoff)
+                    continue
+                # Floor reached, retries exhausted: skip this page and keep
+                # going. `offset` only ever increases here — an earlier version
+                # restored the page size by flooring the page number, which
+                # moved the offset BACK into the page that had just failed and
+                # span forever (59 requests against one offset before it was
+                # caught).
+                self.log(
+                    f"LS {loksabha}:{session_number} offset {offset}-{offset + size - 1}: "
+                    f"HTTP 5xx at page_size={size}; SKIPPED, continuing past it")
+                if skipped is not None:
+                    skipped.append((offset, offset + size - 1))
+                attempts = 0
+                offset += size
+                # Restore the coarser page only where it lands exactly on the
+                # current offset. Every size is a multiple of `min_page_size`
+                # and every offset advances by one of them, so alignment does
+                # occur; when it does not, the walk simply continues at the
+                # floor rather than guessing a boundary and stepping over rows.
+                candidate = last_good or min_page_size
+                if candidate > size and offset % candidate == 0:
+                    size = candidate
+                page_no = offset // size + 1
+                time.sleep(self.sleep)
+                continue
             if not rows:
                 return
+            last_good, attempts = size, 0
             yield from rows
+            offset += size
             page_no += 1
             time.sleep(self.sleep)
 

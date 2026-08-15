@@ -1,5 +1,57 @@
 # Changelog
 
+## 0.14.8 (2026-08-15)
+
+**Take this one if you enumerated Lok Sabha 13 or any pre-2004 session with
+0.14.4 through 0.14.6.** Those runs recorded whole sessions as unavailable that
+the portal will serve, and truncated others at the first failed page.
+
+### Fixed
+
+- **An oversized page request deleted six Lok Sabha 13 sessions.**
+  `LS_PORTAL_PAGE_SIZE` is 1000, and the portal answers HTTP 500 rather than a
+  smaller page when a session cannot serve one that large. The size it will
+  answer shrinks with session age: measured 2026-08-15, LS 13 session 9 serves
+  page 1 at `page_size=500` and fails at 1000, session 12 serves at 100 and
+  fails at 500, and every session from 2 to 14 serves at `page_size=1`.
+
+  A term-wide enumeration of LS 13 therefore logged `failed: HTTP 500` for
+  windows 9 through 14 and finished `DONE added=34849`. The run looked complete
+  while the store held 7 of the term's 13 sessions — February 2002 to February
+  2004 missing, and the data was there for the asking the whole time.
+
+  `paginate_ls_question_list` now halves the page size on a 5xx and retries the
+  same offset, down to `min_page_size` (default 25). Halving preserves offset
+  alignment exactly: an offset reached as page n of size s is page 2n-1 of size
+  s/2. Sizes snap to multiples of the floor via `_halve_to_multiple`, because
+  plain integer halving produces 62 and 31 and leaves offsets that no coarser
+  page boundary lands on.
+
+- **A failed page was treated as the end of the session.** LS 13 session 8
+  returns 1,000 rows on page 1, HTTP 500 on page 2, and 1,000 rows again on
+  page 3. The old loop stopped at the first failure and stored exactly 1,000
+  rows for a session holding roughly 5,080 — and a truncated session is
+  indistinguishable from a short one. Only an EMPTY page now ends the walk. A
+  page that fails at the floor is skipped, its offset range appended to the
+  optional `skipped` list so the caller can report the hole instead of
+  publishing a total that quietly omits it.
+
+- **Transient failures were recorded as permanent holes.** Twenty-five offsets
+  in LS 13 session 9 were skipped as unavailable and every one returned its rows
+  when asked again a minute later. The floor now retries `floor_retries` times
+  (default 4) with exponential backoff before recording a gap.
+
+- **`_ls_portal_date` mangled older dates.** Lok Sabha 13 pads date components
+  instead of zero-filling them, serving `07. 3.2001` where 2026 serves
+  `20.07.2026`. Interior spaces are now removed before parsing; previously every
+  such date fell through to the truncating branch and was stored as the literal
+  string `07. 3.200`, which sorts as nonsense and silently widened one session's
+  apparent span to three years.
+
+Nine regression tests in `tests/test_sansad_pagination_degrade.py`, including one
+asserting the offset never moves backward: an intermediate version of this fix
+restored the page size by flooring the page number, which put the offset back
+inside the page that had just failed and span on one offset until it was killed.
 ## 0.14.7 (2026-08-14)
 
 ### Fixed
