@@ -299,3 +299,43 @@ def test_failure_on_page_one_still_raises(tmp_path):
     _run(_probe(tmp_path, session), sessions=[10])
     assert _manifest(tmp_path) == []
     assert _windows(tmp_path)[-1]["status"] == "suspect"
+
+
+# ---- space-padded dates on older rows -----------------------------------------
+
+def test_a_space_padded_month_parses(tmp_path):
+    """`25. 4.2001` is 25 April 2001, space-padded instead of zero-padded.
+
+    Eight rows of Lok Sabha 13 carry it. Unparsed, the raw string reached
+    `stable_key` and produced `LS|U|5669|25. 4.2001` — a permanently broken key.
+    """
+    from commoner_probe.sansad import SansadProbe
+    assert SansadProbe._ls_portal_date("25. 4.2001") == "2001-04-25"
+    assert SansadProbe._ls_portal_date("07. 3.2001") == "2001-03-07"
+
+
+def test_normal_dates_are_unaffected():
+    from commoner_probe.sansad import SansadProbe
+    assert SansadProbe._ls_portal_date("12.08.2026") == "2026-08-12"
+    assert SansadProbe._ls_portal_date("") == ""
+
+
+def test_an_unreadable_date_stays_visibly_wrong():
+    """Never guess a date. An unparseable value must not become a plausible one."""
+    import re
+
+    from commoner_probe.sansad import SansadProbe
+    for bad in ("not-a-date", "31.02.2001", "rubbish"):
+        got = SansadProbe._ls_portal_date(bad)
+        assert not re.fullmatch(r"\d{4}-\d{2}-\d{2}", got), (
+            f"{bad!r} became a plausible ISO date {got!r} — an unreadable date must stay "
+            "visibly wrong, never be guessed into something a consumer will trust"
+        )
+        assert got == bad[:10]
+
+
+def test_the_broken_key_shape_cannot_recur(tmp_path):
+    """End to end: a space-padded row must produce an ISO-dated key."""
+    session = FakePortalSession({8: [dict(_row("5669"), date="25. 4.2001")]})
+    _run(_probe(tmp_path, session))
+    assert _manifest(tmp_path)[0]["key"] == "LS|U|5669|2001-04-25"
