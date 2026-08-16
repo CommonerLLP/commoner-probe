@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.14.9 (2026-08-16)
+
+**Take this one before any further large enumeration.** Page-size degradation
+was one-way, so a walk that hit one transient error finished the session at a
+smaller page and paid for it in every later request.
+
+### Fixed
+
+- **The walk climbs back after degrading.** A 5xx halves the page size, which
+  0.14.8 added, but nothing ever restored it. One transient failure at the
+  working size finished the session at half that size, and a few of them
+  reached the floor. A walk at `page_size=25` makes forty times the requests of
+  one at 1000, and every extra request is another chance to fail: across one
+  LS 13 run the loss rose from **1.0% to 43.0%** as the size ratcheted down.
+
+  After `recover_after` consecutive good pages (4 by default) the walk doubles
+  the page size again. It never goes past the caller's size, and it climbs only
+  where the offset lands on the bigger page's boundary, so no row is stepped
+  over.
+
+  A size that fails twice is abandoned for the session. That bounds the cost of
+  probing at one wasted request per attempt, and stops the walk asking an old
+  session for 1000 rows over and over.
+
 ## 0.14.8 (2026-08-15)
 
 **Take this one if you enumerated Lok Sabha 13 or any pre-2004 session with

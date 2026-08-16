@@ -133,3 +133,56 @@ def test_the_retry_budget_resets_between_pages():
     portal = _FlakyPortal(total=300, max_size=25, flaky_at=50, flaky_times=2)
     rows = _walk(portal, page_size=25, floor_retries=2, skipped=[])
     assert len(rows) == 300
+
+
+# --- the degradation spiral --------------------------------------------------
+
+
+class _FlakyOnceAtSize(_Portal):
+    """Fails the first `times` requests made at `size`, then serves them.
+
+    A transient 5xx at the working page size used to pin the rest of the
+    session at a smaller one, because nothing ever climbed back.
+    """
+
+    def __init__(self, total, max_size, size, times):
+        super().__init__(total, max_size)
+        self.flaky_size, self.times, self.hits = size, times, 0
+
+    def page(self, loksabha, session_number, page_no, page_size):
+        if page_size == self.flaky_size and self.hits < self.times:
+            self.hits += 1
+            self.calls.append((page_no, page_size))
+            raise RuntimeError("HTTP 500 https://sansad.in/api_ls/question/qetAllQuestions")
+        return super().page(loksabha, session_number, page_no, page_size)
+
+
+def test_the_walk_climbs_back_after_a_transient_failure():
+    """One 5xx at 500 degraded the walk to 250 for the whole session. Every
+    later page then cost twice the requests, and each request is another
+    chance to fail."""
+    portal = _FlakyOnceAtSize(total=6000, max_size=10_000, size=500, times=1)
+    rows = _walk(portal, page_size=500, recover_after=2)
+    assert len(rows) == 6000
+    assert portal.calls[-1][1] == 500, "the walk must return to the caller's page size"
+    assert len(portal.calls) < 20, "a session pinned at 250 needs 25 calls, at 25 needs 241"
+
+
+def test_a_size_that_keeps_failing_is_abandoned():
+    """The climb costs at most one wasted request per size per attempt, and a
+    size that fails twice is never asked for again."""
+    portal = _Portal(total=3000, max_size=125)
+    rows = _walk(portal, page_size=500, recover_after=2)
+    assert len(rows) == 3000
+    oversized = [sz for _, sz in portal.calls if sz > 125]
+    assert oversized, "the first request is at the caller's size and must fail once"
+    assert len(oversized) <= 4, f"the walk keeps re-probing sizes that fail: {oversized}"
+
+
+def test_the_climb_lands_only_on_an_aligned_offset():
+    """A bigger page starting mid-page would step over rows."""
+    portal = _FlakyOnceAtSize(total=1000, max_size=10_000, size=100, times=1)
+    rows = _walk(portal, page_size=100, recover_after=1)
+    assert len({r["quesNo"] for r in rows}) == len(rows), "a row was served twice"
+    for page_no, size in portal.calls:
+        assert (page_no - 1) * size % size == 0

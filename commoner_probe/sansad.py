@@ -909,6 +909,7 @@ class SansadProbe(BaseProbe):
         *,
         min_page_size: int = 25,
         floor_retries: int = 4,
+        recover_after: int = 4,
         skipped: list[tuple[int, int]] | None = None,
     ) -> Iterator[dict]:
         """Every question row for one LS session, in portal order.
@@ -937,6 +938,19 @@ class SansadProbe(BaseProbe):
         everything after it while looking like a completed crawl. Each skipped
         offset range is appended to `skipped` so the caller can report the hole
         rather than publish a total that quietly omits it.
+
+        **And the walk CLIMBS BACK.** Degrading is one-way otherwise, so a
+        single transient 5xx at the working size finished the session at half
+        that size, or at the floor after a few of them. A walk at page_size 25
+        pays forty times the requests of one at 1000, and every extra request
+        is another chance to fail: across one LS 13 run the loss rose from 1.0%
+        to 43.0% as the size ratcheted down. After `recover_after` consecutive
+        good pages the walk doubles the size again, never past the caller's,
+        and only where the offset lands on the bigger page's boundary.
+
+        A size that fails TWICE is abandoned for the session. That bounds the
+        cost of probing at one wasted request per attempt, and stops the walk
+        asking an old session for 1000 rows over and over.
         """
         page_no, size, offset = 1, page_size, 0
         # The size to return to after stepping over a bad page. A page that
@@ -954,12 +968,19 @@ class SansadProbe(BaseProbe):
         # records while reporting them as a source-side hole, which is the
         # worst kind of wrong — a loss that documents itself as a finding.
         attempts = 0
+        # How many times each page size has failed here, and how many good
+        # pages have run since the last change. Two failures at a size retire
+        # it for the session; `recover_after` good pages earn a climb.
+        failures: dict[int, int] = {}
+        streak = 0
         while True:
             try:
                 rows = self.ls_question_list_page(loksabha, session_number, page_no, size)
             except Exception as exc:  # noqa: BLE001 - re-raised below unless 5xx
                 if "HTTP 5" not in str(exc):
                     raise
+                failures[size] = failures.get(size, 0) + 1
+                streak = 0
                 if size > min_page_size:
                     size = _halve_to_multiple(size, min_page_size)
                     page_no = offset // size + 1
@@ -1003,9 +1024,20 @@ class SansadProbe(BaseProbe):
             if not rows:
                 return
             last_good, attempts = size, 0
+            streak += 1
             yield from rows
             offset += size
-            page_no += 1
+            # Climb back toward the caller's page size. The offset must land on
+            # the bigger page's boundary, or the next request would step over
+            # rows, and a size that has already failed twice is not asked again.
+            target = min(size * 2, page_size)
+            if (streak >= recover_after and target > size
+                    and failures.get(target, 0) < 2 and offset % target == 0):
+                self.log(
+                    f"LS {loksabha}:{session_number} offset {offset}: "
+                    f"{streak} good pages; trying page_size={target}")
+                size, streak = target, 0
+            page_no = offset // size + 1
             time.sleep(self.sleep)
 
     @staticmethod
