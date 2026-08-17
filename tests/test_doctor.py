@@ -179,3 +179,28 @@ class TestCommentsAndInlineRanges:
         path = tmp_path / "requirements.txt"
         path.write_text("# commoner-probe>=0.14 was the old floor\n", encoding="utf-8")
         assert declared_pins(path) == {}
+
+
+class TestTheNameMustBeThisPackage:
+    """Both from Codex on the unanchored patterns. A false pin and a false
+    `unpinned` each make `doctor` exit 1 over a file that is correct, which
+    teaches a reader to stop believing it."""
+
+    def test_a_different_package_whose_name_ends_in_ours_is_not_our_pin(self, tmp_path):
+        path = tmp_path / "requirements.txt"
+        path.write_text("my-commoner-probe==9.9.9\n", encoding="utf-8")
+        assert declared_pins(path) == {}
+
+    def test_prose_naming_the_package_is_not_a_dependency(self, tmp_path):
+        """`description = "built on commoner-probe"` declares nothing. The
+        closing quote satisfied the unpinned pattern."""
+        path = tmp_path / "pyproject.toml"
+        path.write_text('[project]\ndescription = "built on commoner-probe"\n'
+                        'dependencies = ["requests==2.32.3"]\n', encoding="utf-8")
+        assert declared_pins(path) == {}
+
+    def test_a_bare_dependency_with_no_version_is_still_unpinned(self, tmp_path):
+        """The narrowing must not lose the case it exists for."""
+        path = tmp_path / "pyproject.toml"
+        path.write_text('dependencies = ["commoner-probe"]\n', encoding="utf-8")
+        assert declared_pins(path) == {str(path): "unpinned"}

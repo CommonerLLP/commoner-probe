@@ -35,10 +35,15 @@ __all__ = ["VersionReport", "declared_pins", "installed_version", "source_versio
 #: and extras are optional, because four of the seven carry them
 #: (`commoner-probe[http,pdf]==0.14.3`). The first reader required both and found
 #: one pin where three existed.
+#: `my-commoner-probe==9.9.9` is a different package. Without a boundary the
+#: pattern started matching at the inner substring and reported 9.9.9 as this
+#: package's pin, so `doctor` failed a consumer that never depended on it. `/`
+#: stays legal on the left, because a git URL carries one.
 _EXTRAS = r"(?:\[[^\]]*\])?"
+_NAME = rf"(?<![\w.-])commoner[-_]probe{_EXTRAS}"
 _PIN_PATTERNS = (
-    re.compile(rf"commoner[-_]probe{_EXTRAS}\s*==\s*([0-9][^\s;#,\"']*)", re.I),
-    re.compile(rf"commoner-probe(?:\.git)?{_EXTRAS}@v?([0-9][^\s;#\"']*)", re.I),
+    re.compile(rf"{_NAME}\s*==\s*([0-9][^\s;#,\"']*)", re.I),
+    re.compile(rf"(?<![\w.-])commoner-probe(?:\.git)?{_EXTRAS}@v?([0-9][^\s;#\"']*)", re.I),
 )
 
 #: The package named as a requirement with no exact version. The org requires an
@@ -47,7 +52,15 @@ _PIN_PATTERNS = (
 #: like the pin patterns, because the compact TOML form
 #: `dependencies = ["commoner-probe>=0.14"]` is valid and a start-of-line test
 #: could not reach it: a violated pin policy then exited successfully.
-_UNPINNED = re.compile(rf"commoner[-_]probe{_EXTRAS}\s*(?:[<>~!]=|<|>|@|[\"',\]\s]|$)", re.I)
+#:
+#: Two shapes, and no third. A range operator follows the name, or the name IS
+#: the whole requirement token. Accepting any closing quote made
+#: `description = "built on commoner-probe"` a dependency, and prose is not a
+#: declaration.
+_UNPINNED_PATTERNS = (
+    re.compile(rf"{_NAME}\s*(?:[<>~!]=|[<>@])", re.I),
+    re.compile(rf"(?:^|[\"'])\s*{_NAME}\s*(?:[\"']|$)", re.I | re.MULTILINE),
+)
 
 
 def _uncommented(text: str) -> str:
@@ -168,7 +181,7 @@ def declared_pins(*paths: Path | str) -> dict[str, str]:
                 found[str(p)] = match.group(1)
                 break
         else:
-            if _UNPINNED.search(text):
+            if any(p.search(text) for p in _UNPINNED_PATTERNS):
                 found[str(p)] = "unpinned"
     return found
 
