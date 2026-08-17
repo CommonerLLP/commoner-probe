@@ -1,10 +1,15 @@
 # SPDX-License-Identifier: MIT
-"""ORGI / Census of India acquisition via the data.gov.in (OGD) API.
+"""Acquire dataset resources from the data.gov.in Open Government Data API.
 
-The Office of the Registrar General & Census Commissioner is a source family the
-org covered nowhere before this request. It is **not** substitutable by the MoSPI
-client: MoSPI's datasets are NSSO/CSO products, and the Census is a different
-agency with different instruments.
+CONTEXT
+=======
+ORGI produces the data. ORGI is the Office of the Registrar General and
+Census Commissioner, Ministry of Home Affairs. ORGI runs the Census of India.
+NIC operates the API. The hosts are data.gov.in and api.data.gov.in.
+The API needs a key. The portal publishes a sample key. The sample key returns
+one demo row. This module refuses the sample key for a real run.
+The statistics-ministry client cannot replace this module. That ministry
+publishes NSSO and CSO products. ORGI runs different instruments.
 
 **Why the API and not the District Census Handbooks.** The request named DCHB
 Part A PDFs from the NADA catalog — roughly 640 districts at ~18 MB each, about

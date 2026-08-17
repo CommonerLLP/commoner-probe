@@ -1,5 +1,12 @@
 # SPDX-License-Identifier: MIT
-"""India Code (indiacode.nic.in) adapter — legacy DSpace, no REST API.
+"""Acquire statutes from a legacy DSpace install that has no working REST API.
+
+CONTEXT
+=======
+The Ministry of Law and Justice operates the source through NIC.
+The host is indiacode.nic.in.
+The DSpace 7 REST API is disabled. This module therefore parses the legacy
+HTML.
 
 India Code is a legacy DSpace (XMLUI/JSPUI) install. The DSpace-7 REST API
 (``/server/api``) is disabled (404/500); this adapter parses the legacy HTML

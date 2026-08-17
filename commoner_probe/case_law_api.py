@@ -1,5 +1,14 @@
 # SPDX-License-Identifier: MIT
-"""India court-data acquisition — Indian Kanoon API, plus an arm's-length eCourts boundary.
+"""Acquire case law from a documented judgment API.
+
+CONTEXT
+=======
+Indian Kanoon operates the source. It is a private legal-search service.
+The hosts are indiankanoon.org and api.indiankanoon.org.
+The licence decides the architecture. The reference client is MIT. This module
+therefore reimplements its wire contract.
+The government eCourts service carries no such licence. This repo keeps that
+service at arm's length.
 
 Two sources were surveyed; **their licences decide the architecture**,
 so the split below is legal, not stylistic:

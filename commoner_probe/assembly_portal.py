@@ -1,5 +1,12 @@
 # SPDX-License-Identifier: MIT
-"""NeVA (National e-Vidhan Application) state assembly scraper.
+"""Scrape a State legislature portal for questions, members and papers laid.
+
+CONTEXT
+=======
+The National e-Vidhan Application operates the portals. NeVA is a programme
+of the Ministry of Parliamentary Affairs. Each State runs its own deployment.
+The hosts follow the pattern <state>.neva.gov.in. One host serves one House.
+This repo verified the module against Gujarat.
 
 Scrapes: Questions (listed + unlisted), Members, Papers to be Laid.
 Tested on: Gujarat (gujarat.neva.gov.in, state_code=GJ).

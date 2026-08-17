@@ -1,5 +1,10 @@
 # SPDX-License-Identifier: MIT
-"""Bills / legislation probe (sansad.in).
+"""Acquire the whole bill catalogue and dedupe it on a stable key.
+
+CONTEXT
+=======
+The Parliament of India operates the source. The host is sansad.in.
+The catalogue is exhaustive. A topic filter is therefore unnecessary.
 
 Roadmap source (README "Upcoming"): every bill since independence with
 introduction date, stage dates, and status — enables tracking legislative

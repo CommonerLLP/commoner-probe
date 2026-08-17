@@ -1,5 +1,16 @@
 # SPDX-License-Identifier: MIT
-"""PRS Legislative Research acquisition.
+"""Acquire a publication series from a Drupal listing template.
+
+CONTEXT
+=======
+PRS Legislative Research operates the source. PRS is a private research body.
+The host is prsindia.org.
+The licence decides how you may use the output. The pages carry an All Rights
+Reserved footer. The pages carry no usable terms of use.
+Each record therefore carries the source prsindia.org. A consumer must
+segregate these records.
+One template serves two series. The series are Report Summaries and Vital
+Stats.
 
 The licensing posture is internal-research-only: PRS pages carry an
 "All Rights Reserved" footer and no usable ToS. Records are stamped

@@ -1,5 +1,11 @@
 # SPDX-License-Identifier: MIT
-"""Standing-committee report probe.
+"""Acquire standing-committee reports from the sansad.in JSON API.
+
+CONTEXT
+=======
+The committee secretariats of the Parliament of India operate the source.
+The host is sansad.in.
+This module writes one record for each report.
 
 Mirrors `sansad.py` (questions) but for parliamentary standing-committee
 reports. One record per report (granularity decision: see notes/RELEASE.md

@@ -1,5 +1,13 @@
 # SPDX-License-Identifier: MIT
-"""District Census Handbook Town Release — the urban public-library COUNT.
+"""Extract town-level amenities from a Census release workbook.
+
+CONTEXT
+=======
+ORGI produces the data. ORGI is the Office of the Registrar General and
+Census Commissioner, Ministry of Home Affairs.
+The source is the Town Release of the District Census Handbook.
+This module reads it through the Open Government Data API. It does not read the
+handbook PDFs.
 
 The request asked for every public library in the 2011 Census. The rural half is
 served by Village Amenities (see :mod:`commoner_probe.ogd_resource_api`). The urban half

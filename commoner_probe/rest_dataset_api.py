@@ -1,5 +1,13 @@
 # SPDX-License-Identifier: MIT
-"""MoSPI eSankhyiki API client — reusable statistical-data acquisition.
+"""Acquire statistical datasets from a REST backend with one route for each dataset.
+
+CONTEXT
+=======
+The Ministry of Statistics and Programme Implementation operates the source.
+The portal host is esankhyiki.mospi.gov.in. The backend host is
+api.mospi.gov.in.
+The route names differ for each dataset. The registry below carries one
+live-verified path for each dataset.
 
 The eSankhyiki portal (https://esankhyiki.mospi.gov.in) fronts a REST
 backend at ``https://api.mospi.gov.in/api`` with one route family per

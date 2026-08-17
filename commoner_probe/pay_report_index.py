@@ -1,5 +1,13 @@
 # SPDX-License-Identifier: MIT
-"""DoE "Annual Report on Pay and Allowances of Central Government
+"""Acquire a per-year PDF from a listing page and check its text layer.
+
+CONTEXT
+=======
+The Department of Expenditure, Ministry of Finance, operates the source.
+The host is doe.gov.in.
+The target is the Annual Report on Pay and Allowances of Central Government
+Civilian Employees.
+The archive page is empty. The listing page is therefore the whole universe.
 Civilian Employees" acquisition (doe.gov.in).
 
 The listing page carries one table row per report year; the archive page

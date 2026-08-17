@@ -1,5 +1,12 @@
 # SPDX-License-Identifier: MIT
-"""CAG State Finance Accounts (Volume II) acquisition adapter.
+"""Acquire per-State audit volumes from a portal index page.
+
+CONTEXT
+=======
+The Comptroller and Auditor General of India operates the source.
+The host is cag.gov.in.
+The target is Volume II of the State Finance Accounts.
+Statement 15 and Statement 16 carry the minor-head detail.
 
 The Comptroller and Auditor General publishes each State's statutory
 *Finance Accounts* on cag.gov.in's State-Accounts portal. Volume II carries the

@@ -1,5 +1,13 @@
 # SPDX-License-Identifier: MIT
-"""Abhilekh Patal (National Archives of India) catalogue acquisition.
+"""Acquire a catalogue whose records are gated behind an order form.
+
+CONTEXT
+=======
+The National Archives of India operates the source.
+The host is abhilekh-patal.in.
+The search and the metadata are open. An account is unnecessary.
+A user must order each scanned record through a cart.
+This module therefore acquires the catalogue only.
 
 This adapter acquires the **catalogue**, not the documents.
 

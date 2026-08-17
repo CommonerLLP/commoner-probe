@@ -1,5 +1,10 @@
 # SPDX-License-Identifier: MIT
-"""Lok Sabha member-attendance acquisition (sansad.in native API).
+"""Acquire member attendance from the sansad.in native JSON API.
+
+CONTEXT
+=======
+The Lok Sabha Secretariat operates the source. The host is sansad.in.
+This module and the floor-debate module share one session-date contract.
 
 Supersedes the PRS-attendance want: this is a primary source
 with no ToS ambiguity, discovered from the sansad.in JS config chunk and

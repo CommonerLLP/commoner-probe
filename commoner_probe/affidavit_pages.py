@@ -1,5 +1,13 @@
 # SPDX-License-Identifier: MIT
-"""ADR/MyNeta Lok Sabha 2024 candidate affidavit acquisition (myneta.info).
+"""Extract candidate affidavits from paginated HTML detail pages.
+
+CONTEXT
+=======
+The Association for Democratic Reforms operates the source. It is a
+civil-society body. The platform is MyNeta. The host is myneta.info.
+The robots file disallows the print-view URLs only.
+Each detail page carries the chart literal of the site. That literal is the
+authoritative figure.
 
 myneta.info self-describes as "an open data repository platform of
 Association for Democratic Reforms (ADR)" (verified live 2026-07-08);

@@ -1,5 +1,11 @@
 # SPDX-License-Identifier: MIT
-"""Floor-debate probe (Lok Sabha and Rajya Sabha verbatim debate PDFs).
+"""Acquire one verbatim floor-debate PDF for each sitting day.
+
+CONTEXT
+=======
+The Lok Sabha and Rajya Sabha Secretariats operate the sources.
+The hosts are sansad.in and rsdoc.nic.in.
+The API serves one PDF for each sitting day. It serves no per-speaker JSON.
 
 Roadmap source (README "Upcoming"): the day-by-day record of Lok Sabha floor
 proceedings. The live API serves one PDF transcript per *sitting day* (not the

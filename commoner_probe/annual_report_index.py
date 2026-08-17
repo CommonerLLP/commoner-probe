@@ -1,5 +1,10 @@
 # SPDX-License-Identifier: MIT
-"""NITI Aayog Annual Reports — acquisition with provenance.
+"""Acquire a per-year PDF from a listing page and check its text layer.
+
+CONTEXT
+=======
+NITI Aayog operates the source. The host is niti.gov.in.
+This module uses the same mechanism as the pay-report listing.
 
 The Annual Reports carry the "Young Professionals"
 headcount, a named primary source for the contractualisation / consultant face

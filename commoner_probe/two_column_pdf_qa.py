@@ -1,5 +1,12 @@
 # SPDX-License-Identifier: MIT
-"""Deterministic text extraction for Gujarati NeVA question/answer PDFs.
+"""Split a two-column question and answer PDF on the layout whitespace.
+
+CONTEXT
+=======
+The source is a State assembly question PDF from a NeVA portal.
+This repo verified the module against the Gujarat Vidhan Sabha.
+The header is a Gujarati pair. The typesetter sets the halves side by side.
+Flat text therefore interleaves the two halves.
 
 NeVA question PDFs (Gujarat Vidhan Sabha) differ from Sansad Q&A PDFs in
 three ways that break ``answers.split_qa``:

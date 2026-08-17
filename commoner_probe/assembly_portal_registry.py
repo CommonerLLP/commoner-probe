@@ -1,5 +1,11 @@
 # SPDX-License-Identifier: MIT
-"""Registry of NeVA (National e-Vidhan Application) state portals.
+"""Map a portal code to its State and chamber.
+
+CONTEXT
+=======
+The National e-Vidhan Application operates the portals.
+The registry holds 31 assemblies and 6 councils. This repo verified every entry
+live.
 
 Bakes the ``portal_code -> state_code / state_name / chamber`` mapping into
 the package so a house can be crawled or probed without hand-passing

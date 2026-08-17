@@ -1,5 +1,11 @@
 # SPDX-License-Identifier: MIT
-"""Pre-admission List of Questions and Bulletin document acquisition.
+"""Look up a pre-admission question list or a House bulletin by date.
+
+CONTEXT
+=======
+The Lok Sabha and Rajya Sabha Secretariats operate the source.
+The host is sansad.in.
+The API returns a document URL for one day. It does not return the document.
 
 Live Sansad contracts captured 2026-07-18 from the LS/RS frontend chunks:
 

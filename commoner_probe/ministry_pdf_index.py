@@ -1,5 +1,12 @@
 # SPDX-License-Identifier: MIT
-"""Ministry-hosted Detailed Demands for Grants (DDG) acquisition adapter.
+"""Acquire per-ministry PDFs where the government publishes no central index.
+
+CONTEXT
+=======
+Each Union ministry hosts its own Detailed Demands for Grants.
+The hosts include doe.gov.in, dea.gov.in and dst.gov.in.
+A Detailed Demand for Grants carries the object-head breakdown.
+The central budget summary omits that breakdown.
 
 DDGs are laid annually by each ministry/department and, unlike
 indiabudget.gov.in's "Demand for Grants" (SBE — a major-head summary

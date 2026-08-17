@@ -1,4 +1,15 @@
 # SPDX-License-Identifier: MIT
+"""Acquire parliamentary questions and answers from the sansad.in JSON APIs.
+
+CONTEXT
+=======
+The Lok Sabha and Rajya Sabha Secretariats operate the sources.
+The hosts are sansad.in and rsdoc.nic.in.
+Each House serves a different contract.
+The Rajya Sabha API takes a whereclause. It echoes the member code.
+The Lok Sabha question list carries member names. It carries no member code.
+Each Lok Sabha row links one PDF.
+"""
 from __future__ import annotations
 
 import hashlib
