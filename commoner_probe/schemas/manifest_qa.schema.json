@@ -51,8 +51,11 @@
     "found_via_group": { "type": "string", "description": "Topic search_group that found this record (LS only)" },
     "qslno": { "type": ["string", "integer", "null"], "description": "RS serial question number, as typed by the source (RS only; live API returns integers)" },
     "ses_no": { "type": ["integer", "null"], "description": "RS session number (RS only)" },
-    "question_text": { "type": ["string", "null"], "description": "Full question text from RS API (RS only)" },
-    "answer_text": { "type": ["string", "null"], "description": "Full answer text from RS API (RS only)" },
+    "question_text": { "type": ["string", "null"], "description": "Full question text: RS API, and the LS portal question list on sessions up to LS 16 session 4 (May 2015); null on every LS session after it" },
+    "answer_text": { "type": ["string", "null"], "description": "Full answer text: RS API, and the LS portal question list on sessions up to LS 16 session 4 (May 2015); null on every LS session after it" },
+    "answer_text_hindi": { "type": ["string", "null"], "description": "Hindi answer text, where the source serves one alongside the English answer" },
+    "document_qno": { "type": ["string", "null"], "description": "The question number the answer prints for itself; null when it prints none" },
+    "document_qno_status": { "type": "string", "enum": ["verified", "mismatch", "unreadable"], "description": "verified: the answer prints the number it was fetched for. mismatch: it prints a different one, and the source served it that way — the document is kept. unreadable: the answer states no number of its own, which is not a finding" },
     "pdf_url_hindi": { "type": ["string", "null"], "description": "Hindi PDF URL (RS API and LS sansad.in portal records)" },
     "status": { "type": "string", "description": "Raw question status from RS API (RS only)" }
   }

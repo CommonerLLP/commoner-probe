@@ -77,8 +77,11 @@ records, `house`.
 | `asker_entity_ids` | (string\|null)[] | yes | Parallel to `askers` | sansad.py:130 |
 | `responder_entity_id` | string\|null | yes | Reserved; always `null` | sansad.py:131 |
 | `responder_role_at_event` | string\|null | yes | Reserved; always `null` | sansad.py:132 |
-| `question_text` | string\|null | yes | Full question text from API (RS only); may be null | sansad.py:412 |
-| `answer_text` | string\|null | yes | Full answer text from API (RS only); may be null | sansad.py:413 |
+| `question_text` | string\|null | yes | Full question text; the RS API, and the LS portal list up to LS 16 session 4 (May 2015); null after it | sansad.py:412 |
+| `answer_text` | string\|null | yes | Full answer text; the RS API, and the LS portal list up to LS 16 session 4 (May 2015); null after it | sansad.py:413 |
+| `answer_text_hindi` | string\|null | cond | Hindi answer text, where the source serves one beside the English answer | sansad.py |
+| `document_qno` | string\|null | cond | The question number the answer prints for itself; null when it prints none | sansad.py |
+| `document_qno_status` | string | cond | `verified`, `mismatch` or `unreadable`; see below | sansad.py |
 | `pdf_url` | string\|null | yes | PDF URL (English); may be null | sansad.py:414 |
 | `pdf_url_hindi` | string\|null | yes | Hindi PDF URL; may be null | sansad.py:415 |
 | `pdf_path` | string | cond | Relative path; present only when download succeeded | sansad.py:428 |

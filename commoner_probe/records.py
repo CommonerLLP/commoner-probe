@@ -116,6 +116,14 @@ class ManifestQaRecord:
     # LS portal rows carry the requested roster mpCode. Keep this field after
     # the pre-existing positional fields so older callers do not shift LS args.
     mp_code: int | None = None
+    # The LS portal serves a Hindi answer alongside the English one on older
+    # sessions. Appended, for the same reason as `mp_code` above.
+    answer_text_hindi: str | None = None
+    # The number the answer prints for itself, and whether it agrees with the
+    # one it was fetched for. Absent on every corpus written before the check
+    # existed, hence the defaults.
+    document_qno: str | None = None
+    document_qno_status: str | None = None
 
     @classmethod
     def from_dict(cls, d: dict) -> "ManifestQaRecord":

@@ -238,6 +238,27 @@ def test_inline_text_is_carried_not_dropped(tmp_path):
     assert rec["answer_text_hindi"] is None
 
 
+def test_the_hindi_answer_survives_the_typed_reader(tmp_path):
+    """`ManifestQaRecord.from_dict` drops any key the dataclass does not name.
+
+    The raw manifest carried `answer_text_hindi` from the day inline text was
+    carried; the schema never declared it and the dataclass never named it, so
+    every consumer reading this corpus through `Corpus` lost the Hindi answer
+    with nothing to indicate a loss. The schema has no `additionalProperties`
+    bar, so `validate` passed too — silent at all three layers.
+    """
+    from commoner_probe.corpus import Corpus
+
+    row = _row_with_text("101")
+    row["answerTextHindi"] = "<p>मंत्री: (क) जी हाँ।</p>"
+    session = FakePortalSession({10: [row]})
+    _run(_probe(tmp_path, session), sessions=[10])
+
+    assert _manifest(tmp_path)[0]["answer_text_hindi"] == "<p>मंत्री: (क) जी हाँ।</p>"
+    rec = list(Corpus(tmp_path).manifest_qa())[0]
+    assert rec.answer_text_hindi == "<p>मंत्री: (क) जी हाँ।</p>"
+
+
 def test_a_modern_row_keeps_the_keys_with_null_values(tmp_path):
     """Absent text must be visible as null, never an absent field: a consumer
     has to be able to tell 'this session served no text' from 'we dropped it'."""
@@ -299,6 +320,148 @@ def test_failure_on_page_one_still_raises(tmp_path):
     _run(_probe(tmp_path, session), sessions=[10])
     assert _manifest(tmp_path) == []
     assert _windows(tmp_path)[-1]["status"] == "suspect"
+
+
+# ---- the enumeration path degrades like the pager ------------------------------
+
+class TooBigForThisSession(FakePortalSession):
+    """Serves pages up to `max_size` and 500s above it — the LS 13 shape.
+
+    Measured 2026-08-15: LS 13 session 9 serves page 1 at page_size 500 and
+    returns HTTP 500 at 1000. Because `LS_PORTAL_PAGE_SIZE` is 1000, a
+    term-wide enumeration recorded six sessions — February 2002 to February
+    2004 — as unavailable while the portal held them and would serve them.
+    """
+
+    def __init__(self, rows_by_session, *, max_size):
+        super().__init__(rows_by_session)
+        self.max_size = max_size
+
+    def get(self, url, params=None, **kwargs):
+        if int((params or {})["pageSize"]) > self.max_size:
+            self.calls.append((int((params or {})["sessionNumber"]),
+                               int((params or {})["pageNo"]),
+                               int((params or {})["pageSize"])))
+            raise RuntimeError("HTTP 500 https://sansad.in/api_ls/question/qetAllQuestions")
+        return super().get(url, params=params, **kwargs)
+
+
+def test_an_oversized_page_degrades_instead_of_losing_the_session(tmp_path):
+    """`paginate_ls_question_list` exists for this and had no caller.
+
+    The CLI enumeration ran its own loop, so the degrade, the floor retry,
+    the skip and the climb-back reached nothing a user could invoke.
+    """
+    rows = [_row(str(100 + i), ses_no=9) for i in range(60)]
+    session = TooBigForThisSession({9: rows}, max_size=50)
+    added = _run(_probe(tmp_path, session), sessions=[9], page_size=100)
+    assert added == 60, "every row the portal will serve must be collected"
+    assert min(c[2] for c in session.calls) <= 50, "the walk must have degraded"
+
+
+def test_a_degraded_session_that_completes_is_not_suspect(tmp_path):
+    rows = [_row(str(100 + i), ses_no=9) for i in range(60)]
+    session = TooBigForThisSession({9: rows}, max_size=50)
+    _run(_probe(tmp_path, session), sessions=[9], page_size=100)
+    assert _windows(tmp_path)[-1]["status"] == "complete"
+
+
+def test_a_skipped_page_leaves_the_window_suspect(tmp_path):
+    """A hole is not a completed window, however many rows came back."""
+    session = FailAfterPage({10: [_row(str(100 + i), ses_no=10) for i in range(8)]},
+                            fail_from_page=2)
+    _run(_probe(tmp_path, session), sessions=[10], page_size=2)
+    w = _windows(tmp_path)[-1]
+    assert w["status"] == "suspect"
+    assert w["errors"] == 1
+
+
+# ---- the question-number guard, end to end -------------------------------------
+
+def _runs(out: Path) -> list[dict]:
+    path = out / "_runs.jsonl"
+    if not path.exists():
+        return []
+    return [json.loads(x) for x in path.read_text(encoding="utf-8").splitlines() if x.strip()]
+
+
+def test_an_inline_answer_naming_another_question_is_recorded_not_dropped(tmp_path):
+    """The document is real and belongs to SOME question. Dropping it would be
+    harder to notice than flagging it."""
+    row = _row_with_text("1982", ses_no=10)
+    row["answerText"] = ("<p>GOVERNMENT OF INDIA<br>LOK SABHA<br>UNSTARRED QUESTION NO.1882"
+                         "<br>ANSWERED ON 07.03.2000<br>OFFICIAL LANGUAGE</p>")
+    row["questionsFilePath"] = None
+    session = FakePortalSession({10: [row]})
+    added = _run(_probe(tmp_path, session), sessions=[10])
+
+    assert added == 1, "a flagged record is kept"
+    rec = _manifest(tmp_path)[0]
+    assert rec["qno"] == "1982"
+    assert rec["document_qno"] == "1882"
+    assert rec["document_qno_status"] == "mismatch"
+
+
+def test_the_run_log_carries_the_mismatch_count(tmp_path):
+    """A consumer reads the rate off the run rather than inferring it."""
+    row = _row_with_text("1982", ses_no=10)
+    row["answerText"] = "<p>LOK SABHA UNSTARRED QUESTION NO.1882</p>"
+    row["questionsFilePath"] = None
+    session = FakePortalSession({10: [row]})
+    _run(_probe(tmp_path, session), sessions=[10])
+    bucket = _runs(tmp_path)[-1]["bucket_attempts"][-1]
+    assert bucket["qno_mismatches"] == 1
+
+
+def test_an_inline_answer_that_agrees_is_verified(tmp_path):
+    row = _row_with_text("1982", ses_no=10)
+    row["answerText"] = "<p>LOK SABHA UNSTARRED QUESTION NO.1982</p>"
+    row["questionsFilePath"] = None
+    session = FakePortalSession({10: [row]})
+    _run(_probe(tmp_path, session), sessions=[10])
+    rec = _manifest(tmp_path)[0]
+    assert (rec["document_qno"], rec["document_qno_status"]) == ("1982", "verified")
+
+
+def test_an_answer_that_prints_no_number_is_unreadable_not_flagged(tmp_path):
+    """85% of inline answers state no number of their own. A check that flags
+    those gets switched off within a week."""
+    row = _row_with_text("1982", ses_no=10)
+    row["answerText"] = "<p>(a) and (b): The Government has taken several steps.</p>"
+    row["questionsFilePath"] = None
+    session = FakePortalSession({10: [row]})
+    _run(_probe(tmp_path, session), sessions=[10])
+    rec = _manifest(tmp_path)[0]
+    assert (rec["document_qno"], rec["document_qno_status"]) == (None, "unreadable")
+    assert _runs(tmp_path)[-1]["bucket_attempts"][-1]["qno_mismatches"] == 0
+
+
+def test_a_flagged_record_still_validates(tmp_path):
+    """`validate` must accept the new fields, and must accept a corpus written
+    before they existed."""
+    from commoner_probe.validate import validate_corpus
+
+    row = _row_with_text("1982", ses_no=10)
+    row["answerText"] = "<p>LOK SABHA UNSTARRED QUESTION NO.1882</p>"
+    row["questionsFilePath"] = None
+    _run(_probe(tmp_path, FakePortalSession({10: [row]})), sessions=[10])
+    assert validate_corpus(tmp_path, log=lambda _: None)
+
+    legacy = _manifest(tmp_path)[0]
+    del legacy["document_qno"], legacy["document_qno_status"]
+    (tmp_path / "manifest.jsonl").write_text(json.dumps(legacy) + "\n", encoding="utf-8")
+    assert validate_corpus(tmp_path, log=lambda _: None), "a corpus written before the check must still validate"
+
+
+def test_the_typed_reader_carries_the_verdict(tmp_path):
+    from commoner_probe.corpus import Corpus
+
+    row = _row_with_text("1982", ses_no=10)
+    row["answerText"] = "<p>LOK SABHA UNSTARRED QUESTION NO.1882</p>"
+    row["questionsFilePath"] = None
+    _run(_probe(tmp_path, FakePortalSession({10: [row]})), sessions=[10])
+    rec = list(Corpus(tmp_path).manifest_qa())[0]
+    assert (rec.document_qno, rec.document_qno_status) == ("1882", "mismatch")
 
 
 # ---- space-padded dates on older rows -----------------------------------------

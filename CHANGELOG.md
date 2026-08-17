@@ -1,5 +1,64 @@
 # Changelog
 
+## Unreleased
+
+**Take this one if you enumerate Lok Sabha sessions, or read any Sansad answer.**
+The degrading paginator that 0.14.8 and 0.14.9 built had no production caller,
+and an answer can be a different question's document.
+
+### Fixed
+
+- **Session enumeration now uses the degrading paginator.** `sansad --all
+  --house ls` ran its own page loop, so the degrade, the floor retry, the skip
+  and the climb-back reached nothing a user could invoke. `LS_PORTAL_PAGE_SIZE`
+  is 1000 and older sessions refuse it, so those two releases fixed a walk the
+  CLI never took. A session whose pages could not all be served now leaves the
+  window suspect and names the offsets, instead of reporting a total with a
+  hole in it.
+
+- **A session that answers every page with a 5xx no longer walks forever.** An
+  empty page is the only end-of-data signal and a skipped page makes no
+  statement, so a portal that fails everything gave the walk no stopping
+  condition: measured 2026-08-16, it passed 4,000 requests and was still going.
+  Four skipped pages in a row now end the walk and mark the result incomplete.
+
+- **No row is served twice after a degrade.** A coarser page's boundary can lie
+  behind the rows already yielded, which emitted 25 of them again. Downstream
+  dedupe by key hid it. Verified over 630 portal shapes: zero lost, zero
+  duplicated, zero runaway.
+
+- **The typed reader carries `answer_text_hindi`.** The LS portal serves a
+  Hindi answer beside the English one on older sessions and the raw manifest
+  carried it, but the schema never declared it and `ManifestQaRecord` never
+  named it. Every consumer reading through `Corpus` lost it, and `validate`
+  passed. Silent at all three layers.
+
+### Added
+
+- **Every answer is checked against the question number it prints.** sansad.in
+  serves the wrong document under the right URL: fetched live again on
+  2026-08-16, `AU2549` returns 637,244 bytes printing QUESTION NO. 2594 and
+  `AU2594` returns 424,629 bytes printing 2549. Re-fetching cannot repair a
+  source-side swap, and downstream the record is flawless — the key parses, the
+  subject is right, the text is a real reply. So records now carry
+  `document_qno` and `document_qno_status` (`verified` / `mismatch` /
+  `unreadable`), stamped where the requested number and the document are both
+  in hand.
+
+  The check reads **inline answer text too**, not only attached PDFs: two
+  proven cases carry no PDF at all. A document that states no number of its own
+  is `unreadable`, never a mismatch — 4.7% of LS answer PDFs print none. A
+  flagged document is kept: it belongs to some question, and a suppressed
+  download is harder to notice than a flagged one. Per-window counts go to the
+  run log.
+
+  It costs a median **18.9 ms** per answer, measured over 50 live LS answer
+  PDFs, so it runs unconditionally rather than behind a flag.
+
+- `extract_pdf_text(..., last_page=N)` bounds the pdftotext rung to the first N
+  pages. It bounds the work on a long annexure rather than saving time on a
+  typical document — page one and the whole document both measured 19 ms.
+
 ## 0.14.9 (2026-08-16)
 
 **Take this one before any further large enumeration.** Page-size degradation
