@@ -138,3 +138,167 @@ def test_verify_reports_saturation_only_when_nothing_new_appears():
     out2 = gs2.verify("ws:layer", (76.0, 12.0, 77.0, 13.0),
                       known={"1000"}, key="code")
     assert out2["saturated"] is False and out2["new"] == 3
+
+
+# --- findings from review, 2026-08-17 ------------------------------------------
+
+
+def _fc_geo(n, start=0):
+    """A feature collection in the shape the standard actually specifies:
+    coordinates live in `geometry`, not in `properties`."""
+    return json.dumps({"features": [
+        {"id": f"f.{i}", "properties": {"code": str(1000 + i)},
+         "geometry": {"type": "Point", "coordinates": [76.0 + i, 12.0 + i]}}
+        for i in range(start, start + n)]})
+
+
+def test_the_point_location_survives_the_sweep():
+    """This module exists to extract POINTS. Returning attributes without
+    coordinates answers a different question than the one asked."""
+    sess = _Session([_fc_geo(2)])
+    gs = GeoServer("http://x/geoserver", session=sess, feature_count=400)
+    got = gs.sweep("ws:layer", (76.0, 12.0, 77.0, 13.0), start_span=2.0, key="code")
+    assert got["1000"]["geometry"]["coordinates"] == [76.0, 12.0]
+    assert got["1000"]["properties"]["code"] == "1000"
+
+
+def test_a_tile_capped_at_the_floor_is_reported_not_ingested():
+    """A cap means 'there may be more'. At `min_span` the walk can subdivide no
+    further, so the honest move is to record the leaf as incomplete."""
+    sess = _Session([_fc(2)])
+    gs = GeoServer("http://x/geoserver", session=sess, feature_count=2)
+    status: dict = {}
+    gs.sweep("ws:layer", (76.0, 12.0, 76.5, 12.5), start_span=0.5,
+             min_span=0.5, key="code", status=status)
+    assert status["capped"], "a capped leaf must be reported"
+    assert status["partial"] is True
+
+
+def test_the_offset_grid_shifts_by_one_cell_not_by_the_whole_region():
+    """A 4-degree box with 2-degree cells must move 1 degree, not 2. Moving by
+    half the region tests ground outside it and leaves the leading edge
+    unexamined, then calls the result saturated."""
+    import re
+    from urllib.parse import unquote
+
+    sess = _Session([])
+    gs = GeoServer("http://x/geoserver", session=sess)
+    gs.verify("ws:layer", (76.0, 12.0, 80.0, 16.0), known=[], start_span=2.0, key="code")
+    wests = sorted(float(unquote(re.search(r"bbox=([^&]+)", u, re.I).group(1)).split(",")[0])
+                   for u in sess.urls)
+    # Half a cell (1.0), not half the region (2.0), and BACKWARDS so the
+    # western strip of the region still gets a second pass.
+    assert wests[0] == 75.0, f"expected a half-cell shift to 75.0, got {wests[0]}"
+    assert 76.0 not in wests, "an unshifted grid re-asks the first pass's questions"
+
+
+def test_saturation_is_refused_when_a_verification_tile_failed():
+    """With every offset tile failing, `new` is empty for the wrong reason.
+    Reporting saturation there certifies completeness from no evidence."""
+    class _Failing:
+        urls: list = []
+
+        def get(self, url, timeout=None):
+            raise RuntimeError("boom")
+
+    gs = GeoServer("http://x/geoserver", session=_Failing(), feature_count=400)
+    out = gs.verify("ws:layer", (76.0, 12.0, 80.0, 16.0), known=["1000"],
+                    start_span=2.0, key="code")
+    assert out["saturated"] is False
+    assert out["partial"] is True
+
+
+def test_the_offset_grid_still_overlaps_a_box_smaller_than_one_cell():
+    """The one-cell shift must not walk off the region it is verifying.
+
+    A 1-degree box with 2-degree cells would move a full degree and land
+    entirely outside itself. The pass then finds nothing, finds nothing NEW,
+    and certifies saturation from ground the layer was never claimed to cover.
+    """
+    import re
+    from urllib.parse import unquote
+
+    sess = _Session([])
+    gs = GeoServer("http://x/geoserver", session=sess)
+    gs.verify("ws:layer", (76.0, 12.0, 77.0, 13.0), known=[], start_span=2.0, key="code")
+    boxes = [[float(x) for x in unquote(re.search(r"bbox=([^&]+)", u, re.I).group(1)).split(",")]
+             for u in sess.urls]
+    assert boxes, "the verification pass made no request"
+    overlaps = [b for b in boxes if b[0] < 77.0 and b[2] > 76.0 and b[1] < 13.0 and b[3] > 12.0]
+    assert overlaps, f"no verification tile overlaps the original box: {boxes}"
+
+
+def test_every_part_of_the_box_gets_a_verification_tile():
+    """Saturation is claimed for the WHOLE region, so the second pass must
+    cover the whole region. Shifting east and north left the western and
+    southern strips untested, and a first-pass miss there was never examined."""
+    import re
+    from urllib.parse import unquote
+
+    sess = _Session([])
+    gs = GeoServer("http://x/geoserver", session=sess)
+    gs.verify("ws:layer", (76.0, 12.0, 80.0, 16.0), known=[], start_span=2.0, key="code")
+    boxes = [[float(x) for x in unquote(re.search(r"bbox=([^&]+)", u, re.I).group(1)).split(",")]
+             for u in sess.urls]
+
+    def covered(lon, lat):
+        return any(b[0] <= lon <= b[2] and b[1] <= lat <= b[3] for b in boxes)
+
+    for lon, lat in ((76.01, 12.01), (76.01, 15.99), (79.99, 12.01), (79.99, 15.99),
+                     (78.0, 14.0)):
+        assert covered(lon, lat), f"({lon},{lat}) is in the box and no tile covers it"
+
+
+def test_a_feature_outside_the_region_is_not_a_first_pass_miss():
+    """The backward shift queries ground west and south of the region. A
+    feature there is not something the first pass missed, and counting it as
+    one makes a complete extraction report `saturated=False`."""
+    outside = json.dumps({"features": [
+        {"id": "f.out", "properties": {"code": "OUT"},
+         "geometry": {"type": "Point", "coordinates": [75.5, 11.5]}}]})
+    inside = json.dumps({"features": [
+        {"id": "f.in", "properties": {"code": "IN"},
+         "geometry": {"type": "Point", "coordinates": [78.0, 14.0]}}]})
+    sess = _Session([outside] + [inside] * 8)
+    gs = GeoServer("http://x/geoserver", session=sess, feature_count=400)
+    out = gs.verify("ws:layer", (76.0, 12.0, 80.0, 16.0), known=["IN"],
+                    start_span=2.0, key="code")
+    assert "OUT" not in out["new_ids"], "an out-of-region feature is not a miss"
+    assert out["saturated"] is True
+
+
+def test_a_feature_with_no_geometry_is_kept_and_counted_as_unlocatable():
+    """Some servers omit geometry. Dropping those would hide real misses, and
+    keeping them silently would hide the doubt. Keep, and report the count."""
+    nogeo = json.dumps({"features": [
+        {"id": "f.x", "properties": {"code": "X"}}]})
+    sess = _Session([nogeo] * 9)
+    gs = GeoServer("http://x/geoserver", session=sess, feature_count=400)
+    out = gs.verify("ws:layer", (76.0, 12.0, 80.0, 16.0), known=[],
+                    start_span=2.0, key="code")
+    assert out["unlocatable"] >= 1
+    assert "X" in out["new_ids"]
+
+
+def test_a_multipoint_feature_is_placed_like_a_point():
+    """A point layer can serve MultiPoint. Treating it as unplaceable let an
+    out-of-region feature count as a first-pass miss."""
+    from commoner_probe.geoserver import _point_in
+
+    bbox = (76.0, 12.0, 80.0, 16.0)
+    inside = {"geometry": {"type": "MultiPoint", "coordinates": [[78.0, 14.0]]}}
+    outside = {"geometry": {"type": "MultiPoint", "coordinates": [[75.5, 11.5]]}}
+    straddling = {"geometry": {"type": "MultiPoint",
+                               "coordinates": [[75.5, 11.5], [78.0, 14.0]]}}
+    assert _point_in(inside, bbox) is True
+    assert _point_in(outside, bbox) is False
+    assert _point_in(straddling, bbox) is True, "one point inside makes it ours"
+
+
+def test_an_unknown_geometry_is_still_unplaceable():
+    """A polygon cannot be hit-tested into this answer. It stays unlocatable,
+    which is counted and reported rather than guessed."""
+    from commoner_probe.geoserver import _point_in
+
+    poly = {"geometry": {"type": "Polygon", "coordinates": [[[76.0, 12.0]]]}}
+    assert _point_in(poly, (76.0, 12.0, 80.0, 16.0)) is None

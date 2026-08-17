@@ -218,7 +218,7 @@ def request_otp(mobile: str, *, base: str = DSP_BASE, session: Any = None,
     if solve is None:
         raise ValueError("request_otp needs solve=<callable(png_bytes) -> str>; "
                          "a human must read the captcha")
-    sess = session or make_session()
+    sess = session if session is not None else make_session()
     key, png = _captcha(base, sess, timeout)
     value = solve(png)
     r = sess.post(base + DSP_ENDPOINTS["send_otp"],
@@ -238,7 +238,7 @@ def verify_otp(mobile: str, otp: str, *, base: str = DSP_BASE,
     ``mobile_invalid_strict`` rather than "expired", and the real OTP is burnt by
     the time the quoting is fixed.
     """
-    sess = session or make_session()
+    sess = session if session is not None else make_session()
     r = sess.post(base + DSP_ENDPOINTS["verify_otp"],
                   json={"mobile": mobile, "otp": otp}, timeout=timeout)
     return r.json() if r.content else {}
@@ -247,7 +247,7 @@ def verify_otp(mobile: str, otp: str, *, base: str = DSP_BASE,
 def probe_public(base: str = DSP_BASE, *, session: Any = None,
                  timeout: int = 45) -> dict[str, Any]:
     """Report which endpoints answer without credentials. Reconnaissance only."""
-    sess = session or make_session()
+    sess = session if session is not None else make_session()
     out: dict[str, Any] = {"base": base, "results": {}, "note": None}
     for path in ("/csv-download/years", "/csv-download", "/api/public/captcha"):
         try:

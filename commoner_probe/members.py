@@ -24,7 +24,7 @@ class MPRoster:
     """Fetches and matches members from Sansad rosters (LS/RS)."""
 
     def __init__(self, session: StdlibSession | None = None):
-        self.session = session or make_session()
+        self.session = session if session is not None else make_session()
         self._roster: dict[str, MemberInfo] = {}
         self._normalized_map: dict[str, str] = {}
 

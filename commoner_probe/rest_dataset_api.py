@@ -118,7 +118,7 @@ class MospiClient:
     """Thin typed wrapper over the eSankhyiki REST routes."""
 
     def __init__(self, *, sleep: float = 0.5, session=None) -> None:
-        self.session = session or make_session()
+        self.session = session if session is not None else make_session()
         self.sleep = sleep
 
     def _get_json(self, path: str, params: dict[str, Any]) -> dict:

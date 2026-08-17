@@ -89,6 +89,19 @@ class Place:
     district_code: str
 
 
+class GeoFenced(RuntimeError):
+    """The edge refused the client's country.
+
+    Separate from an absent period ON PURPOSE. Both answer 403, and conflating
+    them turns a run that was blocked outright into a clean empty dataset —
+    the failure this package exists to refuse.
+    """
+
+
+#: The edge names the country block in the body. Matched case-insensitively.
+GEO_FENCE_MARKERS = ("block access from your country", "not available in your region")
+
+
 def payload_url(year: int, month: int, state_id: int, district_id: int, endpoint: str) -> str:
     """The CDN object for one place, period and endpoint.
 
@@ -309,10 +322,15 @@ ALL_KINDS = tuple(PARSERS)
 def fetch(session: Any, year: int, month: int, place: Place, kind: str) -> dict | None:
     """One endpoint for one district-month. None when the period is absent.
 
-    A 403 here means "no object at this path", not "forbidden": the bucket
+    **Most 403s mean "no object at this path", not "forbidden."** The bucket
     denies listing, so a period that was never published and a path that is
-    wrong are the same response. Callers cannot distinguish them and should
-    not try.
+    wrong produce the same response. Callers cannot separate those two, and
+    should not try.
+
+    **One 403 is different, and it raises.** The edge refuses a client outside
+    the publisher's country, and names the country block in the body. Every
+    object answers that way from such a client, so returning None would turn a
+    blocked run into a clean empty dataset. That case raises `GeoFenced`.
 
     `respect_robots=False` is deliberate and narrow. The CDN host publishes NO
     robots.txt — the request returns S3 AccessDenied, and RobotFileParser turns
@@ -325,7 +343,16 @@ def fetch(session: Any, year: int, month: int, place: Place, kind: str) -> dict 
     """
     url = payload_url(year, month, place.state_id, place.district_id, ENDPOINTS[kind])
     resp = session.get(url, respect_robots=False)
-    if resp.status_code in (403, 404):
+    if resp.status_code == 403:
+        body = (getattr(resp, "text", "") or "").lower()
+        if any(m in body for m in GEO_FENCE_MARKERS):
+            raise GeoFenced(
+                f"the edge refused this client's country for {url}. "
+                "Every object will 403 from here, so an empty harvest would be "
+                "a vantage-point artefact. Fetch from within the publisher's "
+                "country.")
+        return None
+    if resp.status_code == 404:
         return None
     resp.raise_for_status()
     return resp.json()

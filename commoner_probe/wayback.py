@@ -87,7 +87,7 @@ def _latest_capture(url: str, *, session: Any, timeout: float) -> tuple[dict | N
     load — observed live 2026-07-26 on back-to-back CDX calls). A re-check that
     treats a 503 as "nothing to compare" silently stops detecting change.
     """
-    session = session or make_session()
+    session = session if session is not None else make_session()
     params = {"url": url, "output": "json", "limit": -1, "fl": _CDX_FIELDS}
     try:
         r = session.get(CDX_API, params=params, timeout=timeout)
@@ -129,7 +129,7 @@ def request_save(url: str, *, session: Any = None, timeout: float = SAVE_TIMEOUT
     SPN2 queues work and anonymous callers are throttled. Confirm with
     latest_capture() rather than trusting this return value.
     """
-    session = session or make_session()
+    session = session if session is not None else make_session()
     try:
         r = session.get(f"{SAVE_BASE}{quote(url, safe=':/?&=#%')}", timeout=timeout)
         r.raise_for_status()
@@ -165,7 +165,7 @@ def snapshot_fields(
 
     Merge the result into the record; never gate acquisition on it.
     """
-    session = session or make_session()
+    session = session if session is not None else make_session()
     before, _ = _latest_capture(url, session=session, timeout=timeout) if save else (None, "")
     saved = request_save(url, session=session) if save else True
     capture, failure = _latest_capture(url, session=session, timeout=timeout)
@@ -390,7 +390,7 @@ def iter_captures(
     caller that read a 503 as "never archived" would record an outage as a fact
     about the source, which is the failure ``recheck()`` exists to prevent.
     """
-    session = session or make_session()
+    session = session if session is not None else make_session()
     resume: str | None = None
     emitted = 0
     seen_batches = 0
@@ -491,7 +491,7 @@ class WaybackCaptureProbe:
         self.out_dir = Path(out_dir)
         self.sleep = sleep
         self.manifest = self.out_dir / "manifest.jsonl"
-        self.session = session or make_session(rate_limit_sec=sleep)
+        self.session = session if session is not None else make_session(rate_limit_sec=sleep)
 
     def load_seen(self) -> set:
         seen: set = set()

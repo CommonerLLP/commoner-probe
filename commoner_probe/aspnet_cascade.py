@@ -35,7 +35,7 @@ from __future__ import annotations
 
 import html
 import re
-from typing import Any, Iterable, Iterator
+from typing import Any, Callable, Iterable, Iterator
 
 from .http_client import make_session
 
@@ -49,10 +49,42 @@ class CascadeCrawler:
     """
 
     def __init__(self, report_url: str, controls: dict[str, str], *,
-                 session: Any | None = None, rate_limit_sec: float = 1.0) -> None:
+                 session: Any | None = None, rate_limit_sec: float = 1.0,
+                 user_agent: str | None = None,
+                 session_factory: Callable[[], Any] | None = None) -> None:
+        """`user_agent` is exposed because some deployments answer HTTP 500 to
+        this package's own identifier and 200 to a browser string. See failure
+        mode 10 in `aspnet`. Overriding it is a deliberate act, so there is no
+        default: a caller decides, and records the decision where it is made.
+
+        `session_factory` builds a REPLACEMENT session on reseat, and passing
+        one is the caller SAYING that a rebuild is theirs to define. So it wins
+        whenever it is given, including alongside an injected `session`: a
+        caller whose session carries a login supplies a factory that can
+        re-establish it.
+
+        With a `session` and NO factory, the session is never replaced. This
+        class did not build that session, and discarding a caller's
+        authentication is not its call. A crawl in that state cannot recover
+        from an expired session, and that is the caller's trade to make.
+        """
         self.report_url = report_url
         self.controls = controls
-        self.session = session or make_session(rate_limit_sec=rate_limit_sec)
+        # `is not None` on BOTH, for the same reason. A factory is a callable
+        # OBJECT as often as a lambda, and one that defines __len__ or __bool__
+        # can be falsey. `or` would then drop the caller's factory and rebuild
+        # with the default client, or with nothing.
+        if session_factory is not None:
+            self._factory = session_factory
+        elif session is not None:
+            self._factory = None
+        else:
+            self._factory = lambda: make_session(rate_limit_sec=rate_limit_sec,
+                                                 user_agent=user_agent)
+        # `session is not None`, never truthiness. A session object that
+        # defines __len__ or __bool__ can be falsey, and `or` would discard the
+        # caller's object and build another one in silence.
+        self.session = session if session is not None else self._factory()
         self._selected: dict[str, str] = {}
         self.page = self._get()
 
@@ -110,8 +142,23 @@ class CascadeCrawler:
         self.page = resp.content.decode("utf8", "replace")
 
     def reset(self) -> None:
-        """Drop every selection and refetch, recovering an expired session."""
+        """Replace the session, drop every selection, and refetch.
+
+        The stale state lives in the session cookie, so refetching with the
+        SAME session returns the same HTTP 500 and the crawl never recovers.
+
+        WHICH session survives, in full:
+
+        * a `session_factory` was given — the factory builds a new session,
+          including when a `session` was injected beside it. Supplying a
+          factory is the instruction for how to rebuild.
+        * a `session` alone — it is kept. Replacing it would discard an
+          authentication this class did not create.
+        * neither — the default client is rebuilt.
+        """
         self._selected.clear()
+        if self._factory is not None:
+            self.session = self._factory()
         self.page = self._get()
 
     def reseat(self, path: Iterable[tuple[str, str]]) -> None:
