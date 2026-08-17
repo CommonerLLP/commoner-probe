@@ -502,3 +502,24 @@ class TestTheHeldFileMustBeProven:
         ) if False else list(shrug.catalogue(
             session=_catalogue_session(rows=rows), min_rows=1).values())
         assert len({shrug._filename_for(t) for t in tables}) == 2
+
+
+def test_a_changed_destination_reaches_the_manifest(tmp_path):
+    """The fingerprinted naming scheme changes every `dest`. A download whose
+    bytes match the prior digest was suppressed, so the manifest kept the legacy
+    path while the verified file sat at the new one — and a downstream reader
+    following `dest` finds nothing."""
+    manifest = tmp_path / "manifest.jsonl"
+    legacy = {"key": "SHRUG|SECC Rural", "kind": "shrug_table", "status": "downloaded",
+              "dest": "SECC_Rural-secc_rural.zip",
+              "sha256": __import__("hashlib").sha256(b"shrug bytes").hexdigest(),
+              "bytes": len(b"shrug bytes")}
+    manifest.write_text(json.dumps(legacy) + "\n", encoding="utf-8")
+
+    rows = shrug.fetch_preset("caste", tmp_path, session=_fetch_session(),
+                              log=lambda _m: None, min_rows=1)
+    written = {r["key"]: r["dest"] for r in rows}
+    recorded = [json.loads(x) for x in manifest.read_text().splitlines()]
+    last = {r["key"]: r["dest"] for r in recorded}
+    assert last["SHRUG|SECC Rural"] == written["SHRUG|SECC Rural"], (
+        "the manifest must name the file that exists")

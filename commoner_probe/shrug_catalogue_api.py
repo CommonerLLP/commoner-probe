@@ -477,9 +477,15 @@ def _append(manifest: Path, record: dict, *, previous: dict[str, dict]) -> None:
     # while the outcome stays "held", so comparing outcomes alone suppressed the
     # row — and every later run then rejected the new file against the stale
     # digest and downloaded it again.
+    # `dest` is part of the comparison, not only the outcome and the bytes. The
+    # fingerprinted naming scheme changed every destination, and a download whose
+    # bytes still matched the old digest was suppressed — so the manifest kept the
+    # legacy path while the verified file sat at the new one, and a reader
+    # following `dest` finds nothing.
     if prior is not None and _outcome(prior.get("status", "")) == _outcome(record["status"]) \
             and prior.get("sha256") == record["sha256"] \
-            and prior.get("bytes") == record["bytes"]:
+            and prior.get("bytes") == record["bytes"] \
+            and prior.get("dest") == record["dest"]:
         return
     with manifest.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(record, ensure_ascii=False) + "\n")
