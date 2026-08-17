@@ -247,3 +247,34 @@ def test_every_part_of_the_box_gets_a_verification_tile():
     for lon, lat in ((76.01, 12.01), (76.01, 15.99), (79.99, 12.01), (79.99, 15.99),
                      (78.0, 14.0)):
         assert covered(lon, lat), f"({lon},{lat}) is in the box and no tile covers it"
+
+
+def test_a_feature_outside_the_region_is_not_a_first_pass_miss():
+    """The backward shift queries ground west and south of the region. A
+    feature there is not something the first pass missed, and counting it as
+    one makes a complete extraction report `saturated=False`."""
+    outside = json.dumps({"features": [
+        {"id": "f.out", "properties": {"code": "OUT"},
+         "geometry": {"type": "Point", "coordinates": [75.5, 11.5]}}]})
+    inside = json.dumps({"features": [
+        {"id": "f.in", "properties": {"code": "IN"},
+         "geometry": {"type": "Point", "coordinates": [78.0, 14.0]}}]})
+    sess = _Session([outside] + [inside] * 8)
+    gs = GeoServer("http://x/geoserver", session=sess, feature_count=400)
+    out = gs.verify("ws:layer", (76.0, 12.0, 80.0, 16.0), known=["IN"],
+                    start_span=2.0, key="code")
+    assert "OUT" not in out["new_ids"], "an out-of-region feature is not a miss"
+    assert out["saturated"] is True
+
+
+def test_a_feature_with_no_geometry_is_kept_and_counted_as_unlocatable():
+    """Some servers omit geometry. Dropping those would hide real misses, and
+    keeping them silently would hide the doubt. Keep, and report the count."""
+    nogeo = json.dumps({"features": [
+        {"id": "f.x", "properties": {"code": "X"}}]})
+    sess = _Session([nogeo] * 9)
+    gs = GeoServer("http://x/geoserver", session=sess, feature_count=400)
+    out = gs.verify("ws:layer", (76.0, 12.0, 80.0, 16.0), known=[],
+                    start_span=2.0, key="code")
+    assert out["unlocatable"] >= 1
+    assert "X" in out["new_ids"]

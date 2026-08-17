@@ -178,6 +178,29 @@ class Tile:
                     self.east + dx, self.north + dy, self.depth)
 
 
+def _point_in(feature: dict, bbox: Sequence[float]) -> bool | None:
+    """Whether a feature's point lies in `bbox`. None when it cannot be judged.
+
+    The verification grid starts half a cell BEFORE the region, so it queries
+    ground outside it. A feature there was never this extraction's to find, and
+    counting it as a first-pass miss makes a complete sweep report
+    `saturated=False`.
+
+    A feature with no point geometry returns None. It is kept and counted,
+    because dropping it would hide a real miss and keeping it silently would
+    hide the doubt.
+    """
+    geom = (feature or {}).get("geometry") or {}
+    coords = geom.get("coordinates")
+    if geom.get("type") != "Point" or not isinstance(coords, (list, tuple)) or len(coords) < 2:
+        return None
+    lon, lat = coords[0], coords[1]
+    try:
+        return bbox[0] <= float(lon) <= bbox[2] and bbox[1] <= float(lat) <= bbox[3]
+    except (TypeError, ValueError):
+        return None
+
+
 @dataclass
 class GeoServer:
     """A WMS-only GeoServer, swept for point features.
@@ -355,7 +378,15 @@ class GeoServer:
         # of it.
         shifted = (west - step_x, south - step_y, east, north)
         status: dict = {}
-        got = self.sweep(layer, shifted, start_span=start_span, key=key, status=status)
+        swept = self.sweep(layer, shifted, start_span=start_span, key=key, status=status)
+        got, unlocatable = {}, 0
+        for ident, feature in swept.items():
+            verdict = _point_in(feature, bbox)
+            if verdict is False:
+                continue
+            if verdict is None:
+                unlocatable += 1
+            got[ident] = feature
         new = set(got) - known
         partial = bool(status.get("partial"))
         if partial:
@@ -373,6 +404,9 @@ class GeoServer:
             # same empty set for the opposite reason.
             "saturated": not new and not partial,
             "partial": partial,
+            # Features the second pass could not place. They are counted as
+            # in-region, so this number is the doubt in `new`.
+            "unlocatable": unlocatable,
             "failed_tiles": status.get("failed", []),
             "capped_tiles": status.get("capped", []),
             "new_ids": sorted(new)[:50],
