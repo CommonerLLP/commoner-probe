@@ -148,3 +148,34 @@ class TestEveryPinFormTheOrgActuallyUses:
         path.write_text("# acquisition is delegated to commoner-probe\nrequests==2.32.0\n",
                         encoding="utf-8")
         assert declared_pins(path) == {}
+
+
+class TestCommentsAndInlineRanges:
+    """Two ways the reader read the wrong thing, both from Codex on the fix that
+    made the pattern unanchored."""
+
+    def test_a_commented_pin_does_not_win_over_the_active_one(self, tmp_path):
+        """`search()` takes the first occurrence, so a commented old pin above an
+        active one made `doctor` report a mismatch that does not exist and exit 1."""
+        path = tmp_path / "requirements.txt"
+        path.write_text("# commoner-probe==0.14.3\ncommoner-probe==0.15.0\n",
+                        encoding="utf-8")
+        assert declared_pins(path) == {str(path): "0.15.0"}
+
+    def test_a_file_holding_only_a_commented_pin_reports_nothing(self, tmp_path):
+        path = tmp_path / "requirements.txt"
+        path.write_text("# commoner-probe==0.14.3 (dropped)\nrequests==2.32.0\n",
+                        encoding="utf-8")
+        assert declared_pins(path) == {}
+
+    def test_an_inline_toml_range_is_reported_unpinned(self, tmp_path):
+        """The compact form is valid TOML, and the start-of-line test could not
+        reach it, so a violated exact-pin policy exited successfully."""
+        path = tmp_path / "pyproject.toml"
+        path.write_text('dependencies = ["commoner-probe>=0.14"]\n', encoding="utf-8")
+        assert declared_pins(path) == {str(path): "unpinned"}
+
+    def test_a_commented_range_is_not_reported_unpinned(self, tmp_path):
+        path = tmp_path / "requirements.txt"
+        path.write_text("# commoner-probe>=0.14 was the old floor\n", encoding="utf-8")
+        assert declared_pins(path) == {}

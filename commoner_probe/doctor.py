@@ -43,9 +43,22 @@ _PIN_PATTERNS = (
 
 #: The package named as a requirement with no exact version. The org requires an
 #: exact pin, so this is a finding rather than an absence — reporting nothing
-#: filed it beside the files that never mention the package at all.
-_UNPINNED = re.compile(
-    rf"^\s*[\"']?commoner[-_]probe{_EXTRAS}\s*(?:[<>~!=]=|@|$)", re.I | re.MULTILINE)
+#: filed it beside the files that never mention the package at all. Unanchored,
+#: like the pin patterns, because the compact TOML form
+#: `dependencies = ["commoner-probe>=0.14"]` is valid and a start-of-line test
+#: could not reach it: a violated pin policy then exited successfully.
+_UNPINNED = re.compile(rf"commoner[-_]probe{_EXTRAS}\s*(?:[<>~!]=|<|>|@|[\"',\]\s]|$)", re.I)
+
+
+def _uncommented(text: str) -> str:
+    """The text with comment tails removed.
+
+    `search()` returns the FIRST occurrence, so a commented old pin above an
+    active one won: `doctor` reported a mismatch that did not exist and exited 1.
+    A `#` counts as a comment when it opens a line or follows whitespace, which
+    is how both requirements files and TOML write one.
+    """
+    return re.sub(r"(?m)(?:^|(?<=\s))#.*$", "", text)
 
 
 class VersionReport:
@@ -148,6 +161,7 @@ def declared_pins(*paths: Path | str) -> dict[str, str]:
             text = p.read_text(encoding="utf-8")
         except OSError:
             continue
+        text = _uncommented(text)
         for pattern in _PIN_PATTERNS:
             match = pattern.search(text)
             if match:
