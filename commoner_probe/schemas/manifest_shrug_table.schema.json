@@ -56,8 +56,8 @@
     "unit": { "type": "string", "const": "shrid" },
     "status": {
       "type": "string",
-      "enum": ["downloaded", "skipped_exists", "short_on_disk"],
-      "description": "`short_on_disk` is a file whose size disagrees with the catalogue's, which a plain existence check reported as held."
+      "enum": ["downloaded", "skipped_exists"],
+      "description": "`skipped_exists` is written only for a file whose size matches the catalogue's AND whose digest still matches the one last recorded for it. A file that fails either test is re-fetched and recorded as `downloaded`, because reporting it held would leave a wrong file in place under a right name."
     },
     "fetched_at": { "type": "string" }
   }

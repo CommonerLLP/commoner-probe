@@ -387,6 +387,42 @@ def _download(session: Any, url: str, dest: Path, *, timeout: int = 900,
     return digest.hexdigest(), written
 
 
+def _recorded_rows(manifest: Path) -> dict[str, dict]:
+    """The last recorded row per key, so a held file can be checked against it."""
+    rows: dict[str, dict] = {}
+    if not manifest.exists():
+        return rows
+    for line in manifest.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if row.get("key"):
+            rows[row["key"]] = row
+    return rows
+
+
+def _matches_record(dest: Path, total: int, previous: dict | None) -> bool:
+    """Whether the file on disk is still the file the manifest recorded.
+
+    The size alone is not enough. A table replaced or corrupted WITHOUT changing
+    its byte length passed a size check, and because a skip counts as the same
+    outcome as a download, the manifest kept the old digest beside bytes that no
+    longer hash to it. Where a digest was recorded, the file is re-hashed.
+
+    With no recorded digest there is nothing to check against, so the size stands
+    and the caller learns the size from the row.
+    """
+    if dest.stat().st_size != total:
+        return False
+    digest = (previous or {}).get("sha256")
+    if not digest:
+        return True
+    return hashlib.sha256(dest.read_bytes()).hexdigest() == digest
+
+
 def _recorded_status(manifest: Path) -> dict[str, str]:
     """The LAST recorded status per key, so a re-run appends only a change.
 
@@ -484,6 +520,7 @@ def fetch_preset(
     out.mkdir(parents=True, exist_ok=True)
     manifest = out / "manifest.jsonl"
     seen = _recorded_status(manifest)
+    recorded = _recorded_rows(manifest)
     rows: list[dict] = []
     for table in tables:
         filename = _filename_for(table)
@@ -509,21 +546,24 @@ def fetch_preset(
             "fetched_at": _now(),
         }
         total = size_of(table.url, session=sess)
-        if dest.exists():
+        if dest.exists() and _matches_record(dest, total, recorded.get(record["key"])):
             # A file on disk was trusted with no check at all, and the skip was
             # never written to the manifest. Two zero-byte files produced two
             # rows saying the preset was held, while the manifest stayed absent:
             # one reader saw an empty archive, another saw a complete preset.
             held = dest.stat().st_size
-            record.update(bytes=held,
-                          status="skipped_exists" if held == total else "short_on_disk")
-            if held != total:
-                log(f"SHORT {filename}: {held} of {total} bytes on disk — re-fetch it")
-            else:
-                log(f"have {filename} ({held} bytes)")
+            record.update(bytes=held, sha256=(recorded.get(record["key"]) or {}).get("sha256"),
+                          status="skipped_exists")
+            log(f"have {filename} ({held} bytes)")
             _append(manifest, record, seen=seen)
             rows.append(record)
             continue
+        if dest.exists():
+            # Short, or the same length and no longer hashing to what was
+            # recorded. Either way it is not the table, and re-fetching is the
+            # only honest recovery: reporting it held leaves a wrong file in place.
+            log(f"REPLACING {filename}: it is not the recorded table "
+                f"({dest.stat().st_size} bytes on disk, {total} expected)")
         log(f"{table.table_label} ({total / 1e6:.1f} MB)")
         sha256, written = _download(
             sess, table.url, dest, timeout=timeout, max_bytes=max_bytes, expect=total

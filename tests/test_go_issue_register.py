@@ -420,3 +420,38 @@ def test_a_truncated_mirror_page_is_not_reported_as_the_whole_day():
     session = _Session(gets=[_Resp(text=payload)])
     with pytest.raises(RuntimeError, match="731"):
         archive_items("2021-12-24", session=session, rows=500)
+
+
+class TestTheControlBelongsToTheDeployment:
+    """The default control searches for Andhra's School Education GO 19 of 2025.
+    Run against another state's deployment it fails before the user's query, and
+    `--no-control` removes the safeguard rather than fixing it."""
+
+    def _args(self, **kw):
+        from commoner_probe.cli import build_parser
+
+        argv = ["go-register", "--department", "SE", "--from-date", "01-12-2021",
+                "--to-date", "31-01-2022"]
+        for key, value in kw.items():
+            argv += [f"--{key.replace('_', '-')}", value] if value is not True else [f"--{key.replace('_', '-')}"]
+        return build_parser().parse_args(argv)
+
+    def test_a_custom_base_url_without_a_control_is_refused(self):
+        from commoner_probe.cli import go_register_cmd
+
+        args = self._args(base_url="https://goir.telangana.gov.in/")
+        with pytest.raises(SystemExit) as excinfo:
+            go_register_cmd(args)
+        message = str(excinfo.value)
+        assert "control" in message.lower()
+        assert "Andhra" in message or "andhra" in message
+
+    def test_the_default_host_keeps_its_own_control(self):
+        """No regression for the deployment the control was measured against."""
+        from commoner_probe.cli import build_parser
+
+        args = build_parser().parse_args(
+            ["go-register", "--department", "SE", "--from-date", "01-12-2021",
+             "--to-date", "31-01-2022"])
+        assert args.base_url is None
+        assert args.control_department is None

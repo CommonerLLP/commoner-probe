@@ -1123,9 +1123,27 @@ def go_register_cmd(args: argparse.Namespace) -> None:
     if args.reachable:
         print(json.dumps(reachable(base), ensure_ascii=False))
         return
+    # The default control is a School Education order that ANDHRA holds. Run
+    # against another state's deployment it fails before the caller's query ever
+    # runs, and `--no-control` answers that by removing the safeguard rather than
+    # replacing it. A different deployment needs a record IT holds.
+    control = None
+    if args.control_department:
+        control = GoQuery(department=args.control_department,
+                          from_date=args.control_date, to_date=args.control_date,
+                          go_no=args.control_go_no or "",
+                          go_type=args.control_go_type)
+    elif args.base_url and not args.no_control:
+        raise SystemExit(
+            f"{base} is not the deployment the default control was measured against. "
+            "That control asks Andhra Pradesh for School Education GO 19 of "
+            "13-05-2025, and no other state holds it. Pass a record this deployment "
+            "holds with --control-department, --control-date and --control-go-no. "
+            "--no-control removes the check instead of replacing it, and an empty "
+            "result then establishes nothing.")
     register = GoIssueRegister(base, timeout=args.timeout)
     if not args.no_control:
-        register.run_control()
+        register.run_control(control)
     query = GoQuery(department=args.department, from_date=args.from_date,
                     to_date=args.to_date, go_no=args.go_no or "",
                     go_type=args.go_type, text=args.text or "")
@@ -2261,6 +2279,14 @@ def build_parser() -> argparse.ArgumentParser:
     go_register.add_argument("--download", action="store_true", help="Fetch each order document")
     go_register.add_argument("--reachable", action="store_true",
                              help="Report whether the host serves, and exit")
+    go_register.add_argument("--control-department", dest="control_department",
+                             help="Department of a record this deployment already holds")
+    go_register.add_argument("--control-date", dest="control_date",
+                             help="Date of that record, dd-mm-yyyy")
+    go_register.add_argument("--control-go-no", dest="control_go_no",
+                             help="Order number of that record")
+    go_register.add_argument("--control-go-type", dest="control_go_type", default="-1",
+                             help="Order type of that record. Default: -1")
     go_register.add_argument("--no-control", action="store_true",
                              help="Skip the positive control. An empty result then proves nothing.")
     go_register.add_argument("--timeout", type=float, default=120)

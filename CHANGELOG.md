@@ -89,8 +89,11 @@ and an answer can be a different question's document.
   JSON endpoint the download page's table is bound to, so scraping the rendered
   page finds no links at all. Files are presigned S3 objects signed for GET only,
   so a HEAD returns 403 on a URL that downloads fine and sizing uses a ranged
-  GET. A short stream is refused rather than hashed: a sha256 of a partial table
-  reads as verification of a whole one. Every row carries the licence, the DOI and
+  GET. A short stream is refused rather than hashed: a sha256 of a partial table reads
+  as verification of a whole one. A file already on disk is trusted only when its
+  size matches AND it still hashes to the digest last recorded for it, because a
+  table replaced without changing its length passed a size check while the
+  manifest kept the old digest beside it. Every row carries the licence, the DOI and
   the unit, because a shrid is not a village. Manifest kind `shrug_table`.
 
 - **`commoner-probe go-register` — a NIC Government Orders Issue Register.**

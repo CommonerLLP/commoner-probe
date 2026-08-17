@@ -370,16 +370,18 @@ def test_two_tables_sharing_an_s3_basename_do_not_collide(tmp_path):
     assert len(list(tmp_path.glob("*.zip"))) == 2
 
 
-def test_a_short_file_on_disk_is_not_reported_as_held(tmp_path):
+def test_a_short_file_on_disk_is_replaced_not_reported_as_held(tmp_path):
     """Two zero-byte files produced two rows saying the preset was held, and no
-    manifest at all: one reader saw an empty archive, another a complete preset."""
+    manifest at all: one reader saw an empty archive, another a complete preset.
+    A file that is not the table is re-fetched, because reporting it held leaves
+    a wrong file in place under a right name."""
     for name in ("SECC_Rural-secc_rural.zip", "SECC_Urban-secc_urban.zip"):
         (tmp_path / name).write_bytes(b"")
     rows = shrug.fetch_preset("caste", tmp_path, session=_fetch_session(),
                               log=lambda _m: None, min_rows=1)
-    assert {r["status"] for r in rows} == {"short_on_disk"}
-    assert {r["bytes"] for r in rows} == {0}
-    assert (tmp_path / "manifest.jsonl").exists(), "a skip is recorded, not silent"
+    assert {r["status"] for r in rows} == {"downloaded"}
+    assert {r["bytes"] for r in rows} == {len(b"shrug bytes")}
+    assert (tmp_path / "manifest.jsonl").exists(), "the outcome is recorded, not silent"
 
 
 def test_a_partial_catalogue_is_refused(tmp_path):
@@ -404,19 +406,11 @@ def test_the_dedupe_branch_is_actually_exercised():
         "both `shrid.*key` and `location names` match this one label")
 
 
-def test_a_recovered_table_replaces_its_short_row(tmp_path):
-    """The recovery a short row instructs is to delete the file and re-run. The
-    key guard then suppressed the new `downloaded` row, so the durable manifest
-    reported the old failure with a null digest while the bytes were complete."""
-    dest = tmp_path / "SECC_Rural-secc_rural.zip"
-    dest.write_bytes(b"")
+def test_the_manifest_records_the_recovery_not_only_the_failure(tmp_path):
+    """A changed outcome must reach the durable manifest. Suppressing it on the
+    key alone left the file reported as it was before the recovery."""
+    (tmp_path / "SECC_Rural-secc_rural.zip").write_bytes(b"")
     (tmp_path / "SECC_Urban-secc_urban.zip").write_bytes(b"")
-    first = shrug.fetch_preset("caste", tmp_path, session=_fetch_session(),
-                               log=lambda _m: None, min_rows=1)
-    assert {r["status"] for r in first} == {"short_on_disk"}
-
-    dest.unlink()
-    (tmp_path / "SECC_Urban-secc_urban.zip").unlink()
     shrug.fetch_preset("caste", tmp_path, session=_fetch_session(),
                        log=lambda _m: None, min_rows=1)
     rows = [json.loads(x) for x in (tmp_path / "manifest.jsonl").read_text().splitlines()]
@@ -445,3 +439,23 @@ def test_a_waf_challenge_is_named_as_one_not_read_as_an_empty_catalogue():
     with pytest.raises((ChallengeDetected, shrug.ShrugCatalogueError)) as excinfo:
         shrug.catalogue(session=session, min_rows=1)
     assert "waf" in str(excinfo.value).lower()
+
+
+def test_a_corrupted_file_of_the_same_size_is_not_reported_as_held(tmp_path):
+    """A size-only check called it held, and because `skipped_exists` counts as
+    the same outcome as `downloaded`, the manifest kept the old digest while the
+    bytes on disk no longer hashed to it."""
+    import hashlib
+
+    shrug.fetch_preset("caste", tmp_path, session=_fetch_session(),
+                       log=lambda _m: None, min_rows=1)
+    target = tmp_path / "SECC_Rural-secc_rural.zip"
+    good = hashlib.sha256(target.read_bytes()).hexdigest()
+    target.write_bytes(b"CORRUPTEDxx"[: len(b"shrug bytes")])
+    assert len(target.read_bytes()) == len(b"shrug bytes"), "same size, different bytes"
+
+    rows = shrug.fetch_preset("caste", tmp_path, session=_fetch_session(),
+                              log=lambda _m: None, min_rows=1)
+    row = next(r for r in rows if r["key"] == "SHRUG|SECC Rural")
+    assert row["status"] == "downloaded", "a file that no longer hashes must be refetched"
+    assert hashlib.sha256(target.read_bytes()).hexdigest() == good

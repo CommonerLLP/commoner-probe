@@ -547,3 +547,19 @@ def test_a_url_outside_the_named_host_is_still_indexed(tmp_path):
                            sleep_fn=no_sleep))
     assert [r["status"] for r in rows] == ["ok"], "the other host must be indexed too"
     assert len(session.index_calls) == 2, "one index call per host, both hosts"
+
+
+def test_urls_that_sanitise_to_one_name_still_get_separate_files(tmp_path):
+    """`safe_filename_segment(collapse=True)` is not injective: `?id=101&lang=en`
+    and `?id=101_lang=en` both fold to one name. The second write replaced the
+    first while both rows said `ok`, so the first row's digest described bytes
+    that were gone."""
+    a = "https://a.gov.in/get?id=101&lang=en"
+    b = "https://a.gov.in/get?id=101_lang=en"
+    session = FakeSession(
+        cdx=cdx((a, "20220121062121", "200", "3000"), (b, "20220121062121", "200", "3000")),
+        replay={"20220121062121": pdf(3000)},
+    )
+    rows = list(wr.recover(tmp_path, urls=[a, b], session=session, sleep_fn=no_sleep))
+    assert rows[0]["local_file"] != rows[1]["local_file"]
+    assert len(list((tmp_path / "recovered").iterdir())) == 2

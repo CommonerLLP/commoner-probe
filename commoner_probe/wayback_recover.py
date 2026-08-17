@@ -484,10 +484,14 @@ def _dest_name(url: str) -> str:
     if parts.query:
         path = f"{path}_{parts.query}"
     name = safe_filename_segment(path, collapse=True)
-    if len(name) > MAX_NAME_LEN:
-        digest = hashlib.sha256(url.encode("utf-8")).hexdigest()[:12]
-        name = f"{name[: MAX_NAME_LEN - 13]}-{digest}"
-    return name
+    # The digest is UNCONDITIONAL, because sanitising is not injective: `?id=101
+    # &lang=en` and `?id=101_lang=en` both collapse to one name. The second write
+    # replaced the first while both rows said `ok`, so the first row's digest
+    # described bytes that were no longer there. A readable name is worth having;
+    # a unique one is required.
+    digest = hashlib.sha256(url.encode("utf-8")).hexdigest()[:12]
+    stem = name[: MAX_NAME_LEN - len(digest) - 1]
+    return f"{stem}-{digest}"
 
 
 def _write_atomic(dest: Path, body: bytes) -> None:
