@@ -25,6 +25,10 @@ from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
+#: Sentinel for "the iterator yielded nothing", so a legitimately falsey first
+#: item is not mistaken for an empty result.
+_NOTHING = object()
+
 
 class PartialCoverage(RuntimeError):
     """A column map and the source disagree about which columns exist."""
@@ -232,7 +236,11 @@ def assert_finds(
     try:
         found = query(control)
         if found is not None and not hasattr(found, "__len__") and hasattr(found, "__iter__"):
-            found = list(found)
+            # ONE yielded item settles the control, so only one is pulled.
+            # Materialising the stream hangs on an unbounded generator, and pulls a
+            # whole corpus on a large one, to learn what the first row already said.
+            first = next(iter(found), _NOTHING)
+            found = [] if first is _NOTHING else [first]
     except Exception as exc:  # noqa: BLE001 - a broken query is a failed control
         raise ControlFailed(
             f"the positive control {control!r}{where} raised "

@@ -191,3 +191,21 @@ class TestAPositiveControlPrecedesAnyClaimOfAbsence:
         """A count of zero rows is empty. A returned object that is merely
         falsey — an empty string in a single cell — is still a response."""
         assert_finds(lambda q: {"rows": 0}, "GO 84")
+
+    def test_an_unbounded_generator_is_not_exhausted(self):
+        """One yielded item passes the control. Materialising the whole stream
+        would hang the guard, or pull a corpus, to learn what the first row
+        already said."""
+        pulled = []
+
+        def _endless(q):
+            def rows():
+                n = 0
+                while True:
+                    pulled.append(n)
+                    yield n
+                    n += 1
+            return rows()
+
+        assert_finds(_endless, "GO 84")
+        assert len(pulled) == 1, f"pulled {len(pulled)} items to check one"
