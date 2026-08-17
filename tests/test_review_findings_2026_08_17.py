@@ -212,3 +212,22 @@ class TestTheSessionContract:
         first = c.session
         c.reset()
         assert c.session is not first
+
+
+def test_a_falsey_injected_session_is_still_used():
+    """`session or factory()` discarded any session object whose truthiness is
+    false. A session with `__len__` is ordinary; silently replacing it hands
+    the caller a client they did not build."""
+    class _Falsey:
+        def __len__(self):
+            return 0
+
+        def get(self, url, **kw):
+            class R:
+                content = b""
+            return R()
+
+    mine = _Falsey()
+    c = aspnet_cascade.CascadeCrawler("https://x.gov.in/r.aspx",
+                                      {"a": "ctl00$a"}, session=mine)
+    assert c.session is mine

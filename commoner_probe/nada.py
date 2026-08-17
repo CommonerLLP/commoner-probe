@@ -106,7 +106,7 @@ class NadaClient:
         self.base_url = base_url.rstrip("/")
         self.api = f"{self.base_url}/index.php/api/catalog"
         self.pages = f"{self.base_url}/index.php/catalog"
-        self.session = session or make_session()
+        self.session = session if session is not None else make_session()
         self.sleep = sleep
 
     def _get_json(self, url: str, params: dict | None = None) -> dict:

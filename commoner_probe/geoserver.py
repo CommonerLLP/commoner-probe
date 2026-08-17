@@ -118,7 +118,7 @@ def wfs_status(base: str, *, session: Any = None, timeout: int = 60) -> dict[str
     module: it returns real geometry for every feature type, including the lines
     and polygons that WMS extraction cannot honestly recover.
     """
-    sess = session or make_session()
+    sess = session if session is not None else make_session()
     out: dict[str, Any] = {"enabled": False, "versions": {}, "message": None}
     for version in ("2.0.0", "1.1.0", "1.0.0"):
         url = f"{base.rstrip('/')}/wfs?" + urlencode(
@@ -195,7 +195,7 @@ class GeoServer:
     _stats: dict[str, int] = field(default_factory=lambda: {"requests": 0, "capped": 0})
 
     def __post_init__(self) -> None:
-        self.session = self.session or make_session()
+        self.session = self.session if self.session is not None else make_session()
         self.base = self.base.rstrip("/")
 
     # ---------------------------------------------------------------- discovery

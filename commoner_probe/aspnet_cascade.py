@@ -74,7 +74,10 @@ class CascadeCrawler:
             None if session is not None
             else lambda: make_session(rate_limit_sec=rate_limit_sec,
                                       user_agent=user_agent))
-        self.session = session or self._factory()
+        # `session is not None`, never truthiness. A session object that
+        # defines __len__ or __bool__ can be falsey, and `or` would discard the
+        # caller's object and build another one in silence.
+        self.session = session if session is not None else self._factory()
         self._selected: dict[str, str] = {}
         self.page = self._get()
 
@@ -136,8 +139,15 @@ class CascadeCrawler:
 
         The stale state lives in the session cookie, so refetching with the
         SAME session returns the same HTTP 500 and the crawl never recovers.
-        A session the caller injected is kept: replacing it would discard an
-        authentication this class did not create.
+
+        WHICH session survives, in full:
+
+        * a `session_factory` was given — the factory builds a new session,
+          including when a `session` was injected beside it. Supplying a
+          factory is the instruction for how to rebuild.
+        * a `session` alone — it is kept. Replacing it would discard an
+          authentication this class did not create.
+        * neither — the default client is rebuilt.
         """
         self._selected.clear()
         if self._factory is not None:
