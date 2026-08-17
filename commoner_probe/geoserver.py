@@ -347,7 +347,13 @@ class GeoServer:
         # per axis, because a box can be wide and short.
         step_x = min(start_span, east - west) / 2
         step_y = min(start_span, north - south) / 2
-        shifted = (west + step_x, south + step_y, east + step_x, north + step_y)
+        # Shift the grid ORIGIN backwards, not the whole box forwards. Moving
+        # the box east and north offsets the cell boundaries, but it also
+        # leaves the western and southern strips of the region with no second
+        # pass at all — and saturation is claimed for the WHOLE region. Starting
+        # half a cell before the region keeps the offset and covers every part
+        # of it.
+        shifted = (west - step_x, south - step_y, east, north)
         status: dict = {}
         got = self.sweep(layer, shifted, start_span=start_span, key=key, status=status)
         new = set(got) - known

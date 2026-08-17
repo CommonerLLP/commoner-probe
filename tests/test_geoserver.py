@@ -186,8 +186,10 @@ def test_the_offset_grid_shifts_by_one_cell_not_by_the_whole_region():
     gs.verify("ws:layer", (76.0, 12.0, 80.0, 16.0), known=[], start_span=2.0, key="code")
     wests = sorted(float(unquote(re.search(r"bbox=([^&]+)", u, re.I).group(1)).split(",")[0])
                    for u in sess.urls)
-    assert wests[0] == 77.0, f"expected a one-cell shift to 77.0, got {wests[0]}"
-    assert wests[-1] == 79.0, f"the grid must not run past one cell beyond the box: {wests}"
+    # Half a cell (1.0), not half the region (2.0), and BACKWARDS so the
+    # western strip of the region still gets a second pass.
+    assert wests[0] == 75.0, f"expected a half-cell shift to 75.0, got {wests[0]}"
+    assert 76.0 not in wests, "an unshifted grid re-asks the first pass's questions"
 
 
 def test_saturation_is_refused_when_a_verification_tile_failed():
@@ -224,3 +226,24 @@ def test_the_offset_grid_still_overlaps_a_box_smaller_than_one_cell():
     assert boxes, "the verification pass made no request"
     overlaps = [b for b in boxes if b[0] < 77.0 and b[2] > 76.0 and b[1] < 13.0 and b[3] > 12.0]
     assert overlaps, f"no verification tile overlaps the original box: {boxes}"
+
+
+def test_every_part_of_the_box_gets_a_verification_tile():
+    """Saturation is claimed for the WHOLE region, so the second pass must
+    cover the whole region. Shifting east and north left the western and
+    southern strips untested, and a first-pass miss there was never examined."""
+    import re
+    from urllib.parse import unquote
+
+    sess = _Session([])
+    gs = GeoServer("http://x/geoserver", session=sess)
+    gs.verify("ws:layer", (76.0, 12.0, 80.0, 16.0), known=[], start_span=2.0, key="code")
+    boxes = [[float(x) for x in unquote(re.search(r"bbox=([^&]+)", u, re.I).group(1)).split(",")]
+             for u in sess.urls]
+
+    def covered(lon, lat):
+        return any(b[0] <= lon <= b[2] and b[1] <= lat <= b[3] for b in boxes)
+
+    for lon, lat in ((76.01, 12.01), (76.01, 15.99), (79.99, 12.01), (79.99, 15.99),
+                     (78.0, 14.0)):
+        assert covered(lon, lat), f"({lon},{lat}) is in the box and no tile covers it"
