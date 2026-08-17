@@ -57,9 +57,16 @@ class CascadeCrawler:
         mode 10 in `aspnet`. Overriding it is a deliberate act, so there is no
         default: a caller decides, and records the decision where it is made.
 
-        `session_factory` builds a REPLACEMENT session on reseat. An injected
-        `session` is never replaced, because a caller's authenticated session
-        is not this class's to discard.
+        `session_factory` builds a REPLACEMENT session on reseat, and passing
+        one is the caller SAYING that a rebuild is theirs to define. So it wins
+        whenever it is given, including alongside an injected `session`: a
+        caller whose session carries a login supplies a factory that can
+        re-establish it.
+
+        With a `session` and NO factory, the session is never replaced. This
+        class did not build that session, and discarding a caller's
+        authentication is not its call. A crawl in that state cannot recover
+        from an expired session, and that is the caller's trade to make.
         """
         self.report_url = report_url
         self.controls = controls

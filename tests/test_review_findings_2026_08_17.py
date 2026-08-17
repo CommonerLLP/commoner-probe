@@ -166,3 +166,49 @@ def test_a_lower_cased_content_type_is_not_duplicated(monkeypatch):
                respect_robots=False)
     types = [v for k, v in sent["headers"].items() if k.lower() == "content-type"]
     assert types == ["application/vnd.api+json"], types
+
+
+class TestTheSessionContract:
+    """Three combinations, three documented behaviours. The middle one was
+    contradicted by the docstring until review caught it."""
+
+    class _Sess:
+        def __init__(self, tag="x"):
+            self.tag = tag
+
+        def get(self, url, **kw):
+            class R:
+                content = b""
+            return R()
+
+    def _crawler(self, **kw):
+        return aspnet_cascade.CascadeCrawler("https://x.gov.in/r.aspx",
+                                             {"a": "ctl00$a"}, **kw)
+
+    def test_a_session_alone_is_never_replaced(self):
+        mine = self._Sess("mine")
+        c = self._crawler(session=mine)
+        c.reset()
+        assert c.session is mine
+
+    def test_a_factory_beside_a_session_wins_on_reseat(self):
+        """Passing a factory IS the instruction to rebuild. A caller whose
+        session carries a login supplies a factory that re-establishes it."""
+        built = []
+
+        def factory():
+            s = TestTheSessionContract._Sess("rebuilt")
+            built.append(s)
+            return s
+
+        mine = self._Sess("mine")
+        c = self._crawler(session=mine, session_factory=factory)
+        assert c.session is mine, "the injected session is used until a reseat"
+        c.reset()
+        assert c.session is built[-1]
+
+    def test_the_default_client_is_rebuilt(self):
+        c = self._crawler(session_factory=lambda: TestTheSessionContract._Sess())
+        first = c.session
+        c.reset()
+        assert c.session is not first
