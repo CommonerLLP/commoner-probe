@@ -278,3 +278,27 @@ def test_a_feature_with_no_geometry_is_kept_and_counted_as_unlocatable():
                     start_span=2.0, key="code")
     assert out["unlocatable"] >= 1
     assert "X" in out["new_ids"]
+
+
+def test_a_multipoint_feature_is_placed_like_a_point():
+    """A point layer can serve MultiPoint. Treating it as unplaceable let an
+    out-of-region feature count as a first-pass miss."""
+    from commoner_probe.geoserver import _point_in
+
+    bbox = (76.0, 12.0, 80.0, 16.0)
+    inside = {"geometry": {"type": "MultiPoint", "coordinates": [[78.0, 14.0]]}}
+    outside = {"geometry": {"type": "MultiPoint", "coordinates": [[75.5, 11.5]]}}
+    straddling = {"geometry": {"type": "MultiPoint",
+                               "coordinates": [[75.5, 11.5], [78.0, 14.0]]}}
+    assert _point_in(inside, bbox) is True
+    assert _point_in(outside, bbox) is False
+    assert _point_in(straddling, bbox) is True, "one point inside makes it ours"
+
+
+def test_an_unknown_geometry_is_still_unplaceable():
+    """A polygon cannot be hit-tested into this answer. It stays unlocatable,
+    which is counted and reported rather than guessed."""
+    from commoner_probe.geoserver import _point_in
+
+    poly = {"geometry": {"type": "Polygon", "coordinates": [[[76.0, 12.0]]]}}
+    assert _point_in(poly, (76.0, 12.0, 80.0, 16.0)) is None

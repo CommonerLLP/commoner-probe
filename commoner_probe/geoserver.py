@@ -192,13 +192,31 @@ def _point_in(feature: dict, bbox: Sequence[float]) -> bool | None:
     """
     geom = (feature or {}).get("geometry") or {}
     coords = geom.get("coordinates")
-    if geom.get("type") != "Point" or not isinstance(coords, (list, tuple)) or len(coords) < 2:
+    kind = geom.get("type")
+    # A point layer serves MultiPoint as readily as Point, and treating that as
+    # unplaceable let an out-of-region feature count as a first-pass miss. Any
+    # other geometry stays unplaceable: a polygon has no single answer here, and
+    # guessing one would be the invented geometry this module refuses.
+    if kind == "Point":
+        points = [coords]
+    elif kind == "MultiPoint" and isinstance(coords, (list, tuple)):
+        points = list(coords)
+    else:
         return None
-    lon, lat = coords[0], coords[1]
-    try:
-        return bbox[0] <= float(lon) <= bbox[2] and bbox[1] <= float(lat) <= bbox[3]
-    except (TypeError, ValueError):
-        return None
+
+    placed = False
+    for point in points:
+        if not isinstance(point, (list, tuple)) or len(point) < 2:
+            continue
+        try:
+            lon, lat = float(point[0]), float(point[1])
+        except (TypeError, ValueError):
+            continue
+        placed = True
+        # One point inside makes the feature this region's.
+        if bbox[0] <= lon <= bbox[2] and bbox[1] <= lat <= bbox[3]:
+            return True
+    return False if placed else None
 
 
 @dataclass
