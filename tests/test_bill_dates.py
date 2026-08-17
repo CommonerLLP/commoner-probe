@@ -64,7 +64,14 @@ class TestAnUnreadableValueRaises:
         assert _date(None) is None
         assert _date("") is None
         assert _date("   ") is None
-        assert _date(20251216) is None
+
+    def test_a_non_string_value_raises(self):
+        """An epoch number under a date field is a shape change in the source.
+        Reading it as an absent date reports "this bill was never assented"."""
+        with pytest.raises(UnreadableDate):
+            _date(20251216)
+        with pytest.raises(UnreadableDate):
+            _date({"date": "2025-12-16"})
 
 
 class TestTheRecordThatCarriesBoth:
@@ -114,3 +121,50 @@ class TestOneBadDateDoesNotZeroTheHouse:
         assert "parse_error" in statuses
         bad_row = next(r for r in rows if r.get("fetch_status") == "parse_error")
         assert "last Tuesday" in (bad_row.get("error") or "")
+
+    def test_two_bad_records_are_two_rows(self, tmp_path):
+        """Both used to be written under `BILL|ls|_parse_error`, so a
+        key-indexed consumer saw one failure where there are two."""
+        first = {"billNumber": "7", "billYear": "2025",
+                 "billAssentedDate": "last Tuesday"}
+        second = {"billNumber": "8", "billYear": "2025",
+                  "billAssentedDate": "6 August 2026"}
+        rows = self._probe(tmp_path, [first, second]).probe()
+        failed = [r for r in rows if r.get("fetch_status") == "parse_error"]
+        assert len({r["key"] for r in failed}) == 2, failed
+
+
+class TestTheFixReachesTheRecordsAlreadyOnDisk:
+    """The changelog tells the operator to re-run the probe over the same
+    directory. A key-only resume made that instruction do nothing: every bill
+    was already `seen`, so the wrong dates stayed and the run looked clean."""
+
+    def _probe(self, tmp_path, records):
+        from commoner_probe.bill_catalog_api import BillsProbe
+
+        probe = BillsProbe(tmp_path / "out", sleep=0, houses=["ls"])
+        probe.bills_all = lambda house: iter(records)
+        return probe
+
+    def test_a_corrected_record_is_written_again(self, tmp_path):
+        import json
+
+        raw = {"billNumber": "9", "billYear": "2025", "billName": "A Bill",
+               "billAssentedDate": "20/12/2025"}
+        legacy = self._probe(tmp_path, [raw])._record(raw, "ls")
+        legacy["assent_date"] = "20/12/2025"          # what the old reader wrote
+        self._probe(tmp_path, [raw]).append_manifest(legacy)
+
+        rows = self._probe(tmp_path, [raw]).probe()
+        assert [r["assent_date"] for r in rows] == ["2025-12-20"]
+
+        written = [json.loads(x) for x in
+                   (tmp_path / "out" / "manifest.jsonl").read_text().splitlines()]
+        assert written[-1]["assent_date"] == "2025-12-20"
+
+    def test_an_unchanged_record_is_not_written_again(self, tmp_path):
+        raw = {"billNumber": "9", "billYear": "2025", "billName": "A Bill",
+               "billAssentedDate": "20/12/2025"}
+        self._probe(tmp_path, [raw]).probe()
+        again = self._probe(tmp_path, [raw]).probe()
+        assert again == [], "a second run must not re-append what it already holds"

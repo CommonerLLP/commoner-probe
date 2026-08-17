@@ -86,7 +86,14 @@ def _date(value: object) -> str | None:
     truncated string is never returned: a shape nobody has seen must stop the
     run, not enter the record looking like every other date.
     """
-    if not isinstance(value, str) or not value.strip():
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise UnreadableDate(
+            f"{value!r} is a {type(value).__name__}, and every date this endpoint "
+            "has ever served is a string. A number here is a shape change in the "
+            "source; reading it as an absent date hides that.")
+    if not value.strip():
         return None
     text = value.strip()
     for fmt in _DATE_FORMATS:
@@ -99,6 +106,19 @@ def _date(value: object) -> str | None:
         f"({', '.join(_DATE_FORMATS)}). It is not being truncated into the record: "
         "a field named for ISO that is not ISO compares against ISO bounds and "
         "matches nothing, with no error.")
+
+
+#: Fields that differ between two runs of an unchanged record, and so cannot
+#: take part in "have I already got this?".
+_VOLATILE = ("fetched_at", "probed_at")
+
+
+def _fingerprint(record: dict) -> str:
+    """A digest of what a record asserts, ignoring when it was fetched."""
+    body = {k: v for k, v in record.items() if k not in _VOLATILE}
+    return hashlib.sha1(
+        json.dumps(body, sort_keys=True, ensure_ascii=False).encode("utf-8")
+    ).hexdigest()[:12]
 
 
 def bill_key(house: str, raw: dict) -> str:
@@ -134,8 +154,16 @@ class BillsProbe:
         self.manifest = out_dir / "manifest.jsonl"
         self.session = make_session()
 
-    def load_seen(self) -> set[str]:
-        seen: set[str] = set()
+    def load_seen(self) -> dict[str, str]:
+        """Every key already on disk, mapped to the content it was written with.
+
+        Key alone is not enough. A reader fix changes what a record SAYS while
+        its key stays the same, so a key-only resume declares the corrected
+        record already held and leaves the wrong value on disk. That is how the
+        `DD/MM/YYYY` assent dates would have survived their own fix: the run
+        that repairs them re-fetches the same bills under the same keys.
+        """
+        seen: dict[str, str] = {}
         if not self.manifest.exists():
             return seen
         with self.manifest.open(encoding="utf-8") as f:
@@ -145,7 +173,7 @@ class BillsProbe:
                 except json.JSONDecodeError:
                     continue
                 if rec.get("key"):
-                    seen.add(rec["key"])
+                    seen[rec["key"]] = _fingerprint(rec)
         return seen
 
     def append_manifest(self, record: dict) -> None:
@@ -227,10 +255,17 @@ class BillsProbe:
             "probed_at": now,
         }
 
-    def _status_record(self, house: str, *, fetch_status: str, error: str | None = None) -> dict:
+    def _status_record(self, house: str, *, fetch_status: str, error: str | None = None,
+                       key: str | None = None) -> dict:
+        """A row that stands in for a record this run could not produce.
+
+        `key` names the one bill a per-record failure belongs to. Without it two
+        unreadable bills in one house share `BILL|ls|_parse_error`, and a
+        key-indexed consumer collapses them into one failure.
+        """
         now = _now_iso()
         rec = {
-            "key": f"BILL|{house}|_{fetch_status}",
+            "key": key or f"BILL|{house}|_{fetch_status}",
             "kind": "bill_record",
             "record_type": "bill_record",
             "source": "sansad.in/api_rs/legislation/getBills",
@@ -263,15 +298,19 @@ class BillsProbe:
                         rec = self._record(raw, house)
                     except UnreadableDate as exc:
                         rec = self._status_record(
-                            house, fetch_status="parse_error", error=str(exc))
+                            house, fetch_status="parse_error", error=str(exc),
+                            key=bill_key(house, raw))
                         rec["bill_no"] = raw.get("billNumber")
                         rec["bill_year"] = raw.get("billYear")
+                        if seen.get(rec["key"]) == _fingerprint(rec):
+                            continue
+                        seen[rec["key"]] = _fingerprint(rec)
                         self.append_manifest(rec)
                         out.append(rec)
                         continue
-                    if rec["key"] in seen:
+                    if seen.get(rec["key"]) == _fingerprint(rec):
                         continue
-                    seen.add(rec["key"])
+                    seen[rec["key"]] = _fingerprint(rec)
                     self.append_manifest(rec)
                     out.append(rec)
                     added += 1

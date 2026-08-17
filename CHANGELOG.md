@@ -20,7 +20,21 @@ and an answer can be a different question's document.
   corruption. Nothing raised, no field was empty, and the run looked clean; an
   independent `actYear` count in the same record caught it. Every date field is
   now parsed and emitted as ISO, and a value matching no known format raises
-  `UnreadableDate` rather than entering the record truncated.
+  `UnreadableDate` rather than entering the record truncated. A non-string value
+  under a date field raises too: an epoch number read as an absent date reports
+  "never assented" for a bill that was.
+
+- **The re-run above now repairs the rows already on disk.** Resume compared keys
+  alone, so a second run over the same directory found every bill already held
+  and wrote nothing — the instruction to re-fetch would have left every wrong
+  date exactly where it was. `load_seen()` now maps each key to a digest of what
+  that record asserts, and a record whose content changed is written again. An
+  unchanged record still costs nothing.
+
+- **Two unreadable bills in one house were one row.** Every `parse_error` was
+  keyed `BILL|<house>|_parse_error`, so a key-indexed consumer collapsed
+  distinct failures into one. A parse failure now carries the failing bill's own
+  key, and clears when that bill later reads.
 
 - **One unreadable date no longer discards a whole house.** The crawl caught
   exceptions per house, so a single bad record would abort the walk and leave one
