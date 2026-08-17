@@ -221,10 +221,18 @@ def assert_finds(
 
     An exception is a failed control too. A query that cannot run has not
     established an absence either.
+
+    A LAZY result is consumed here. A generator has no length, so a size check
+    accepts it without ever asking whether it yields anything, and an empty one
+    would license the absence this call exists to block. A deferred request or a
+    parse error also surfaces at the first item rather than at the call, so the
+    first item is pulled inside the guard.
     """
     where = f" against {describe}" if describe else ""
     try:
         found = query(control)
+        if found is not None and not hasattr(found, "__len__") and hasattr(found, "__iter__"):
+            found = list(found)
     except Exception as exc:  # noqa: BLE001 - a broken query is a failed control
         raise ControlFailed(
             f"the positive control {control!r}{where} raised "

@@ -164,6 +164,29 @@ class TestAPositiveControlPrecedesAnyClaimOfAbsence:
         with pytest.raises(ControlFailed):
             assert_finds(lambda q: (_ for _ in ()).throw(RuntimeError("500")), "GO 84")
 
+    def test_an_empty_generator_does_not_pass_the_control(self):
+        """A lazy result has no length, so a size check accepts it without ever
+        asking whether it yields anything. An empty generator would license the
+        claim of absence the control exists to block."""
+        with pytest.raises(ControlFailed):
+            assert_finds(lambda q: (row for row in []), "GO 84")
+
+    def test_a_generator_that_raises_on_first_use_is_a_failed_control(self):
+        """A deferred request or a parse error surfaces at the first item, not at
+        the call, so a lazy query fails after the guard unless it is consumed
+        inside it."""
+        def _lazy(q):
+            def rows():
+                raise RuntimeError("500 on first page")
+                yield  # pragma: no cover - unreachable, marks this a generator
+            return rows()
+
+        with pytest.raises(ControlFailed):
+            assert_finds(_lazy, "GO 84")
+
+    def test_a_generator_that_yields_passes(self):
+        assert_finds(lambda q: (row for row in ["one"]), "GO 84")
+
     def test_a_falsey_but_present_result_counts_as_found(self):
         """A count of zero rows is empty. A returned object that is merely
         falsey — an empty string in a single cell — is still a response."""
