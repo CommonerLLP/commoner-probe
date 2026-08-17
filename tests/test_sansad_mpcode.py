@@ -22,7 +22,7 @@ import json
 import pytest
 
 from commoner_probe.cli import build_parser
-from commoner_probe.sansad import SansadProbe
+from commoner_probe.parliament_qa_api import SansadProbe
 
 
 class FakeResponse:

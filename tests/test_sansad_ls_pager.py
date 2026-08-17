@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import pytest
 
-from commoner_probe.sansad import SansadProbe
+from commoner_probe.parliament_qa_api import SansadProbe
 
 TOTAL_RECORD_SIZE = 1000
 PAGE_SIZE = 100

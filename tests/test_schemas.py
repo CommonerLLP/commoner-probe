@@ -485,7 +485,7 @@ def test_probed_committee_records_validate():
     """Drive the committee crawler in-memory and validate each record."""
     import json as _json
 
-    from commoner_probe.committees import CommitteeProbe
+    from commoner_probe.committee_report_api import CommitteeProbe
     from commoner_probe.topics import load_topic
 
     FIXTURE_DIR = ROOT / "examples" / "corpora" / "committees-smoke"

@@ -172,7 +172,7 @@ class TestNevaOcrWiring:
         return tmp_path
 
     def _run(self, monkeypatch, tmp_path, *, layer_text, ocr_text):
-        from commoner_probe import neva_text as mod
+        from commoner_probe import two_column_pdf_qa as mod
 
         monkeypatch.setattr("commoner_probe.textparse.extract_pdf_text", lambda p: layer_text)
         monkeypatch.setattr(
@@ -220,7 +220,7 @@ class TestNevaOcrWiring:
         """OCR costs a second a page; a document that already passes skips it."""
         calls = []
 
-        from commoner_probe import neva_text as mod
+        from commoner_probe import two_column_pdf_qa as mod
 
         monkeypatch.setattr(
             "commoner_probe.textparse.extract_pdf_text",
@@ -240,7 +240,7 @@ class TestNevaOcrWiring:
         assert self._records(tmp_path)[0]["text_source"] == "text_layer"
 
     def test_missing_toolchain_fails_up_front_not_per_document(self, monkeypatch, tmp_path):
-        from commoner_probe import neva_text as mod
+        from commoner_probe import two_column_pdf_qa as mod
         from commoner_probe.textparse import OcrUnavailable
 
         monkeypatch.setattr("commoner_probe.textparse.ocr_toolchain_missing", lambda: ["tesseract"])
@@ -332,7 +332,7 @@ class TestNevaOcrWiring:
         assert rec["text_source"] == "text_layer"
 
     def test_ocr_is_off_by_default(self, monkeypatch, tmp_path):
-        from commoner_probe import neva_text as mod
+        from commoner_probe import two_column_pdf_qa as mod
 
         monkeypatch.setattr(
             "commoner_probe.textparse.extract_pdf_text",

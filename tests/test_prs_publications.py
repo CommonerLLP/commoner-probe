@@ -23,7 +23,7 @@ import json
 
 import pytest
 
-from commoner_probe.prs import PrsProbe, parse_publications
+from commoner_probe.drupal_publication_index import PrsProbe, parse_publications
 
 
 def _row(slug: str, title: str, pdf: str | None, *, path: str = "policy/report-summaries") -> str:

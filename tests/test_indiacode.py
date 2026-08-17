@@ -1,4 +1,4 @@
-"""Offline unit tests for commoner_probe.indiacode.
+"""Offline unit tests for commoner_probe.statute_dspace.
 
 Fixtures reproduce the exact quirks observed on live indiacode.nic.in pages
 (verified 2026-07 against the West Bengal Public Libraries Act, 1979,
@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import json
 
-from commoner_probe.indiacode import (
+from commoner_probe.statute_dspace import (
     STATE_HANDLES,
     IndiaCodeProbe,
     parse_act_metadata,

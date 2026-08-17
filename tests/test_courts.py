@@ -23,7 +23,7 @@ import pytest
 
 from commoner_probe import corpus as corpus_mod
 from commoner_probe import validate as validate_mod
-from commoner_probe.courts import (
+from commoner_probe.case_law_api import (
     ECOURTS_CMD_ENV,
     IK_TOKEN_ENV,
     CourtProbe,

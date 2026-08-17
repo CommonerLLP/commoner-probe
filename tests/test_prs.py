@@ -3,7 +3,11 @@ from __future__ import annotations
 import hashlib
 import json
 
-from commoner_probe.prs import PrsProbe, parse_mptrack_csv, parse_mptrack_download
+from commoner_probe.drupal_publication_index import (
+    PrsProbe,
+    parse_mptrack_csv,
+    parse_mptrack_download,
+)
 
 PAGE_HTML = """
 <a onclick="window.open('/mptrack/download?file_path=files/mptrack/17-lok-sabha/Mp-Track/17 LS MP Track.csv', '_blank').focus();" id="mptrack-expor-link">Download Data</a>
@@ -66,7 +70,7 @@ def test_crawl_delay_paces_page_then_csv(tmp_path, monkeypatch):
 
     session.get = logging_get
     probe.session = session
-    monkeypatch.setattr("commoner_probe.prs.time.sleep", lambda s: events.append(f"sleep:{s}"))
+    monkeypatch.setattr("commoner_probe.drupal_publication_index.time.sleep", lambda s: events.append(f"sleep:{s}"))
 
     probe.probe_mptrack(houses=["ls"], loksabhas=[17], download=True)
 

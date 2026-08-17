@@ -1,11 +1,11 @@
-"""Offline unit tests for commoner_probe.neva (StateAssemblyCrawler).
+"""Offline unit tests for commoner_probe.assembly_portal (StateAssemblyCrawler).
 
 All tests use frozen HTML/data fixtures — no network calls.
 """
 
 from __future__ import annotations
 
-from commoner_probe.neva import (
+from commoner_probe.assembly_portal import (
     StateAssemblyCrawler,
     _collect_pdf_hrefs,
     _parse_members_html,
@@ -220,25 +220,25 @@ class TestProbeDepth:
 
 class TestNevaPortalsRegistry:
     def test_31_assemblies_6_councils(self):
-        from commoner_probe.neva_portals import ASSEMBLIES, COUNCILS
+        from commoner_probe.assembly_portal_registry import ASSEMBLIES, COUNCILS
 
         assert len(ASSEMBLIES) == 31
         assert len(COUNCILS) == 6
 
     def test_portal_codes_unique(self):
-        from commoner_probe.neva_portals import ALL_PORTALS
+        from commoner_probe.assembly_portal_registry import ALL_PORTALS
 
         codes = [p.portal_code for p in ALL_PORTALS]
         assert len(codes) == len(set(codes))
 
     def test_council_states_are_bicameral(self):
-        from commoner_probe.neva_portals import COUNCILS
+        from commoner_probe.assembly_portal_registry import COUNCILS
 
         council_states = {p.state_code for p in COUNCILS}
         assert council_states == {"AP", "BR", "KA", "MH", "TG", "UP"}
 
     def test_get_portal(self):
-        from commoner_probe.neva_portals import get_portal
+        from commoner_probe.assembly_portal_registry import get_portal
 
         p = get_portal("gujarat")
         assert p is not None
@@ -247,7 +247,7 @@ class TestNevaPortalsRegistry:
         assert get_portal("nonexistent") is None
 
     def test_iter_portals_filters_by_chamber(self):
-        from commoner_probe.neva_portals import iter_portals
+        from commoner_probe.assembly_portal_registry import iter_portals
 
         assert all(p.chamber == "council" for p in iter_portals(chamber="council"))
         assert len(iter_portals(chamber=None)) == 37

@@ -10,7 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 
-from commoner_probe.doe import DoePayAllowancesProbe
+from commoner_probe.pay_report_index import DoePayAllowancesProbe
 
 LISTING_HTML = """
 <html><body>
@@ -90,7 +90,7 @@ def test_parse_listing_enumerates_years_and_titles(tmp_path):
 
 def test_probe_downloads_with_provenance_and_text_layer(tmp_path, monkeypatch):
     from commoner_probe import base as base_mod
-    from commoner_probe import doe as doe_mod  # noqa: F401
+    from commoner_probe import pay_report_index as doe_mod  # noqa: F401
     monkeypatch.setattr(
         base_mod, "extract_pdf_text",
         lambda p: "extracted text " * 50 if "202324" in str(p) else "",

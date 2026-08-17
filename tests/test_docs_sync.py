@@ -199,7 +199,7 @@ class CliErrorHandlingTests(unittest.TestCase):
         return raised.exception.code, err.getvalue()
 
     def test_a_domain_error_is_a_message_and_an_exit_code(self):
-        from commoner_probe.census import CensusApiError
+        from commoner_probe.ogd_resource_api import CensusApiError
 
         code, err = self._run(["census"], CensusApiError("refusing the shared sample key"))
         self.assertEqual(code, 1)
@@ -218,7 +218,7 @@ class CliErrorHandlingTests(unittest.TestCase):
 
     def test_traceback_flag_opts_back_in(self):
         from commoner_probe import cli as cli_mod
-        from commoner_probe.census import CensusApiError
+        from commoner_probe.ogd_resource_api import CensusApiError
 
         with patch("sys.argv", ["commoner-probe", "census", "--traceback"]), \
              patch.object(cli_mod, "build_parser") as bp:

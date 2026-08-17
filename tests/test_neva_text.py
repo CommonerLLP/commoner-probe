@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pytest
 
-from commoner_probe.neva_text import (
+from commoner_probe.two_column_pdf_qa import (
     GUJARAT_DISTRICTS,
     NevaQaExtraction,
     derive_glyph_repair,
@@ -320,7 +320,7 @@ class TestExtractionResumes:
         return [json.loads(x) for x in text.splitlines() if x.strip()]
 
     def test_an_interrupted_run_keeps_its_records_and_resumes(self, monkeypatch, tmp_path):
-        from commoner_probe import neva_text as mod
+        from commoner_probe import two_column_pdf_qa as mod
 
         corpus = self._corpus(tmp_path, n=4)
         seen: list[str] = []
@@ -360,7 +360,7 @@ class TestExtractionResumes:
         assert not (corpus / "answers.jsonl.partial").exists()
 
     def test_a_completed_run_leaves_no_partial_or_progress_file(self, monkeypatch, tmp_path):
-        from commoner_probe import neva_text as mod
+        from commoner_probe import two_column_pdf_qa as mod
 
         monkeypatch.setattr(
             "commoner_probe.textparse.extract_pdf_text",
@@ -376,7 +376,7 @@ class TestExtractionResumes:
     def test_a_stale_partial_without_progress_is_not_appended_to(self, monkeypatch, tmp_path):
         """No progress file means no run to resume — whatever left that .partial
         behind, its rows are not this corpus's and must not be adopted."""
-        from commoner_probe import neva_text as mod
+        from commoner_probe import two_column_pdf_qa as mod
 
         monkeypatch.setattr(
             "commoner_probe.textparse.extract_pdf_text",
@@ -394,7 +394,7 @@ class TestExtractionResumes:
 
     def test_records_land_on_disk_as_they_are_produced(self, monkeypatch, tmp_path):
         """The property the whole change exists for: nothing waits for the end."""
-        from commoner_probe import neva_text as mod
+        from commoner_probe import two_column_pdf_qa as mod
 
         corpus = self._corpus(tmp_path, n=3)
         depths: list[int] = []
@@ -419,7 +419,7 @@ class TestExtractionResumes:
         every checkpointed key, and replace the good `answers.jsonl` with that
         empty file — destroying the whole extraction.
         """
-        from commoner_probe import neva_text as mod
+        from commoner_probe import two_column_pdf_qa as mod
 
         monkeypatch.setattr(
             "commoner_probe.textparse.extract_pdf_text",
@@ -442,7 +442,7 @@ class TestExtractionResumes:
         """An interruption between a record write and its checkpoint left the
         record in the partial with its key absent, so the resume reprocessed the
         document and appended it twice (Codex, PR #90)."""
-        from commoner_probe import neva_text as mod
+        from commoner_probe import two_column_pdf_qa as mod
 
         corpus = self._corpus(tmp_path, n=3)
         seen: list[str] = []
@@ -478,7 +478,7 @@ class TestExtractionResumes:
         partial and not the other (Codex, PR #93). Resuming on the survivor
         skipped every completed key and published an empty rows file over the
         real district rows."""
-        from commoner_probe import neva_text as mod
+        from commoner_probe import two_column_pdf_qa as mod
 
         corpus = self._corpus(tmp_path, n=3)
         seen: list[str] = []
@@ -506,7 +506,7 @@ class TestExtractionResumes:
     def test_a_torn_checkpoint_line_is_ignored_not_trusted(self, monkeypatch, tmp_path):
         """A process killed mid-write leaves a partial offset. Trusting it either
         raises forever or truncates through an earlier record (Codex, PR #93)."""
-        from commoner_probe import neva_text as mod
+        from commoner_probe import two_column_pdf_qa as mod
 
         corpus = self._corpus(tmp_path, n=3)
         seen: list[str] = []
@@ -541,7 +541,7 @@ class TestExtractionResumes:
         untouched when none survives was not — the run appended from there and
         duplicated the first document in the published corpus.
         """
-        from commoner_probe import neva_text as mod
+        from commoner_probe import two_column_pdf_qa as mod
 
         corpus = self._corpus(tmp_path, n=2)
         (corpus / "answers.jsonl.partial").write_text(

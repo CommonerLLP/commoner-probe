@@ -22,7 +22,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from commoner_probe.base import BaseProbe
-from commoner_probe.sansad import SansadProbe
+from commoner_probe.parliament_qa_api import SansadProbe
 from commoner_probe.topics import TopicProfile
 
 GOOD_PDF = b"%PDF-1.4\n" + b"x" * 4000

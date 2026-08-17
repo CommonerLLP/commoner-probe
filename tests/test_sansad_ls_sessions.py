@@ -20,7 +20,7 @@ import json
 from pathlib import Path
 
 from commoner_probe.cli import build_parser
-from commoner_probe.sansad import SansadProbe
+from commoner_probe.parliament_qa_api import SansadProbe
 
 
 class FakeResponse:
@@ -309,13 +309,13 @@ def test_a_space_padded_month_parses(tmp_path):
     Eight rows of Lok Sabha 13 carry it. Unparsed, the raw string reached
     `stable_key` and produced `LS|U|5669|25. 4.2001` — a permanently broken key.
     """
-    from commoner_probe.sansad import SansadProbe
+    from commoner_probe.parliament_qa_api import SansadProbe
     assert SansadProbe._ls_portal_date("25. 4.2001") == "2001-04-25"
     assert SansadProbe._ls_portal_date("07. 3.2001") == "2001-03-07"
 
 
 def test_normal_dates_are_unaffected():
-    from commoner_probe.sansad import SansadProbe
+    from commoner_probe.parliament_qa_api import SansadProbe
     assert SansadProbe._ls_portal_date("12.08.2026") == "2026-08-12"
     assert SansadProbe._ls_portal_date("") == ""
 
@@ -324,7 +324,7 @@ def test_an_unreadable_date_stays_visibly_wrong():
     """Never guess a date. An unparseable value must not become a plausible one."""
     import re
 
-    from commoner_probe.sansad import SansadProbe
+    from commoner_probe.parliament_qa_api import SansadProbe
     for bad in ("not-a-date", "31.02.2001", "rubbish"):
         got = SansadProbe._ls_portal_date(bad)
         assert not re.fullmatch(r"\d{4}-\d{2}-\d{2}", got), (

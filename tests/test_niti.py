@@ -18,7 +18,7 @@ import json
 
 import pytest
 
-from commoner_probe.niti import NitiAnnualReportProbe, parse_listing
+from commoner_probe.annual_report_index import NitiAnnualReportProbe, parse_listing
 
 BASE = "/sites/default/files"
 
