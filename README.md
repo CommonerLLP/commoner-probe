@@ -326,7 +326,7 @@ commoner-probe academic-jobs \
 
 ## Commands
 
-36 subcommands across parliament, courts, budgets, census and archives.
+39 subcommands across parliament, courts, budgets, census, state registers and archives.
 `commoner-probe --help` lists them; **[docs/CLI.md](docs/CLI.md)** documents
 each one with a worked example.
 

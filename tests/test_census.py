@@ -402,6 +402,11 @@ def test_every_manifest_kind_this_package_emits_is_registered_with_validate():
             continue
         for m in re.finditer(r'"kind":\s*"([a-z0-9_]+)"', text):
             manifest_kinds.add(m.group(1))
+        # A kind held in a module constant escaped the literal search above, so
+        # `wayback_recovery` shipped unregistered and this guard passed. A check
+        # that only sees one spelling of the thing it guards is not a guard.
+        for m in re.finditer(r'^MANIFEST_KIND\s*=\s*"([a-z0-9_]+)"', text, re.MULTILINE):
+            manifest_kinds.add(m.group(1))
 
     # Kinds that live in their own artefact file, not in manifest.jsonl.
     per_file = {
