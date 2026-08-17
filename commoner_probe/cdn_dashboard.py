@@ -322,10 +322,15 @@ ALL_KINDS = tuple(PARSERS)
 def fetch(session: Any, year: int, month: int, place: Place, kind: str) -> dict | None:
     """One endpoint for one district-month. None when the period is absent.
 
-    A 403 here means "no object at this path", not "forbidden": the bucket
+    **Most 403s mean "no object at this path", not "forbidden."** The bucket
     denies listing, so a period that was never published and a path that is
-    wrong are the same response. Callers cannot distinguish them and should
-    not try.
+    wrong produce the same response. Callers cannot separate those two, and
+    should not try.
+
+    **One 403 is different, and it raises.** The edge refuses a client outside
+    the publisher's country, and names the country block in the body. Every
+    object answers that way from such a client, so returning None would turn a
+    blocked run into a clean empty dataset. That case raises `GeoFenced`.
 
     `respect_robots=False` is deliberate and narrow. The CDN host publishes NO
     robots.txt — the request returns S3 AccessDenied, and RobotFileParser turns
