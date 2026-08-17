@@ -25,6 +25,13 @@ plausible table, so none announces itself:
 The remedy for 1 is structural (anchor the header). The remedy for 2 and 3 is
 empirical — vary the filter and check the numbers move — which is why they are
 functions here rather than advice in a docstring.
+
+A fourth failure mode is not this module's to fix, and it is the most expensive:
+a column map that covers fewer columns than the source publishes. ``parse_grid``
+returns the header it discovered, so pass it to
+:func:`commoner_probe.invariants.require_full_coverage` with your map, before
+the run. Bihar's register offered ten reason columns to a map that named six,
+and the four it skipped were the revealing ones.
 """
 
 from __future__ import annotations
