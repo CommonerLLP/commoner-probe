@@ -91,7 +91,9 @@ class CheckpointCorrupt(RuntimeError):
 class Checkpoint:
     """What a checkpoint file on disk says, and how much of it is trustworthy."""
 
-    done: list[str] = field(default_factory=list)
+    #: The finished units as the file holds them, in their native JSON types. A
+    #: string unit reads back a string, an integer an integer.
+    done: list = field(default_factory=list)
     torn: bool = False
 
     @property
@@ -123,7 +125,7 @@ def load_checkpoint(path: Path | str) -> Checkpoint:
     torn = lines[-1] != ""
     complete = lines[:-1]
 
-    done: dict[str, None] = {}
+    done: dict[str, object] = {}
     for number, line in enumerate(complete, start=1):
         if not line.strip():
             continue
@@ -135,11 +137,11 @@ def load_checkpoint(path: Path | str) -> Checkpoint:
                 f"is corruption rather than a truncated write ({exc}); resuming from it "
                 "would drop a finished unit silently"
             ) from exc
-        # Keyed the same way `mark` keys it. `str(unit)` disagreed with the write
-        # path for every non-string unit, so a resumed run held keys no membership
-        # test could match.
-        done[unit_key(unit)] = None
-    return Checkpoint(done=list(done), torn=torn)
+        # Keyed the same way `mark` keys it, while the VALUE stays the unit the
+        # file holds. `str(unit)` disagreed with the write path for every
+        # non-string unit, so a resumed run held keys no membership test matched.
+        done[unit_key(unit)] = unit
+    return Checkpoint(done=list(done.values()), torn=torn)
 
 
 def unit_key(unit: object) -> str:
@@ -149,27 +151,37 @@ def unit_key(unit: object) -> str:
     the documented test was ``unit in run.done``, so a run over integer, tuple or
     Path units resumed, reported "resumed N finished unit(s)", and refetched every
     one of them — a clean-resume claim printed beside duplicated output.
+
+    Every unit is JSON-encoded, INCLUDING a string, so the type survives the key.
+    Returning a string unchanged collided it with the number of the same name: the
+    string ``"1"`` and the integer ``1`` both keyed to ``1``, and marking either
+    reported the other as finished and skipped its work in silence.
     """
-    return unit if isinstance(unit, str) else json.dumps(unit, sort_keys=True, default=str)
+    return json.dumps(unit, sort_keys=True, default=str)
 
 
 class _DoneKeys:
-    """Finished units, keyed by :func:`unit_key`, in the order they finished."""
+    """Finished units, keyed by :func:`unit_key`, in the order they finished.
 
-    def __init__(self, keys=()) -> None:
-        self._keys: dict[str, None] = dict.fromkeys(keys)
+    Iteration yields the UNITS, so the checkpoint file keeps them in their native
+    JSON types and stays readable. Membership keys them, so a string and the number
+    of the same name are two units.
+    """
+
+    def __init__(self, units=()) -> None:
+        self._units: dict[str, object] = {unit_key(u): u for u in units}
 
     def add(self, unit: object) -> None:
-        self._keys[unit_key(unit)] = None
+        self._units[unit_key(unit)] = unit
 
     def __contains__(self, unit: object) -> bool:
-        return unit_key(unit) in self._keys
+        return unit_key(unit) in self._units
 
     def __iter__(self):
-        return iter(self._keys)
+        return iter(self._units.values())
 
     def __len__(self) -> int:
-        return len(self._keys)
+        return len(self._units)
 
 
 class CheckpointedRun:

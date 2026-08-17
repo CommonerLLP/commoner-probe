@@ -531,3 +531,19 @@ def test_a_timestamp_containing_429_is_not_read_as_a_throttle():
     archive refused bytes it holds."""
     assert wr._is_throttle("ConnectionError: /web/20220429062121id_/x") is False
     assert wr._is_throttle("RuntimeError: HTTP 429 https://web.archive.org/x") is True
+
+
+def test_a_url_outside_the_named_host_is_still_indexed(tmp_path):
+    """With both --host and --url given, only the host was indexed while the URL
+    list stayed the target set, so a URL on another host came back `no-capture`
+    without its host ever being queried."""
+    other = "https://mospi.gov.in/files/report.pdf"
+    session = FakeSession(
+        cdx=cdx((BIG, "20220121062121", "200", "3000"),
+                (other, "20220121062121", "200", "4000")),
+        replay={"20220121062121": pdf(3000)},
+    )
+    rows = list(wr.recover(tmp_path, urls=[other], host=HOST, session=session,
+                           sleep_fn=no_sleep))
+    assert [r["status"] for r in rows] == ["ok"], "the other host must be indexed too"
+    assert len(session.index_calls) == 2, "one index call per host, both hosts"

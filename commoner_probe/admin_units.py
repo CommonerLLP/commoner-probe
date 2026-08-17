@@ -38,8 +38,12 @@ exactly like a correct one: a real code, a real name, the right state. So
 similarity for a label whose only evidence is a rejected row. It never falls
 through to the plausible neighbour.
 
-The quality flag also passes rows that carry no code at all: 15 of the unmatched
-rows have an empty ``pc11_district_id``, the Andaman islands among them. :attr:`DistrictIndex.crosswalk_rows_without_code` counts them, because a
+The quality flag also passes rows that carry no code at all. Measured 2026-08-17:
+**32 of the 782 rows have an empty ``pc11_district_id``** — 10 flagged exact, 4
+strong, 3 weak and 15 unmatched, the Andaman islands among them.
+:attr:`DistrictIndex.crosswalk_rows_without_code` counts every one of them,
+including the rejected ones, because a row that names a district and maps it
+nowhere reads like a successful merge. :attr:`DistrictIndex.crosswalk_rows_without_code` counts them, because a
 row that names a district and maps it nowhere reads like a successful merge.
 
 SECOND TRAP: ADMINISTRATIVE CODES ARE HISTORIC
@@ -429,6 +433,11 @@ def _read_crosswalk(path: Path, index: DistrictIndex) -> None:
             label = _cell(row, "udise_district")
             code = _code(_cell(row, "pc11_district_id"))
             quality = _cell(row, "quality").lower()
+            # Counted before the quality gate, because a row can be both rejected
+            # AND code-less: 15 of the unmatched rows carry no district id, and the
+            # gate's `continue` hid every one of them from this counter.
+            if not code:
+                index.crosswalk_rows_without_code += 1
             if quality not in ACCEPTED_CROSSWALK_QUALITY:
                 index.rejected_crosswalk_rows += 1
                 if label:
@@ -440,7 +449,6 @@ def _read_crosswalk(path: Path, index: DistrictIndex) -> None:
                     )
                 continue
             if not code:
-                index.crosswalk_rows_without_code += 1
                 continue
             district = index.districts.get(code)
             if district is None:

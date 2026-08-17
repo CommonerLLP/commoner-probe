@@ -320,3 +320,16 @@ def test_an_unparsable_shrid_row_is_counted(tmp_path):
                      encoding="utf-8")
     index = au.build(lgd, shrid_tab=shrid)
     assert index.dropped_shrid_rows == 1
+
+
+def test_a_rejected_row_with_no_code_is_counted_in_both_counters(tmp_path):
+    """The quality gate continued before the no-code check, so a rejected row that
+    also carried no district id never reached `crosswalk_rows_without_code` — and
+    the docstring cites that counter for the 15 no-code rows in the real file."""
+    index = au.DistrictIndex(districts={
+        "553": au.District("553", "Ananthapuramu", "28", {"ananthapuramu": "lgd"})})
+    au._read_crosswalk(
+        write_crosswalk(tmp_path, [("AN", "ANDAMANS", "", "", "", "0.29", "unmatched")]),
+        index)
+    assert index.rejected_crosswalk_rows == 1
+    assert index.crosswalk_rows_without_code == 1

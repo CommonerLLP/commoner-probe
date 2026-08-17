@@ -565,21 +565,24 @@ def _targets(
         urls = [urls]
     if not urls and not host:
         raise ValueError("recover needs urls= or host=")
-    if host:
-        hosts = {host}
-    else:
+    # Every host involved is indexed, the named one AND each URL's own. Indexing
+    # only the named host while keeping the URL list as the target set answered
+    # `no-capture` for a URL whose host was never queried — the false absence this
+    # module exists to prevent, reintroduced by the CLI accepting both flags.
+    hosts = {host} if host else set()
+    if urls:
         # A URL with no host produces no query, so every URL in the list would
         # be reported absent without the archive ever being asked. A scraped
         # anchor list is full of scheme-relative and relative hrefs, which is
         # exactly how N absence claims got made with zero index calls.
-        hostless = [u for u in urls or [] if not urlparse(u).netloc]
+        hostless = [u for u in urls if not urlparse(u).netloc]
         if hostless:
             raise ValueError(
                 "these URLs carry no host, so no index query can be built: "
                 f"{', '.join(hostless[:5])}. An absence claim made without "
                 "asking the archive is not an absence."
             )
-        hosts = {urlparse(u).netloc for u in urls or []}
+        hosts |= {urlparse(u).netloc for u in urls}
     index: dict[str, list[Capture]] = {}
     for one in sorted(h for h in hosts if h):
         index.update(

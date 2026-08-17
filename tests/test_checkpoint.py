@@ -223,3 +223,39 @@ class TestSignals:
         ) as run:
             assert run.signals_installed is False
         assert any("no signal handler" in line for line in lines)
+
+
+class TestKeyCollisions:
+    def test_a_string_and_an_integer_unit_are_different_units(self, tmp_path):
+        """`"1"` and `1` both keyed to "1", so marking either reported the other
+        as done and its work was skipped in silence."""
+        from commoner_probe.checkpoint import checkpointed_run
+
+        path = tmp_path / "cp.jsonl"
+        with checkpointed_run(path, interval=0.0) as run:
+            run.mark(1)
+            assert 1 in run.done
+            assert "1" not in run.done, "an int and a string are not one unit"
+
+    def test_a_serialised_object_and_its_string_are_different_units(self, tmp_path):
+        from commoner_probe.checkpoint import checkpointed_run
+
+        path = tmp_path / "cp.jsonl"
+        with checkpointed_run(path, interval=0.0) as run:
+            run.mark({"a": 1})
+            assert {"a": 1} in run.done
+            assert '{"a": 1}' not in run.done
+
+    def test_the_keys_survive_a_resume(self, tmp_path):
+        from commoner_probe.checkpoint import checkpointed_run
+
+        path = tmp_path / "cp.jsonl"
+        with checkpointed_run(path, interval=0.0) as run:
+            run.mark(1)
+            run.mark("1")
+            run.mark(("a", 2))
+        with checkpointed_run(path, interval=0.0) as again:
+            assert again.resumed == 3
+            assert 1 in again.done
+            assert "1" in again.done
+            assert ("a", 2) in again.done

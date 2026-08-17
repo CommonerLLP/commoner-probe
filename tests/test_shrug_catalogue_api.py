@@ -402,3 +402,34 @@ def test_the_dedupe_branch_is_actually_exercised():
         session=_catalogue_session(rows=rows), min_rows=1))
     assert [t.table_label for t in tables] == ["Shrid Location Names and Keys"], (
         "both `shrid.*key` and `location names` match this one label")
+
+
+def test_a_recovered_table_replaces_its_short_row(tmp_path):
+    """The recovery a short row instructs is to delete the file and re-run. The
+    key guard then suppressed the new `downloaded` row, so the durable manifest
+    reported the old failure with a null digest while the bytes were complete."""
+    dest = tmp_path / "SECC_Rural-secc_rural.zip"
+    dest.write_bytes(b"")
+    (tmp_path / "SECC_Urban-secc_urban.zip").write_bytes(b"")
+    first = shrug.fetch_preset("caste", tmp_path, session=_fetch_session(),
+                               log=lambda _m: None, min_rows=1)
+    assert {r["status"] for r in first} == {"short_on_disk"}
+
+    dest.unlink()
+    (tmp_path / "SECC_Urban-secc_urban.zip").unlink()
+    shrug.fetch_preset("caste", tmp_path, session=_fetch_session(),
+                       log=lambda _m: None, min_rows=1)
+    rows = [json.loads(x) for x in (tmp_path / "manifest.jsonl").read_text().splitlines()]
+    last = {r["key"]: r for r in rows}          # last record wins
+    assert {r["status"] for r in last.values()} == {"downloaded"}
+    assert all(r["sha256"] for r in last.values())
+
+
+def test_an_unchanged_outcome_does_not_append_a_second_row(tmp_path):
+    """A re-run that finds the same complete files must not grow the manifest."""
+    shrug.fetch_preset("caste", tmp_path, session=_fetch_session(),
+                       log=lambda _m: None, min_rows=1)
+    shrug.fetch_preset("caste", tmp_path, session=_fetch_session(),
+                       log=lambda _m: None, min_rows=1)
+    rows = (tmp_path / "manifest.jsonl").read_text().splitlines()
+    assert len(rows) == 2

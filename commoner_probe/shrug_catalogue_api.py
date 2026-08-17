@@ -378,34 +378,57 @@ def _download(session: Any, url: str, dest: Path, *, timeout: int = 900,
     return digest.hexdigest(), written
 
 
-def _recorded_keys(manifest: Path) -> set[str]:
-    """Keys the manifest already carries, so a re-run does not duplicate a row."""
+def _recorded_status(manifest: Path) -> dict[str, str]:
+    """The LAST recorded status per key, so a re-run appends only a change.
+
+    Keys alone were not enough. A short file is recovered by deleting it and
+    re-running, and suppressing the new row on the key made the durable manifest
+    report the old failure with a null digest while the complete bytes sat on
+    disk. Last record wins, so a changed outcome is always appended.
+    """
     if not manifest.exists():
-        return set()
-    keys = set()
+        return {}
+    seen: dict[str, str] = {}
     for line in manifest.read_text(encoding="utf-8").splitlines():
         if not line.strip():
             continue
         try:
-            keys.add(json.loads(line).get("key", ""))
+            row = json.loads(line)
         except json.JSONDecodeError:
             continue
-    return keys - {""}
+        key = row.get("key")
+        if key:
+            seen[key] = row.get("status", "")
+    return seen
 
 
-def _append(manifest: Path, record: dict, *, seen: set[str]) -> None:
-    """One manifest row per table, written for a skip as well as a download.
+#: `downloaded` and `skipped_exists` are one FACT — the complete table is held —
+#: reached by two routes. Appending on the wording alone made every second run
+#: grow the manifest, so the append decision compares the fact.
+_OUTCOME = {"downloaded": "held", "skipped_exists": "held"}
+
+
+def _outcome(status: str) -> str:
+    return _OUTCOME.get(status, status)
+
+
+def _append(manifest: Path, record: dict, *, seen: dict[str, str]) -> None:
+    """One manifest row per OUTCOME, written for a skip as well as a download.
 
     A file already on disk used to produce no row at all, so a reader of the
     manifest saw an empty archive while the returned rows said the preset was
-    complete. Both were wrong, in opposite directions. The key guard keeps a
-    re-run from appending the same row again.
+    complete. Both were wrong, in opposite directions.
+
+    A row is appended when the outcome for that key CHANGED. An unchanged re-run
+    does not grow the file, and a recovered short table is not left reported as
+    short for ever.
     """
-    if record["key"] in seen:
+    key, status = record["key"], record["status"]
+    if _outcome(seen.get(key, "")) == _outcome(status):
         return
     with manifest.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(record, ensure_ascii=False) + "\n")
-    seen.add(record["key"])
+    seen[key] = status
 
 
 def _filename_for(table: ShrugTable) -> str:
@@ -451,7 +474,7 @@ def fetch_preset(
 
     out.mkdir(parents=True, exist_ok=True)
     manifest = out / "manifest.jsonl"
-    seen = _recorded_keys(manifest)
+    seen = _recorded_status(manifest)
     rows: list[dict] = []
     for table in tables:
         filename = _filename_for(table)
