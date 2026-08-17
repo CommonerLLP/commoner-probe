@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 
-from commoner_probe.bills import BillsProbe, bill_key
+from commoner_probe.bill_catalog_api import BillsProbe, bill_key
 
 
 class FakeResponse:

@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import json
 
-from commoner_probe.prs import PrsProbe, parse_bill_track
+from commoner_probe.drupal_publication_index import PrsProbe, parse_bill_track
 
 
 def _row(slug: str, title: str, status: str) -> str:

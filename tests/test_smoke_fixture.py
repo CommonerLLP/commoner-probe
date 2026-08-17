@@ -25,7 +25,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from commoner_probe.committees import CommitteeProbe
+from commoner_probe.committee_report_api import CommitteeProbe
 from commoner_probe.topics import load_topic
 
 ROOT = Path(__file__).resolve().parents[1]

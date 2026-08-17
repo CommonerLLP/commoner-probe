@@ -8,7 +8,7 @@ First target: Assam Legislative Assembly Digital Library
 is enabled but unusable there (``ListRecords`` -> ``noRecordsMatch``,
 ``Identify`` baseURL points at ``localhost:8080``) — this adapter harvests
 through the browse index and item/bitstream pages instead, the same
-approach ``commoner_probe.indiacode`` uses for indiacode.nic.in. That
+approach ``commoner_probe.statute_dspace`` uses for indiacode.nic.in. That
 module's markup (``?view_type=browse`` suffix, "Showing items N to M of
 TOTAL") is JSPUI-flavoured; ALA runs the XMLUI/Mirage theme, whose browse
 links and pagination banner read differently ("results N to M of TOTAL",

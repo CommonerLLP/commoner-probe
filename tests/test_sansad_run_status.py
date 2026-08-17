@@ -20,7 +20,7 @@ import json
 import pytest
 
 from commoner_probe.cli import _exit_on_failed_runs
-from commoner_probe.sansad import SansadProbe
+from commoner_probe.parliament_qa_api import SansadProbe
 
 
 def _probe(out, *, raises: bool):

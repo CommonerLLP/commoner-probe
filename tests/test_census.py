@@ -24,8 +24,8 @@ from pathlib import Path
 
 import pytest
 
-from commoner_probe import census
-from commoner_probe.census import CensusApiError, CensusProbe, parse_title
+from commoner_probe import ogd_resource_api
+from commoner_probe.ogd_resource_api import CensusApiError, CensusProbe, parse_title
 
 REGISTERED_KEY = "579b464db66ec23bdd0000010000000000000000000000000000000000"
 
@@ -161,40 +161,40 @@ class TestSampleKeyGuard:
         """
         some_key = "579b464db66eDEADBEEF" + "0" * 38
         monkeypatch.setattr(
-            census,
+            ogd_resource_api,
             "SAMPLE_KEY_SHA256",
             hashlib.sha256(some_key.encode("utf-8")).hexdigest(),
         )
-        assert census._is_sample_key(some_key) is True
-        assert census._is_sample_key("579b464db66eSOMETHINGELSE" + "0" * 33) is False
-        assert census._is_sample_key("579b464db66e") is False
+        assert ogd_resource_api._is_sample_key(some_key) is True
+        assert ogd_resource_api._is_sample_key("579b464db66eSOMETHINGELSE" + "0" * 33) is False
+        assert ogd_resource_api._is_sample_key("579b464db66e") is False
 
     def test_the_sample_key_is_refused_for_a_real_run(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(census, "_is_sample_key", lambda key: True)
+        monkeypatch.setattr(ogd_resource_api, "_is_sample_key", lambda key: True)
         probe = _probe(tmp_path, _listing("Primary Census Abstract 2011 - Goa"))
         with pytest.raises(CensusApiError, match="sample key"):
             probe.probe("pca")
 
     def test_the_sample_key_still_allows_a_dry_run(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(census, "_is_sample_key", lambda key: True)
+        monkeypatch.setattr(ogd_resource_api, "_is_sample_key", lambda key: True)
         probe = _probe(tmp_path, _listing("Primary Census Abstract 2011 - Goa"))
         assert probe.probe("pca", dry_run=True)[0]["status"] == "dry_run"
 
 
 class TestKeyResolution:
     def test_the_error_says_how_to_get_and_supply_a_key(self, monkeypatch):
-        monkeypatch.delenv(census.KEY_ENV, raising=False)
-        monkeypatch.delenv(census.KEY_FILE_ENV, raising=False)
+        monkeypatch.delenv(ogd_resource_api.KEY_ENV, raising=False)
+        monkeypatch.delenv(ogd_resource_api.KEY_FILE_ENV, raising=False)
         with pytest.raises(CensusApiError) as exc:
-            census.resolve_api_key()
+            ogd_resource_api.resolve_api_key()
         message = str(exc.value)
-        assert census.KEY_ENV in message
-        assert census.KEY_FILE_ENV in message
+        assert ogd_resource_api.KEY_ENV in message
+        assert ogd_resource_api.KEY_FILE_ENV in message
         assert "data.gov.in/apis" in message
 
     def test_the_environment_is_preferred(self, monkeypatch):
-        monkeypatch.setenv(census.KEY_ENV, "from-env")
-        assert census.resolve_api_key() == "from-env"
+        monkeypatch.setenv(ogd_resource_api.KEY_ENV, "from-env")
+        assert ogd_resource_api.resolve_api_key() == "from-env"
 
     def test_no_credential_is_read_from_outside_the_package(self, monkeypatch):
         """A key file planted in an ancestor directory must NOT be read.
@@ -205,33 +205,33 @@ class TestKeyResolution:
         parsed arbitrary files outside its own tree while hunting a credential.
         This plants exactly such a file and requires it to be ignored.
         """
-        monkeypatch.delenv(census.KEY_ENV, raising=False)
-        monkeypatch.delenv(census.KEY_FILE_ENV, raising=False)
-        planted = Path(census.__file__).resolve().parent.parent / "sevent4" / ".secrets"
+        monkeypatch.delenv(ogd_resource_api.KEY_ENV, raising=False)
+        monkeypatch.delenv(ogd_resource_api.KEY_FILE_ENV, raising=False)
+        planted = Path(ogd_resource_api.__file__).resolve().parent.parent / "sevent4" / ".secrets"
         planted.mkdir(parents=True, exist_ok=True)
-        (planted / "keys.env").write_text(f"{census.KEY_ENV}=leaked-by-ancestor-walk\n", encoding="utf-8")
+        (planted / "keys.env").write_text(f"{ogd_resource_api.KEY_ENV}=leaked-by-ancestor-walk\n", encoding="utf-8")
         try:
             with pytest.raises(CensusApiError):
-                census.resolve_api_key()
+                ogd_resource_api.resolve_api_key()
         finally:
             shutil.rmtree(planted.parent, ignore_errors=True)
 
     def test_a_key_file_is_read_only_when_the_operator_names_one(self, tmp_path, monkeypatch):
-        monkeypatch.delenv(census.KEY_ENV, raising=False)
+        monkeypatch.delenv(ogd_resource_api.KEY_ENV, raising=False)
         keyfile = tmp_path / "keys.env"
-        keyfile.write_text(f'{census.KEY_ENV}="abc123"\n', encoding="utf-8")
-        monkeypatch.setenv(census.KEY_FILE_ENV, str(keyfile))
-        assert census.resolve_api_key() == "abc123"
+        keyfile.write_text(f'{ogd_resource_api.KEY_ENV}="abc123"\n', encoding="utf-8")
+        monkeypatch.setenv(ogd_resource_api.KEY_FILE_ENV, str(keyfile))
+        assert ogd_resource_api.resolve_api_key() == "abc123"
 
     def test_a_named_key_file_that_is_absent_does_not_crash(self, tmp_path, monkeypatch):
-        monkeypatch.delenv(census.KEY_ENV, raising=False)
-        monkeypatch.setenv(census.KEY_FILE_ENV, str(tmp_path / "nope.env"))
+        monkeypatch.delenv(ogd_resource_api.KEY_ENV, raising=False)
+        monkeypatch.setenv(ogd_resource_api.KEY_FILE_ENV, str(tmp_path / "nope.env"))
         with pytest.raises(CensusApiError):
-            census.resolve_api_key()
+            ogd_resource_api.resolve_api_key()
 
     def test_explicit_beats_everything(self, monkeypatch):
-        monkeypatch.setenv(census.KEY_ENV, "from-env")
-        assert census.resolve_api_key("explicit") == "explicit"
+        monkeypatch.setenv(ogd_resource_api.KEY_ENV, "from-env")
+        assert ogd_resource_api.resolve_api_key("explicit") == "explicit"
 
 
 class TestDiscovery:
@@ -319,8 +319,8 @@ def test_the_urban_library_gap_is_recorded_in_code():
     """The request asked for ALL libraries. The urban count is not on the OGD API,
     so the constraint has to travel with the module rather than live in a
     session note that the next reader never sees."""
-    assert "DCHB" in census.URBAN_LIBRARY_COUNT_UNAVAILABLE
-    assert "Never sum" in census.URBAN_LIBRARY_COUNT_UNAVAILABLE
+    assert "DCHB" in ogd_resource_api.URBAN_LIBRARY_COUNT_UNAVAILABLE
+    assert "Never sum" in ogd_resource_api.URBAN_LIBRARY_COUNT_UNAVAILABLE
 
 
 class TestCodexWave91:

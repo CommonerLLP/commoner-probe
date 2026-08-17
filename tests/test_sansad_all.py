@@ -23,7 +23,7 @@ from urllib.parse import parse_qs, urlparse
 import pytest
 
 from commoner_probe.cli import build_parser
-from commoner_probe.sansad import SansadProbe, month_windows
+from commoner_probe.parliament_qa_api import SansadProbe, month_windows
 
 
 class FakeResponse:

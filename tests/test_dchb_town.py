@@ -15,13 +15,13 @@ from pathlib import Path
 
 import pytest
 
-from commoner_probe import dchb_town
+from commoner_probe import ogd_town_release
 
 FIX = Path(__file__).parent / "fixtures" / "dchb" / "town_release_1300_trimmed.xlsx"
 
 
 def _rows(tmp_path):
-    probe = dchb_town.DchbTownProbe(tmp_path)
+    probe = ogd_town_release.DchbTownProbe(tmp_path)
     return probe.ingest(FIX)
 
 
@@ -50,7 +50,7 @@ def test_columns_are_found_by_header_not_by_hardcoded_letter():
     """The refs are stable across the two states checked, but a reader keyed on
     the letter OS would silently read the wrong column the day ORGI inserts one.
     Headers are the contract; the letters are an implementation detail."""
-    cols = dchb_town.locate_columns(dchb_town.read_sheet(FIX)[0])
+    cols = ogd_town_release.locate_columns(ogd_town_release.read_sheet(FIX)[0])
     assert cols["public_library_govt"] == "OS"
     assert cols["public_library_private"] == "OU"
     assert cols["reading_room_govt"] == "OZ"
@@ -62,8 +62,8 @@ def test_a_file_missing_the_library_columns_is_refused():
     """A Village Release, or a future layout without these columns, must raise
     rather than emit rows with silent nulls that read as 'no libraries'."""
     header = {"A": "State Code", "H": "Town Name"}
-    with pytest.raises(dchb_town.DchbTownError, match="library"):
-        dchb_town.locate_columns(header)
+    with pytest.raises(ogd_town_release.DchbTownError, match="library"):
+        ogd_town_release.locate_columns(header)
 
 
 def test_three_towns_are_parsed_with_their_codes(tmp_path):
@@ -136,22 +136,22 @@ def test_a_part_declaring_a_dtd_is_refused(tmp_path):
         b"<sheetData><row><c r=\"A1\"><v>&lol2;</v></c></row></sheetData></worksheet>"
     )
     hostile = _xlsx_with(tmp_path, "xl/worksheets/sheet1.xml", bomb)
-    with pytest.raises(dchb_town.DchbTownError, match="DTD"):
-        dchb_town.read_sheet(hostile)
+    with pytest.raises(ogd_town_release.DchbTownError, match="DTD"):
+        ogd_town_release.read_sheet(hostile)
 
 
 def test_a_part_declaring_an_absurd_uncompressed_size_is_refused(tmp_path, monkeypatch):
     """A decompression bomb is rejected on its DECLARED size, before it is
     expanded into memory."""
-    monkeypatch.setattr(dchb_town, "MAX_XML_BYTES", 128)
-    with pytest.raises(dchb_town.DchbTownError, match="decompression bomb"):
-        dchb_town.read_sheet(FIX)
+    monkeypatch.setattr(ogd_town_release, "MAX_XML_BYTES", 128)
+    with pytest.raises(ogd_town_release.DchbTownError, match="decompression bomb"):
+        ogd_town_release.read_sheet(FIX)
 
 
 def test_a_malformed_part_raises_rather_than_yielding_nothing(tmp_path):
     hostile = _xlsx_with(tmp_path, "xl/worksheets/sheet1.xml", b"<worksheet><unclosed>")
-    with pytest.raises(dchb_town.DchbTownError, match="not parseable"):
-        dchb_town.read_sheet(hostile)
+    with pytest.raises(ogd_town_release.DchbTownError, match="not parseable"):
+        ogd_town_release.read_sheet(hostile)
 
 
 # ---------------------------------------------------------------------------
@@ -171,8 +171,8 @@ def test_a_town_code_repeated_across_districts_yields_two_rows(tmp_path):
         "H": "Greater Mumbai (M Corp.) Part", "J": "9356962", "OS": "5", "OU": "0",
     }
     other = {**shared, "C": "3521", "D": "Mumbai", "J": "3085411", "OS": "6"}
-    probe = dchb_town.DchbTownProbe(tmp_path)
-    cols = dchb_town.locate_columns(dchb_town.read_sheet(FIX)[0])
+    probe = ogd_town_release.DchbTownProbe(tmp_path)
+    cols = ogd_town_release.locate_columns(ogd_town_release.read_sheet(FIX)[0])
     rows = [probe._row(shared, cols, "x.xlsx", "0" * 64), probe._row(other, cols, "x.xlsx", "0" * 64)]
     assert rows[0]["key"] != rows[1]["key"], (
         "town_code is not unique within a state — the district must be in the key"
@@ -183,7 +183,7 @@ def test_ingest_refuses_to_persist_fewer_rows_than_it_parsed(tmp_path):
     """The invariant that catches the NEXT collision, whatever causes it. A
     summary computed from the in-memory list while the corpus on disk is short
     is precisely the silent success this package keeps shipping."""
-    probe = dchb_town.DchbTownProbe(tmp_path)
+    probe = ogd_town_release.DchbTownProbe(tmp_path)
     original = probe._row
 
     def colliding(raw, cols, filename, sha):
@@ -192,7 +192,7 @@ def test_ingest_refuses_to_persist_fewer_rows_than_it_parsed(tmp_path):
         return row
 
     probe._row = colliding
-    with pytest.raises(dchb_town.DchbTownError, match="collid|distinct"):
+    with pytest.raises(ogd_town_release.DchbTownError, match="collid|distinct"):
         probe.ingest(FIX)
 
 
@@ -205,7 +205,7 @@ def test_leading_zeros_survive_numeric_cells(tmp_path):
 
     Widths verified against both real files: state 2, district 3, subdistrict 5,
     town 6, uniform across all 561 towns."""
-    probe = dchb_town.DchbTownProbe(tmp_path)
+    probe = ogd_town_release.DchbTownProbe(tmp_path)
     cols = {
         "state_code": "A", "district_code": "C", "subdistrict_code": "E",
         "town_code": "G", "town_name": "H",
@@ -235,7 +235,7 @@ def test_absent_reading_room_columns_are_unknown_not_zero(tmp_path):
     """`(a or 0) + (b or 0)` turned "these columns are not in this file" into
     "this state has zero reading rooms" — the exact conflation this module
     exists to prevent, in its own arithmetic (Codex, PR #101)."""
-    probe = dchb_town.DchbTownProbe(tmp_path)
+    probe = ogd_town_release.DchbTownProbe(tmp_path)
     cols = {
         "state_code": "A", "town_code": "G", "town_name": "H",
         "public_library_govt": "OS", "public_library_private": "OU",
@@ -256,7 +256,7 @@ def test_an_empty_count_with_not_available_status_reads_as_zero(tmp_path):
     `not_available` (21/26 towns). Reading only the count column would make
     Nagaland's 21 look unknown when the source plainly says the facility is not
     there. The status column is present in both and is the signal."""
-    probe = dchb_town.DchbTownProbe(tmp_path)
+    probe = ogd_town_release.DchbTownProbe(tmp_path)
     cols = {
         "state_code": "A", "town_code": "G", "town_name": "H",
         "public_library_govt": "OS", "public_library_govt_status": "OR",
@@ -274,7 +274,7 @@ def test_an_empty_count_with_not_available_status_reads_as_zero(tmp_path):
 def test_an_empty_count_with_no_status_at_all_stays_unknown(tmp_path):
     """The genuinely unrecorded case keeps its None: no count, and no status to
     say the facility is absent."""
-    probe = dchb_town.DchbTownProbe(tmp_path)
+    probe = ogd_town_release.DchbTownProbe(tmp_path)
     cols = {"state_code": "A", "town_code": "G", "town_name": "H",
             "public_library_govt": "OS", "public_library_private": "OU"}
     row = probe._row({"A": "13", "G": "1", "H": "T"}, cols, "f.xlsx", "0" * 64)
@@ -288,7 +288,7 @@ def test_the_cli_summary_survives_unrecorded_totals_and_says_how_many(tmp_path, 
     value was never recorded is the honest thing to print — not a crash, and not
     a total that quietly treats them as zero."""
     from commoner_probe import cli
-    from commoner_probe import dchb_town as mod
+    from commoner_probe import ogd_town_release as mod
 
     original = mod.DchbTownProbe.ingest
 
@@ -314,8 +314,8 @@ def test_a_dtd_hidden_behind_a_long_prolog_is_still_refused(tmp_path):
         b"<sheetData/></worksheet>"
     )
     hostile = _xlsx_with(tmp_path, "xl/worksheets/sheet1.xml", bomb)
-    with pytest.raises(dchb_town.DchbTownError, match="DTD"):
-        dchb_town.read_sheet(hostile)
+    with pytest.raises(ogd_town_release.DchbTownError, match="DTD"):
+        ogd_town_release.read_sheet(hostile)
 
 
 # ---------------------------------------------------------------------------
@@ -415,7 +415,7 @@ def test_every_written_field_survives_the_typed_api(tmp_path):
 
 
 def test_re_ingesting_does_not_duplicate_rows(tmp_path):
-    probe = dchb_town.DchbTownProbe(tmp_path)
+    probe = ogd_town_release.DchbTownProbe(tmp_path)
     probe.ingest(FIX)
     first = len(_row_file(tmp_path))
     probe.ingest(FIX)
@@ -436,8 +436,8 @@ xlrd_required = pytest.mark.skipif(
 
 
 def test_a_cell_holding_a_count_parses_as_a_count():
-    assert dchb_town.parse_facility_cell("1.0") == (1, None, None)
-    assert dchb_town.parse_facility_cell("3") == (3, None, None)
+    assert ogd_town_release.parse_facility_cell("1.0") == (1, None, None)
+    assert ogd_town_release.parse_facility_cell("3") == (3, None, None)
 
 
 def test_a_cell_holding_a_nearest_place_means_ZERO_not_unknown():
@@ -445,13 +445,13 @@ def test_a_cell_holding_a_nearest_place_means_ZERO_not_unknown():
     the nearest town and its distance. `GANGTOK(67)` means there is none here and
     the nearest is 67 km away — a count of ZERO with a location, not a missing
     value. An integer parse drops exactly the towns that lack the facility."""
-    assert dchb_town.parse_facility_cell("GANGTOK(67)") == (0, "GANGTOK", 67.0)
-    assert dchb_town.parse_facility_cell("WEST PENDAM(46)") == (0, "WEST PENDAM", 46.0)
+    assert ogd_town_release.parse_facility_cell("GANGTOK(67)") == (0, "GANGTOK", 67.0)
+    assert ogd_town_release.parse_facility_cell("WEST PENDAM(46)") == (0, "WEST PENDAM", 46.0)
 
 
 def test_an_empty_cell_is_unknown_not_zero():
-    assert dchb_town.parse_facility_cell("") == (None, None, None)
-    assert dchb_town.parse_facility_cell(None) == (None, None, None)
+    assert ogd_town_release.parse_facility_cell("") == (None, None, None)
+    assert ogd_town_release.parse_facility_cell(None) == (None, None, None)
 
 
 @xlrd_required
@@ -461,7 +461,7 @@ def test_the_census_district_code_is_read_from_the_zip_not_the_filename():
     North District's census code is 241, and the only in-band source is the
     Appendix_I header: `District: North  District (241)`. Copying 1101 writes a
     key that silently fails to join (Codex, PR #104)."""
-    state, district, name = dchb_town.district_from_zip(SK_ZIP)
+    state, district, name = ogd_town_release.district_from_zip(SK_ZIP)
     assert district == "241", f"expected the census code 241, got {district!r}"
     assert district != "1101", "the filename ordinal is not the census district code"
     assert state == "11"
@@ -479,13 +479,13 @@ def test_a_zip_without_the_appendix_header_is_refused(tmp_path):
         for item in src.infolist():
             if "Appendix_I" not in item.filename:
                 dst.writestr(item, src.read(item.filename))
-    with pytest.raises(dchb_town.DchbTownError, match="district code"):
-        dchb_town.district_from_zip(bad)
+    with pytest.raises(ogd_town_release.DchbTownError, match="district code"):
+        ogd_town_release.district_from_zip(bad)
 
 
 @xlrd_required
 def test_the_zip_yields_towns_with_library_and_reading_room_columns(tmp_path):
-    probe = dchb_town.DchbTownProbe(tmp_path)
+    probe = ogd_town_release.DchbTownProbe(tmp_path)
     rows = probe.ingest_district_zip(SK_ZIP)
     assert len(rows) == 1
     town = rows[0]
@@ -503,7 +503,7 @@ def test_zip_rows_validate_against_the_same_schema(tmp_path):
     format a state happened to publish."""
     from commoner_probe.validate import validate_corpus
 
-    dchb_town.DchbTownProbe(tmp_path).ingest_district_zip(SK_ZIP)
+    ogd_town_release.DchbTownProbe(tmp_path).ingest_district_zip(SK_ZIP)
     assert validate_corpus(tmp_path, log=lambda _m: None)
 
 
@@ -511,16 +511,16 @@ def test_zip_rows_validate_against_the_same_schema(tmp_path):
 def test_the_district_code_width_matches_the_xlsx_path(tmp_path):
     """The xlsx path emits 3-digit census district codes (Maharashtra 497-500).
     The zip path must emit the same width, or the join is cosmetic only."""
-    rows = dchb_town.DchbTownProbe(tmp_path).ingest_district_zip(SK_ZIP)
+    rows = ogd_town_release.DchbTownProbe(tmp_path).ingest_district_zip(SK_ZIP)
     assert len(rows[0]["district_code"]) == 3
 
 
 def test_reading_without_xlrd_says_which_extra_to_install(monkeypatch):
     """The zero-dependency core stays zero-dependency; the failure has to name
     the fix rather than surface an ImportError."""
-    monkeypatch.setattr(dchb_town, "_load_xlrd", lambda: None)
-    with pytest.raises(dchb_town.DchbTownError, match=r"commoner-probe\[xls\]"):
-        dchb_town.district_from_zip(SK_ZIP)
+    monkeypatch.setattr(ogd_town_release, "_load_xlrd", lambda: None)
+    with pytest.raises(ogd_town_release.DchbTownError, match=r"commoner-probe\[xls\]"):
+        ogd_town_release.district_from_zip(SK_ZIP)
 
 
 @xlrd_required
@@ -573,8 +573,8 @@ class DecompressionBombTests(unittest.TestCase):
                 "the fixture must actually lie about its size, or it proves nothing",
             )
             before = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-            with self.assertRaises(dchb_town.DchbTownError) as raised:
-                dchb_town.read_capped(archive, member, limit=8 * 1024 * 1024)
+            with self.assertRaises(ogd_town_release.DchbTownError) as raised:
+                ogd_town_release.read_capped(archive, member, limit=8 * 1024 * 1024)
             grew_mb = (resource.getrusage(resource.RUSAGE_SELF).ru_maxrss - before) / 1024 / 1024
             self.assertIn("does not match its contents", str(raised.exception))
             # The point of the fix. `ZipFile.read` expanded the full 64 MB here
@@ -588,8 +588,8 @@ class DecompressionBombTests(unittest.TestCase):
             with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
                 z.writestr("xl/worksheets/sheet1.xml", b"A" * (16 * 1024 * 1024))
             archive = zipfile.ZipFile(path)
-            with self.assertRaises(dchb_town.DchbTownError) as raised:
-                dchb_town.read_capped(archive, "xl/worksheets/sheet1.xml", limit=1024)
+            with self.assertRaises(ogd_town_release.DchbTownError) as raised:
+                ogd_town_release.read_capped(archive, "xl/worksheets/sheet1.xml", limit=1024)
             self.assertIn("declares", str(raised.exception))
 
     def test_an_ordinary_member_reads_through_unchanged(self):
@@ -599,4 +599,4 @@ class DecompressionBombTests(unittest.TestCase):
             with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
                 z.writestr("xl/worksheets/sheet1.xml", body)
             archive = zipfile.ZipFile(path)
-            self.assertEqual(dchb_town.read_capped(archive, "xl/worksheets/sheet1.xml"), body)
+            self.assertEqual(ogd_town_release.read_capped(archive, "xl/worksheets/sheet1.xml"), body)

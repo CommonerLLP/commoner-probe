@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 
-from commoner_probe.attendance import AttendanceProbe
+from commoner_probe.attendance_json_api import AttendanceProbe
 
 CATALOG = [
     {"loksabha": 18, "sessions": [

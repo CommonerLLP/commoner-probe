@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 
-from commoner_probe.myneta import MyNetaProbe
+from commoner_probe.affidavit_pages import MyNetaProbe
 
 INDEX_HTML = """
 <div class='w3-dropdown-content w3-bar-block w3-card-4'>

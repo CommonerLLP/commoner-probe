@@ -18,7 +18,7 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from commoner_probe.sansad import SansadProbe
+from commoner_probe.parliament_qa_api import SansadProbe
 from commoner_probe.topics import TopicProfile
 
 

@@ -4,8 +4,8 @@ import hashlib
 import json
 from urllib.parse import parse_qs, urlparse
 
-from commoner_probe import questions_list as questions_list_module
-from commoner_probe.questions_list import QuestionsListProbe, parse_question_rows
+from commoner_probe import question_list_api as questions_list_module
+from commoner_probe.question_list_api import QuestionsListProbe, parse_question_rows
 
 PDF_BODY = b"%PDF-1.4 fake questions list body that is over one thousand bytes " + b"x" * 1100
 
@@ -91,7 +91,7 @@ def _probe(tmp_path, **kw):
 
 def test_ls_question_list_records_dict_response(tmp_path, monkeypatch):
     monkeypatch.setattr(
-        "commoner_probe.questions_list.extract_pdf_text",
+        "commoner_probe.question_list_api.extract_pdf_text",
         lambda path: "1  NATIONAL EDUCATION POLICY      MINISTRY OF EDUCATION\n",
     )
     records = _probe(tmp_path, house="ls").probe(download=True)
@@ -264,7 +264,7 @@ Will the Minister of YOUTH AFFAIRS AND SPORTS be pleased to state:
 
 
 def test_ls_combined_pdf_splits_sections_and_keeps_overlapping_qnos():
-    from commoner_probe.questions_list import stated_totals
+    from commoner_probe.question_list_api import stated_totals
 
     rows = parse_question_rows(
         LS_COMBINED_SAMPLE,
@@ -301,7 +301,7 @@ def test_rs_dotless_heads_hash_marker_and_com_honorific():
 
 
 def test_stated_totals_and_corrigenda_helpers():
-    from commoner_probe.questions_list import corrigenda_present, stated_totals
+    from commoner_probe.question_list_api import corrigenda_present, stated_totals
 
     assert stated_totals(LS_COMBINED_SAMPLE) == [2, 3]
     assert stated_totals(RS_UNSTARRED_SAMPLE) == [3]
@@ -311,7 +311,7 @@ def test_stated_totals_and_corrigenda_helpers():
 
 def test_manifest_carries_reconciliation_verdict(tmp_path, monkeypatch):
     monkeypatch.setattr(
-        "commoner_probe.questions_list.extract_pdf_text",
+        "commoner_probe.question_list_api.extract_pdf_text",
         lambda path: LS_COMBINED_SAMPLE,
     )
     records = _probe(tmp_path, house="ls").probe(download=True)
@@ -325,7 +325,7 @@ def test_manifest_carries_reconciliation_verdict(tmp_path, monkeypatch):
 def test_count_mismatch_is_flagged_not_silent(tmp_path, monkeypatch):
     truncated = LS_COMBINED_SAMPLE.replace("†3.       Mrs Example Eta:", "not a head")
     monkeypatch.setattr(
-        "commoner_probe.questions_list.extract_pdf_text",
+        "commoner_probe.question_list_api.extract_pdf_text",
         lambda path: truncated,
     )
     records = _probe(tmp_path, house="ls").probe(download=True)
@@ -338,7 +338,7 @@ def test_count_mismatch_is_flagged_not_silent(tmp_path, monkeypatch):
 def test_count_mismatch_rerun_reparses_without_duplicates(tmp_path, monkeypatch):
     truncated = LS_COMBINED_SAMPLE.replace("†3.       Mrs Example Eta:", "not a head")
     monkeypatch.setattr(
-        "commoner_probe.questions_list.extract_pdf_text",
+        "commoner_probe.question_list_api.extract_pdf_text",
         lambda path: truncated,
     )
     first = _probe(tmp_path, house="ls").probe(download=True)
@@ -346,7 +346,7 @@ def test_count_mismatch_rerun_reparses_without_duplicates(tmp_path, monkeypatch)
 
     # the mismatch is not terminal: a rerun with a fixed parser re-extracts
     monkeypatch.setattr(
-        "commoner_probe.questions_list.extract_pdf_text",
+        "commoner_probe.question_list_api.extract_pdf_text",
         lambda path: LS_COMBINED_SAMPLE,
     )
     second = _probe(tmp_path, house="ls").probe(download=True)
@@ -365,7 +365,7 @@ def test_count_mismatch_rerun_reparses_without_duplicates(tmp_path, monkeypatch)
 def test_row_text_stops_before_the_next_subject_heading():
     """A row's body ran to the next question's head, swallowing the
     heading line in between — 98.4% of adjacent pairs on the live lists."""
-    from commoner_probe.questions_list import rows_with_subject_bleed
+    from commoner_probe.question_list_api import rows_with_subject_bleed
 
     ls = parse_question_rows(
         LS_COMBINED_SAMPLE,
@@ -398,7 +398,7 @@ def test_row_text_stops_before_the_next_subject_heading():
 
 
 def test_subject_bleed_detector_sees_what_a_count_cannot():
-    from commoner_probe.questions_list import rows_with_subject_bleed
+    from commoner_probe.question_list_api import rows_with_subject_bleed
 
     bleeding = [
         {"qno": "1", "subject": "Public Libraries", "text": "(a) limb?\nPaika Rebellion Memorial"},
@@ -416,7 +416,7 @@ def test_subject_bleed_detector_sees_what_a_count_cannot():
 def test_boundary_bleed_refuses_to_reconcile_on_a_matching_count(tmp_path, monkeypatch):
     """Acceptance 3: the count is right and every body is wrong at the tail."""
     monkeypatch.setattr(
-        "commoner_probe.questions_list.extract_pdf_text",
+        "commoner_probe.question_list_api.extract_pdf_text",
         lambda path: LS_COMBINED_SAMPLE,
     )
     real = questions_list_module.parse_question_rows
@@ -427,7 +427,7 @@ def test_boundary_bleed_refuses_to_reconcile_on_a_matching_count(tmp_path, monke
             row["text"] = f"{row['text']}\n{nxt['subject']}"
         return rows
 
-    monkeypatch.setattr("commoner_probe.questions_list.parse_question_rows", bleeding)
+    monkeypatch.setattr("commoner_probe.question_list_api.parse_question_rows", bleeding)
     records = _probe(tmp_path, house="ls").probe(download=True)
     rec = next(r for r in records if r["document_kind"] == "question_list")
     assert rec["question_rows_extracted"] == rec["question_rows_expected"] == 5
@@ -438,7 +438,7 @@ def test_boundary_bleed_refuses_to_reconcile_on_a_matching_count(tmp_path, monke
 def test_reparse_of_an_existing_corpus_reuses_the_pdfs_on_disk(tmp_path, monkeypatch):
     """The re-parse of an existing corpus must not re-download the PDFs."""
     monkeypatch.setattr(
-        "commoner_probe.questions_list.extract_pdf_text",
+        "commoner_probe.question_list_api.extract_pdf_text",
         lambda path: LS_COMBINED_SAMPLE,
     )
     _probe(tmp_path, house="ls").probe(download=True)
@@ -479,7 +479,7 @@ def test_bleed_outranks_a_missing_stated_total(tmp_path, monkeypatch):
         "Total Number of Questions - 3", ""
     )
     monkeypatch.setattr(
-        "commoner_probe.questions_list.extract_pdf_text", lambda path: no_total
+        "commoner_probe.question_list_api.extract_pdf_text", lambda path: no_total
     )
     real = questions_list_module.parse_question_rows
 
@@ -489,7 +489,7 @@ def test_bleed_outranks_a_missing_stated_total(tmp_path, monkeypatch):
             row["text"] = f"{row['text']}\n{nxt['subject']}"
         return rows
 
-    monkeypatch.setattr("commoner_probe.questions_list.parse_question_rows", bleeding)
+    monkeypatch.setattr("commoner_probe.question_list_api.parse_question_rows", bleeding)
     records = _probe(tmp_path, house="ls").probe(download=True)
     rec = next(r for r in records if r["document_kind"] == "question_list")
     assert rec["question_rows_expected"] is None

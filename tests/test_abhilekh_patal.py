@@ -27,7 +27,7 @@ import json
 
 import pytest
 
-from commoner_probe.abhilekh_patal import (
+from commoner_probe.catalogue_search_api import (
     AbhilekhPatalProbe,
     ChallengeBlocked,
     is_challenge,

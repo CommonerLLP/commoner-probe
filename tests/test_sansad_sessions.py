@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from commoner_probe.sansad import SansadProbe
+from commoner_probe.parliament_qa_api import SansadProbe
 
 
 class FakeResponse:

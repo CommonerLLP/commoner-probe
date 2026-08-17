@@ -18,7 +18,7 @@ from urllib.parse import urlparse
 
 import pytest
 
-from commoner_probe.mospi import (
+from commoner_probe.rest_dataset_api import (
     DATASETS,
     MospiApiError,
     MospiClient,

@@ -17,7 +17,7 @@ from urllib.parse import parse_qs, urlparse
 import pytest
 
 from commoner_probe.cli import build_parser
-from commoner_probe.sansad import SansadProbe, geo_fence_hint
+from commoner_probe.parliament_qa_api import SansadProbe, geo_fence_hint
 from commoner_probe.topics import TopicProfile
 
 PDF_BYTES = b"%PDF-1.4 tabled paper fixture " + b"x" * 2000
@@ -223,7 +223,7 @@ def test_probe_tabled_record_validates_against_schema(tmp_path):
 def test_geo_fence_hint_detects_dns_and_ssrf_shapes(monkeypatch):
     import socket as socket_mod
 
-    from commoner_probe import sansad as sansad_mod
+    from commoner_probe import parliament_qa_api as sansad_mod
 
     assert geo_fence_hint(OSError("getaddrinfo failed")) is not None
 
@@ -241,7 +241,7 @@ def test_geo_fence_hint_detects_dns_and_ssrf_shapes(monkeypatch):
 
 
 def test_probe_tabled_raises_clear_geo_block_message(tmp_path, monkeypatch):
-    from commoner_probe import sansad as sansad_mod
+    from commoner_probe import parliament_qa_api as sansad_mod
 
     class GeoBlockedSession:
         def get(self, url, **kwargs):

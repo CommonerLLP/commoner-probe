@@ -14,7 +14,7 @@ from __future__ import annotations
 import hashlib
 import json
 
-from commoner_probe.cag import (
+from commoner_probe.audit_pdf_index import (
     CAG_ACCOUNTS_STATES,
     CAGAccountsProbe,
     get_state,
@@ -269,7 +269,7 @@ def test_schema_registered_for_validation_and_corpus(tmp_path):
 
     pytest.importorskip("jsonschema")
     from commoner_probe import schemas
-    from commoner_probe.cag import CAGAccountsProbe
+    from commoner_probe.audit_pdf_index import CAGAccountsProbe
     from commoner_probe.corpus import Corpus
     from commoner_probe.validate import _pick_schema_name, validate_corpus
 

@@ -21,7 +21,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from commoner_probe.committees import (
+from commoner_probe.committee_report_api import (
     CommitteeProbe,
     _ls_presented_via,
     _report_type,

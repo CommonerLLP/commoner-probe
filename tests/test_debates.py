@@ -11,7 +11,7 @@ import hashlib
 import json
 from urllib.parse import parse_qs, urlparse
 
-from commoner_probe.debates import DebateProbe, date_to_iso, date_to_mdy
+from commoner_probe.verbatim_pdf_api import DebateProbe, date_to_iso, date_to_mdy
 
 CATALOG = [
     {"loksabha": 18, "sessions": [

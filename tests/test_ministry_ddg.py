@@ -17,7 +17,7 @@ from __future__ import annotations
 import hashlib
 import json
 
-from commoner_probe.ddg import (
+from commoner_probe.ministry_pdf_index import (
     MINISTRY_DDG_PORTALS,
     MinistryDDGPortal,
     MinistryDDGProbe,
@@ -138,7 +138,7 @@ def test_registry_codes_are_unique():
 
 
 def test_every_registry_template_has_a_parser():
-    from commoner_probe.ddg import _PARSERS
+    from commoner_probe.ministry_pdf_index import _PARSERS
 
     assert {p.template for p in MINISTRY_DDG_PORTALS} <= set(_PARSERS)
 
@@ -511,7 +511,7 @@ def test_year_comes_from_the_filename_when_the_anchor_text_is_just_a_size():
 # --- Wayback provenance wiring (acceptance 2) ---
 
 def _wayback_probe(tmp_path, monkeypatch, **kwargs):
-    from commoner_probe import ddg as ddg_mod
+    from commoner_probe import ministry_pdf_index as ddg_mod
 
     calls = []
 

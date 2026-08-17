@@ -5,7 +5,7 @@ the first fix for that looped 59 times on one offset.
 """
 import pytest
 
-from commoner_probe.sansad import SansadProbe, _halve_to_multiple
+from commoner_probe.parliament_qa_api import SansadProbe, _halve_to_multiple
 
 
 class _Portal:

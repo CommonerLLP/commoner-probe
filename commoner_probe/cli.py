@@ -10,34 +10,39 @@ from pathlib import Path
 from . import __version__
 from . import nada as nada_mod
 from .academia import AcademicJobsProbe
+from .affidavit_pages import MyNetaProbe
 from .answers import extract_answers
+from .assembly_portal import StateAssemblyCrawler
+from .assembly_portal_registry import NevaPortal, iter_portals
 from .atr_linkage import extract_atr_linkages
-from .attendance import AttendanceProbe
-from .bills import BILLS_API, BillsProbe
+from .attendance_json_api import AttendanceProbe
+from .audit_pdf_index import CAG_ACCOUNTS_STATES, CAGAccountsProbe, get_state
+from .bill_catalog_api import BILLS_API, BillsProbe
 from .budget import RBI_STATE_FINANCES_URL, BudgetProbe
-from .cag import CAG_ACCOUNTS_STATES, CAGAccountsProbe, get_state
-from .committees import CommitteeProbe, resolve_committees
+from .committee_report_api import CommitteeProbe, resolve_committees
 from .csr.dpe import DpeCsrProbe
 from .csr.mca import McaCsrProbe
-from .ddg import MINISTRY_DDG_PORTALS, MinistryDDGPortal, MinistryDDGProbe, get_portal
-from .debates import LS_DEBATE_API, RS_DEBATE_API, DebateProbe
 from .dmft.mines import MinesDmftProbe
-from .doe import DoePayAllowancesProbe
+from .drupal_publication_index import PRS_CRAWL_DELAY_SEC, PrsProbe
 from .dspace import DEFAULT_HANDLE_PREFIX, LegacyDSpaceProbe
 from .evidence import build_dmft_evidence_bundle
 from .example_topics import list_example_topics, load_example_topic_text
 from .extract_debates import extract_debates
-from .indiacode import STATE_HANDLES, IndiaCodeProbe
-from .mospi import MospiClient, MospiProbe
-from .myneta import MyNetaProbe
-from .neva import StateAssemblyCrawler
-from .neva_portals import NevaPortal, iter_portals
-from .prs import PRS_CRAWL_DELAY_SEC, PrsProbe
-from .questions_list import QuestionsListProbe
-from .sansad import SansadProbe
+from .ministry_pdf_index import (
+    MINISTRY_DDG_PORTALS,
+    MinistryDDGPortal,
+    MinistryDDGProbe,
+    get_portal,
+)
+from .parliament_qa_api import SansadProbe
+from .pay_report_index import DoePayAllowancesProbe
+from .question_list_api import QuestionsListProbe
+from .rest_dataset_api import MospiClient, MospiProbe
 from .stats import compute_stats, print_stats
+from .statute_dspace import STATE_HANDLES, IndiaCodeProbe
 from .topics import load_topic
 from .validate import validate_corpus
+from .verbatim_pdf_api import LS_DEBATE_API, RS_DEBATE_API, DebateProbe
 
 
 def _split_csv(value: str | None) -> list[str] | None:
@@ -99,7 +104,7 @@ def sansad_sessions_cmd(args: argparse.Namespace) -> None:
             "and numbers its sessions continuously since 1952, with no terms."
         )
 
-    from .sansad import SansadProbe
+    from .parliament_qa_api import SansadProbe
 
     probe = SansadProbe(None, Path(tempfile.mkdtemp(prefix="commoner-probe-sessions-")), sleep=args.sleep)
     if args.house == "ls" and args.loksabha is not None:
@@ -524,7 +529,7 @@ def indiacode_crawl_cmd(args: argparse.Namespace) -> None:
 def indiacode_query_cmd(args: argparse.Namespace) -> None:
     import re
 
-    from .indiacode import PUBLIC_LIBRARIES_HANDLES
+    from .statute_dspace import PUBLIC_LIBRARIES_HANDLES
 
     if not args.out:
         raise SystemExit("--out is required")
@@ -586,7 +591,7 @@ def mca_csr_cmd(args: argparse.Namespace) -> None:
 
 
 def niti_annual_report_cmd(args: argparse.Namespace) -> None:
-    from .niti import NitiAnnualReportProbe
+    from .annual_report_index import NitiAnnualReportProbe
 
     out = Path(args.out)
     probe = NitiAnnualReportProbe(out, sleep=args.sleep)
@@ -596,7 +601,7 @@ def niti_annual_report_cmd(args: argparse.Namespace) -> None:
 
 
 def census_cmd(args: argparse.Namespace) -> None:
-    from .census import CensusApiError, CensusProbe
+    from .ogd_resource_api import CensusApiError, CensusProbe
 
     out = Path(args.out)
     try:
@@ -644,7 +649,7 @@ def _nada_network_exit(exc: Exception) -> "SystemExit":
 
 
 def dchb_town_cmd(args: argparse.Namespace) -> None:
-    from .dchb_town import DchbTownError, DchbTownProbe
+    from .ogd_town_release import DchbTownError, DchbTownProbe
 
     out = Path(args.out)
     probe = DchbTownProbe(out)
@@ -882,7 +887,7 @@ def cag_cmd(args: argparse.Namespace) -> None:
 
 
 def courts_cmd(args: argparse.Namespace) -> None:
-    from .courts import (
+    from .case_law_api import (
         CourtProbe,
         ECourtsUnavailable,
         IndianKanoonError,
@@ -1038,7 +1043,7 @@ def prs_cmd(args: argparse.Namespace) -> None:
 
 
 def abhilekh_patal_cmd(args: argparse.Namespace) -> None:
-    from .abhilekh_patal import DEFAULT_SLEEP, AbhilekhPatalProbe, ChallengeBlocked
+    from .catalogue_search_api import DEFAULT_SLEEP, AbhilekhPatalProbe, ChallengeBlocked
 
     probe = AbhilekhPatalProbe(
         Path(args.out),
@@ -1171,7 +1176,7 @@ def extract_answers_cmd(args: argparse.Namespace) -> None:
     out = Path(args.out)
     if (out / "questions.jsonl").exists():
         # NeVA state-assembly corpus layout (no manifest.jsonl).
-        from .neva_text import extract_neva_answers
+        from .two_column_pdf_qa import extract_neva_answers
 
         extract_neva_answers(
             out, log_fn=print, ocr=args.ocr, ocr_pages=args.ocr_pages
