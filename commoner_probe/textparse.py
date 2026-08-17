@@ -135,6 +135,87 @@ def ocr_pdf_text(
     return stdout.decode("utf-8", errors="replace") if isinstance(stdout, bytes) else (stdout or "")
 
 
+#: Where LibreOffice installs its command-line entry point. `soffice` is often
+#: absent from PATH on macOS even with the application installed, so the bundle
+#: path is tried too rather than reporting the tool missing.
+SOFFICE_CANDIDATES = (
+    "soffice",
+    "/Applications/LibreOffice.app/Contents/MacOS/soffice",
+    "/usr/bin/soffice",
+    "/usr/lib/libreoffice/program/soffice",
+)
+
+
+class ConversionUnavailable(RuntimeError):
+    """LibreOffice is absent or failed. Never a silently empty document."""
+
+
+def soffice_path() -> str | None:
+    """The LibreOffice binary, or None when it is not installed."""
+    for candidate in SOFFICE_CANDIDATES:
+        found = shutil.which(candidate) if "/" not in candidate else candidate
+        if found and Path(found).exists():
+            return found
+    return None
+
+
+def word_to_pdf(path: Path, out_dir: Path, *, timeout: int = 300,
+                runner=subprocess.run) -> Path:
+    """Convert a Word document to PDF with LibreOffice, and return the new path.
+
+    Some government endpoints serve a Word file from the same URL and the same
+    parameters as their PDFs. An extension check calls it a PDF; only the magic
+    bytes tell them apart, which is what :func:`document_kind` in the register
+    modules is for.
+
+    **LibreOffice, not textutil.** ``textutil -convert txt`` and
+    ``-convert html`` both FLATTEN the document's tables into a single run, so a
+    grid of figures arrives as prose and the rows are gone. Converting to PDF
+    through LibreOffice preserves the grid: that one change recovered 337 rows
+    from a single order on 2026-08-14.
+
+    Raises :class:`ConversionUnavailable` rather than returning nothing, because
+    an empty result here is indistinguishable from an empty document.
+    """
+    binary = soffice_path()
+    if binary is None:
+        raise ConversionUnavailable(
+            "LibreOffice is not installed, so a Word document cannot be converted. "
+            "`textutil` is NOT a substitute: it flattens tables into one run and "
+            "loses every row.")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        result = runner(
+            [binary, "--headless", "--convert-to", "pdf", "--outdir",
+             str(out_dir), str(path)],
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            timeout=timeout, check=False,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
+        raise ConversionUnavailable(f"{binary}: {exc}") from exc
+    if getattr(result, "returncode", 0) != 0:
+        raise ConversionUnavailable(
+            f"{binary} exited {result.returncode} on {path.name}")
+    dest = out_dir / (path.stem + ".pdf")
+    if not dest.exists():
+        raise ConversionUnavailable(
+            f"{binary} reported success and wrote no {dest.name}. A conversion that "
+            "produces nothing must not read as an empty document.")
+    return dest
+
+
+def needs_ocr(text: str, *, min_chars: int = 200) -> bool:
+    """Whether an extraction is too thin to be the document.
+
+    The routing decision, not the OCR itself. Most scanned orders carry no text
+    layer at all, and a few carry two ligature artefacts — and `chars > 0`
+    accepted those, which is how a corpus reported complete text while dozens of
+    documents held nothing readable. A caller reads this, then passes ``ocr=True``
+    to :func:`extract_pdf_text`.
+    """
+    return len((text or "").strip()) < min_chars
+
+
 def ocr_toolchain_missing() -> list[str]:
     """Which OCR command-line tools are absent, so a caller can say so up front."""
     return [tool for tool in ("pdftoppm", "tesseract") if shutil.which(tool) is None]

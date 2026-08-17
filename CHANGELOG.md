@@ -112,6 +112,26 @@ and an answer can be a different question's document.
   "absent" when only the state filter excluded a name. Built live against the real
   extracts: 639 districts, and all eleven Andhra spelling variants resolve.
 
+- **The HTTP layer names an AWS WAF challenge instead of reading it as an empty
+  result.** `challenge_reason` and `refuse_challenge` detect the
+  `x-amzn-waf-action` header at any status, and an empty-bodied 2xx where the
+  caller expected content. This is worse than a block because it IS a 2xx:
+  `raise_for_status()` passes and `json.loads(b"")` then throws a confusing decode
+  error, so the natural next move is to doubt the URL. Measured against a Harvard
+  Dataverse API on 2026-08-14, where the DOI had been correct the whole time. A
+  204 and a HEAD are legitimately empty, so the empty-body signature is the
+  caller's statement rather than a guess.
+
+- **`textparse.word_to_pdf` and `textparse.needs_ocr`.** Some endpoints serve a
+  Word document from the same URL and parameters as their PDFs, and only the magic
+  bytes tell them apart. `textutil` is not a substitute for the conversion: both
+  its txt and html modes FLATTEN the document's tables into one run, so a grid of
+  figures arrives as prose and every row is lost, while LibreOffice preserves it —
+  that one change recovered 337 rows from a single order. A conversion that
+  reports success and writes nothing raises rather than reading as an empty
+  document. `needs_ocr` is the routing decision the OCR rung never had: a scanned
+  page yields two ligature artefacts, and `chars > 0` counted them as a read.
+
 - **`commoner-probe doctor` — the three versions that are supposed to agree.**
   `importlib.metadata` serves the version recorded at INSTALL time, not the one in
   the tree in front of you, so a stale editable install silently invalidates every

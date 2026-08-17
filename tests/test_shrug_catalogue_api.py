@@ -433,3 +433,15 @@ def test_an_unchanged_outcome_does_not_append_a_second_row(tmp_path):
                        log=lambda _m: None, min_rows=1)
     rows = (tmp_path / "manifest.jsonl").read_text().splitlines()
     assert len(rows) == 2
+
+
+def test_a_waf_challenge_is_named_as_one_not_read_as_an_empty_catalogue():
+    """The header makes it unambiguous, and the shared HTTP layer now knows the
+    grammar, so the next host with it does not cost another session."""
+    from commoner_probe.http_client import ChallengeDetected
+
+    session = _Session({shrug.CATALOGUE_URL: _Resp(
+        b"", status=202, headers={"x-amzn-waf-action": "challenge"})})
+    with pytest.raises((ChallengeDetected, shrug.ShrugCatalogueError)) as excinfo:
+        shrug.catalogue(session=session, min_rows=1)
+    assert "waf" in str(excinfo.value).lower()

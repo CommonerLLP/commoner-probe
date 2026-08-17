@@ -86,7 +86,7 @@ from typing import Any, Callable
 from urllib.parse import urlparse
 
 from .base import safe_filename_segment
-from .http_client import iter_capped, make_session
+from .http_client import ChallengeDetected, iter_capped, make_session, refuse_challenge
 
 DOWNLOAD_PAGE_URL = "https://www.devdatalab.org/shrug_download/"
 CATALOGUE_URL = "https://www.devdatalab.org/shrug_download/data"
@@ -234,6 +234,15 @@ def catalogue(*, session: Any = None, timeout: int = 90,
         timeout=timeout,
     )
     resp.raise_for_status()
+    # The challenge grammar is recognised by the shared HTTP layer now, so the
+    # next host with it reads as a challenge rather than as an empty catalogue.
+    # Detected by the shared HTTP layer, re-raised in this module's own error
+    # type: a caller catching ShrugCatalogueError must not miss the one failure
+    # that most looks like an empty catalogue.
+    try:
+        refuse_challenge(resp, CATALOGUE_URL, expect_body=True)
+    except ChallengeDetected as exc:
+        raise ShrugCatalogueError(str(exc)) from exc
     body = resp.text
     if not body.strip():
         raise ShrugCatalogueError(
