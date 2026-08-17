@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CommonerLLP/commoner-probe/schemas/v1/manifest_wayback_recovery.json",
+  "title": "manifest.jsonl — document recovered from the Internet Archive",
+  "description": "One attempt to recover the BYTES of a document whose live URL is gone, as distinct from wayback_capture, which only records what the index holds. Every non-`ok` status is a different statement and they must not be read as one another: `no-capture` means the index served rows and none of them was an HTTP 200 capture of this URL; `unverified` means bytes arrived and no capture formed a whole document; `fetch-failed` means no bytes ever arrived; `throttled` means the archive refused, which is never evidence of absence. A capture list that comes back empty for a whole host raises IndexUnavailable rather than producing rows, because a throttled CDX read answers 200 with zero rows — that failure once reported 375 of 391 present documents as absent. Selection prefers the LARGEST complete capture, not the newest: the archive's own newest capture is frequently a truncated re-crawl, and one observed file had a 14,561,108-byte capture, a 14,561,045-byte capture, and a newest one cut off at exactly 5 MiB.",
+  "type": "object",
+  "required": [
+    "key",
+    "kind",
+    "record_type",
+    "source_family",
+    "source",
+    "publisher",
+    "source_url",
+    "wayback_timestamp",
+    "snapshot_url",
+    "local_file",
+    "bytes",
+    "sha256",
+    "status",
+    "fetched_at"
+  ],
+  "properties": {
+    "key": {
+      "type": "string",
+      "pattern": "^WAYBACK-RECOVER\\|.+$",
+      "description": "The requested URL. One row per URL, because the row answers 'do we hold this document', not 'which captures exist'."
+    },
+    "kind": { "type": "string", "const": "wayback_recovery" },
+    "record_type": { "type": "string", "const": "wayback_recovery" },
+    "source_family": { "type": "string", "const": "wayback" },
+    "source": { "type": "string", "const": "web.archive.org" },
+    "publisher": { "type": "string", "const": "Internet Archive" },
+    "source_url": {
+      "type": "string",
+      "description": "The URL as requested, not as the crawler recorded it. The index is matched on a canonical key, so an https request finds the http capture."
+    },
+    "wayback_timestamp": {
+      "type": ["string", "null"],
+      "pattern": "^[0-9]{14}$",
+      "description": "The capture that verified. Null on every non-ok status, so a citation cannot name a capture that was never accepted."
+    },
+    "snapshot_url": {
+      "type": ["string", "null"],
+      "description": "The id_ replay URL of the accepted capture. Null when nothing was accepted."
+    },
+    "local_file": {
+      "type": ["string", "null"],
+      "description": "Path relative to the corpus directory. The name carries the host, the path and the query, because two hosts publishing one filename overwrote each other and the first row's sha256 then described bytes no longer on disk."
+    },
+    "bytes": {
+      "type": ["integer", "null"],
+      "minimum": 0,
+      "description": "Size of the accepted capture. Null on every non-ok status."
+    },
+    "sha256": {
+      "type": ["string", "null"],
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "Digest of the bytes on disk. Written only for a capture that passed the completeness predicate, because a digest of a truncated document reads as verification."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["ok", "no-capture", "unverified", "fetch-failed", "throttled"]
+    },
+    "reason": {
+      "type": ["string", "null"],
+      "description": "What stopped each candidate, in order. Present on ok too when earlier candidates failed verification, so the record shows what was rejected before the accepted capture."
+    },
+    "fetched_at": { "type": "string" }
+  }
+}

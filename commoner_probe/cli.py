@@ -1062,6 +1062,112 @@ def abhilekh_patal_cmd(args: argparse.Namespace) -> None:
         raise SystemExit(str(exc)) from exc
 
 
+def doctor_cmd(args: argparse.Namespace) -> None:
+    from .doctor import version_report
+
+    report = version_report(requirements=tuple(args.requirements or ()))
+    print(report.report)
+    if not report.agrees:
+        raise SystemExit(1)
+
+
+def wayback_recover_cmd(args: argparse.Namespace) -> None:
+    from .wayback_recover import IndexUnavailable, recover
+
+    urls = list(args.url or [])
+    if args.urls:
+        urls += [ln.strip() for ln in Path(args.urls).read_text().splitlines() if ln.strip()]
+    try:
+        for record in recover(
+            Path(args.out),
+            urls=urls or None,
+            host=args.host,
+            match=args.match,
+            prefer=args.prefer,
+            verify=args.verify,
+        ):
+            print(json.dumps(record, ensure_ascii=False))
+    except IndexUnavailable as exc:
+        raise SystemExit(str(exc)) from exc
+
+
+def shrug_cmd(args: argparse.Namespace) -> None:
+    from .shrug_catalogue_api import PRESETS, ShrugCatalogueError, catalogue, fetch_preset
+
+    try:
+        if args.list_tables:
+            for label, table in sorted(catalogue().items()):
+                print(f"{table.module_label}\t{label}\t{table.filetype}")
+            return
+        if args.list_presets:
+            for name, patterns in PRESETS.items():
+                print(f"{name}\t{len(patterns)} pattern(s)")
+            return
+        for record in fetch_preset(args.preset, Path(args.out)):
+            print(json.dumps(record, ensure_ascii=False))
+    except ShrugCatalogueError as exc:
+        raise SystemExit(str(exc)) from exc
+
+
+def go_register_cmd(args: argparse.Namespace) -> None:
+    from .go_issue_register import (
+        AP_GOIR,
+        ControlRequired,
+        GoIssueRegister,
+        GoQuery,
+        document_kind,
+        reachable,
+    )
+
+    base = args.base_url or AP_GOIR
+    if args.reachable:
+        print(json.dumps(reachable(base), ensure_ascii=False))
+        return
+    # The default control is a School Education order that ANDHRA holds. Run
+    # against another state's deployment it fails before the caller's query ever
+    # runs, and `--no-control` answers that by removing the safeguard rather than
+    # replacing it. A different deployment needs a record IT holds.
+    control = None
+    if args.control_department:
+        control = GoQuery(department=args.control_department,
+                          from_date=args.control_date, to_date=args.control_date,
+                          go_no=args.control_go_no or "",
+                          go_type=args.control_go_type)
+    elif args.base_url and not args.no_control:
+        raise SystemExit(
+            f"{base} is not the deployment the default control was measured against. "
+            "That control asks Andhra Pradesh for School Education GO 19 of "
+            "13-05-2025, and no other state holds it. Pass a record this deployment "
+            "holds with --control-department, --control-date and --control-go-no. "
+            "--no-control removes the check instead of replacing it, and an empty "
+            "result then establishes nothing.")
+    register = GoIssueRegister(base, timeout=args.timeout)
+    if not args.no_control:
+        register.run_control(control)
+    query = GoQuery(department=args.department, from_date=args.from_date,
+                    to_date=args.to_date, go_no=args.go_no or "",
+                    go_type=args.go_type, text=args.text or "")
+    try:
+        rows = register.search(query)
+    except ControlRequired as exc:
+        raise SystemExit(str(exc)) from exc
+    out = Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+    for row in rows:
+        record = {"go_no": row.go_no, "order_date": row.order_date,
+                  "cells": list(row.cells), "files": [list(f) for f in row.files]}
+        if args.download:
+            saved = []
+            for gid, file_type in row.files:
+                data = register.document(gid, file_type)
+                kind = document_kind(data)
+                name = row.document_name(args.department, gid, file_type, suffix=kind)
+                (out / name).write_bytes(data)
+                saved.append({"file": name, "document_kind": kind, "bytes": len(data)})
+            record["documents"] = saved
+        print(json.dumps(record, ensure_ascii=False))
+
+
 def wayback_cmd(args: argparse.Namespace) -> None:
     from .wayback import IndexUnavailable, WaybackCaptureProbe
 
@@ -2074,6 +2180,117 @@ def build_parser() -> argparse.ArgumentParser:
     wayback.add_argument("--sleep", type=float, default=1.0, help="Pause between CDX requests")
     wayback.add_argument("--dry-run", action="store_true", help="Print records without writing anything")
     wayback.set_defaults(func=wayback_cmd)
+
+    doctor = sub.add_parser(
+        "doctor",
+        help=(
+            "Compare the source version, the installed metadata and any declared "
+            "pin. Exits 1 when two KNOWN numbers disagree."
+        ),
+        epilog=(
+            "Examples:\n"
+            "  commoner-probe doctor\n"
+            "  commoner-probe doctor --requirements path/to/consumer/requirements.txt\n"
+            "\n`importlib.metadata` serves the version recorded at INSTALL time, not the "
+            "one in the tree in front of you, so a stale editable install silently "
+            "invalidates every version gate built on it. One venv shared across "
+            "worktrees reports whichever tree was installed last."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    doctor.add_argument("--requirements", action="append",
+                       help="A requirements file to read a pin from; repeatable")
+    doctor.set_defaults(func=doctor_cmd)
+
+    wayback_recover = sub.add_parser(
+        "wayback-recover",
+        help=(
+            "Recover the BYTES of documents whose live URLs are gone, choosing the "
+            "largest COMPLETE capture rather than the newest."
+        ),
+        epilog=(
+            "Examples:\n"
+            "  # one dead PDF, verified complete\n"
+            "  commoner-probe wayback-recover --out data/pab --url "
+            "https://dsel.education.gov.in/sites/default/files/AN_PAB_2018_2019.pdf\n"
+            "  # every PDF the archive holds under one host\n"
+            "  commoner-probe wayback-recover --out data/pab --host "
+            "dsel.education.gov.in --match '\\.pdf$'\n"
+            "\nThe newest capture is often a truncated re-crawl, so `--prefer largest` "
+            "is the default and a PDF is checked for its %%EOF before it is accepted."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    wayback_recover.add_argument("--out", required=True, help="Output corpus directory")
+    wayback_recover.add_argument("--url", action="append", help="A URL to recover; repeatable")
+    wayback_recover.add_argument("--urls", help="File of URLs, one per line")
+    wayback_recover.add_argument("--host", help="Recover everything the index holds under this host")
+    wayback_recover.add_argument("--match", help="Regex the URL must match (host mode)")
+    wayback_recover.add_argument("--prefer", choices=("largest", "newest"), default="largest",
+                                 help="Which capture to try first. Default: largest")
+    wayback_recover.add_argument("--verify", choices=("pdf", "none"), default="pdf",
+                                 help="Completeness check applied to the bytes. Default: pdf")
+    wayback_recover.set_defaults(func=wayback_recover_cmd)
+
+    shrug = sub.add_parser(
+        "shrug",
+        help="List the SHRUG catalogue, or fetch a named preset with a sha256 manifest.",
+        epilog=(
+            "Examples:\n"
+            "  commoner-probe shrug --list-presets\n"
+            "  commoner-probe shrug --out data/shrug --preset caste\n"
+            "\nA shrid is not a village: it can contain several Census villages, so a "
+            "per-unit rate on these rows is per shrid. The public-library variable "
+            "exists only in the 2011 village directory."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    shrug.add_argument("--out", help="Output corpus directory (required to fetch)")
+    shrug.add_argument("--preset", help="Preset to fetch, such as caste or census-directories")
+    shrug.add_argument("--list-tables", action="store_true", help="Print the live catalogue")
+    shrug.add_argument("--list-presets", action="store_true", help="Print the preset names")
+    shrug.set_defaults(func=shrug_cmd)
+
+    go_register = sub.add_parser(
+        "go-register",
+        help="Search a NIC Government Orders Issue Register and fetch the order documents.",
+        epilog=(
+            "Examples:\n"
+            "  # is the host reachable at all? never judge this from a HEAD\n"
+            "  commoner-probe go-register --reachable\n"
+            "  # School Education orders of one day, with their PDFs\n"
+            "  commoner-probe go-register --out data/goir --department SE \\\n"
+            "      --from-date 13-05-2025 --to-date 13-05-2025 --download\n"
+            "\nDates are dd-mm-yyyy with HYPHENS. A slashed or impossible date returns "
+            "the blank search form with HTTP 200, which is indistinguishable from no such "
+            "order. A positive control therefore runs before any empty result is reported."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    go_register.add_argument("--out", default=".", help="Directory for the order documents")
+    go_register.add_argument("--base-url", dest="base_url", help="Another state's deployment")
+    go_register.add_argument("--department", help="Registered department code, such as SE")
+    go_register.add_argument("--from-date", dest="from_date", help="dd-mm-yyyy")
+    go_register.add_argument("--to-date", dest="to_date", help="dd-mm-yyyy")
+    go_register.add_argument("--go-no", dest="go_no", help="Order number")
+    go_register.add_argument("--go-type", dest="go_type", default="-1",
+                             help="1 MS, 2 RT, -1 every type. Default: -1")
+    go_register.add_argument("--text", help="Free-text search over the abstract")
+    go_register.add_argument("--download", action="store_true", help="Fetch each order document")
+    go_register.add_argument("--reachable", action="store_true",
+                             help="Report whether the host serves, and exit")
+    go_register.add_argument("--control-department", dest="control_department",
+                             help="Department of a record this deployment already holds")
+    go_register.add_argument("--control-date", dest="control_date",
+                             help="Date of that record, dd-mm-yyyy")
+    go_register.add_argument("--control-go-no", dest="control_go_no",
+                             help="Order number of that record")
+    go_register.add_argument("--control-go-type", dest="control_go_type", default="-1",
+                             help="Order type of that record. Default: -1")
+    go_register.add_argument("--no-control", action="store_true",
+                             help="Skip the positive control. An empty result then proves nothing.")
+    go_register.add_argument("--timeout", type=float, default=120)
+    go_register.set_defaults(func=go_register_cmd)
 
     budget = sub.add_parser(
         "budget",

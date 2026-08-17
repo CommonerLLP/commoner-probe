@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CommonerLLP/commoner-probe/schemas/v1/manifest_shrug_table.json",
+  "title": "manifest.jsonl — SHRUG table acquired from the Devdatalab catalogue",
+  "description": "One table of the SHRUG release, fetched from Development Data Lab's catalogue endpoint and its presigned S3 links. `unit` is on every row because the mistake this prevents is arithmetic rather than acquisition: a shrid is SHRUG's stable spatial unit and can contain several Census villages, so any per-unit rate computed on these rows is per shrid, never per village. `licence` and `doi` travel with the data because CC BY-NC-SA 4.0 is share-alike, so anything redistributing these rows inherits the term. `status` distinguishes a fetch from a file already held and from a file held SHORT: a size that disagrees with the ranged-GET total is recorded rather than trusted, since a stream that ends early is the common S3 failure and the atomic rename cannot detect it.",
+  "type": "object",
+  "required": [
+    "key",
+    "kind",
+    "record_type",
+    "source_family",
+    "publisher",
+    "module_label",
+    "table_label",
+    "filetype",
+    "url",
+    "dest",
+    "bytes",
+    "sha256",
+    "doi",
+    "licence",
+    "unit",
+    "status",
+    "fetched_at"
+  ],
+  "properties": {
+    "key": {
+      "type": "string",
+      "pattern": "^SHRUG\\|.+$",
+      "description": "The catalogue's own table label. The catalogue refuses a duplicate label, so the label is an identity."
+    },
+    "kind": { "type": "string", "const": "shrug_table" },
+    "record_type": { "type": "string", "const": "shrug_table" },
+    "source_family": { "type": "string", "const": "shrug-devdatalab" },
+    "publisher": { "type": "string", "const": "Development Data Lab" },
+    "module_label": { "type": "string", "description": "The catalogue's module grouping, such as Census or Caste." },
+    "table_label": { "type": "string" },
+    "filetype": { "type": "string", "description": "The catalogue's declared primary filetype, such as dta or gpkg." },
+    "citation": { "type": ["string", "null"] },
+    "url": {
+      "type": "string",
+      "description": "The S3 object URL with the presigned query string REMOVED. The signature is a temporary credential, not provenance."
+    },
+    "dest": {
+      "type": "string",
+      "description": "Filename under the corpus directory. It carries the table label as well as the S3 basename, because several tables share a basename and keying on it alone put two tables at one path."
+    },
+    "bytes": { "type": ["integer", "null"], "minimum": 0 },
+    "sha256": {
+      "type": ["string", "null"],
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "Written only for a download whose byte count matched the size the ranged GET reported. Null for a file found already on disk."
+    },
+    "doi": { "type": "string", "const": "doi:10.7910/DVN/DPESAK" },
+    "licence": { "type": "string", "const": "CC BY-NC-SA 4.0" },
+    "unit": { "type": "string", "const": "shrid" },
+    "status": {
+      "type": "string",
+      "enum": ["downloaded", "skipped_exists"],
+      "description": "`skipped_exists` is written only for a file whose size matches the catalogue's AND whose digest still matches the one last recorded for it. A file that fails either test is re-fetched and recorded as `downloaded`, because reporting it held would leave a wrong file in place under a right name."
+    },
+    "fetched_at": { "type": "string" }
+  }
+}

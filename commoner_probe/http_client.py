@@ -242,6 +242,56 @@ class StdlibResponse:
 MAX_RESPONSE_BYTES = 512 * 1024 * 1024
 
 
+class ChallengeDetected(RuntimeError):
+    """A WAF answered instead of the source, and it answered with a 2xx.
+
+    Worse than a block, because it passes every check a caller makes.
+    ``raise_for_status()`` succeeds on a 202, and ``json.loads(b"")`` then throws
+    ``JSONDecodeError: Expecting value: line 1 column 1`` — so the natural next
+    move is to doubt the URL. Measured against a Harvard Dataverse API on
+    2026-08-14: every scripted request answered ``202``, ``server: awselb/2.0``,
+    ``x-amzn-waf-action: challenge``, ``content-length: 0``. The DOI was correct
+    the whole time.
+    """
+
+
+#: The header an AWS WAF sets when it serves a challenge rather than the source.
+WAF_ACTION_HEADER = "x-amzn-waf-action"
+
+
+def challenge_reason(resp: Any, *, expect_body: bool = False) -> str | None:
+    """Why this response is a challenge rather than an answer, or None.
+
+    Two signatures. The WAF header is unambiguous wherever it appears. An empty
+    body on a 2xx is a challenge only where the caller expected content, so
+    ``expect_body`` is the caller's statement rather than a guess: a 204 and a
+    HEAD are legitimately empty.
+    """
+    headers = getattr(resp, "headers", None) or {}
+    action = ""
+    if hasattr(headers, "get"):
+        action = str(headers.get(WAF_ACTION_HEADER) or headers.get(WAF_ACTION_HEADER.title()) or "")
+    if action:
+        return (f"{WAF_ACTION_HEADER}: {action} — a WAF answered, not the source. This "
+                "host needs a browser session or a mirror that is not challenged. Look "
+                "for the mirror first.")
+    status = getattr(resp, "status_code", None)
+    if expect_body and status is not None and 200 <= int(status) < 300:
+        body = getattr(resp, "text", None)
+        if body is not None and not str(body).strip():
+            return (f"HTTP {status} with an empty body where content was expected — the "
+                    "AWS WAF challenge grammar. It is not an empty result, and it is not "
+                    "an API error.")
+    return None
+
+
+def refuse_challenge(resp: Any, url: str, *, expect_body: bool = False) -> None:
+    """Raise :class:`ChallengeDetected` when *resp* is a challenge."""
+    reason = challenge_reason(resp, expect_body=expect_body)
+    if reason:
+        raise ChallengeDetected(f"{url}: {reason}")
+
+
 class ResponseTooLarge(RuntimeError):
     """A response body outran its ceiling. Raised, never truncated.
 

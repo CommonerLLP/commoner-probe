@@ -868,6 +868,91 @@ Builds a JSON bundle with separate `executive_disclosure` and
 `parliamentary_oversight` sections. It does not merge unlike source families
 into one table.
 
+### `commoner-probe wayback-recover` — recover a document the source deleted
+
+```bash
+# one dead PDF, verified complete
+commoner-probe wayback-recover --out data/pab \
+  --url https://dsel.education.gov.in/sites/default/files/AN_PAB_2018_2019.pdf
+
+# every PDF the archive holds under one host
+commoner-probe wayback-recover --out data/pab \
+  --host dsel.education.gov.in --match '\.pdf$'
+```
+
+Answers the question `wayback` cannot: **give me the document**.
+
+Three behaviours are load-bearing. It prefers the **largest** complete capture,
+because the archive's own newest capture is frequently a truncated re-crawl — one
+file carries captures of 14,561,108 and 14,561,045 bytes and a newest one cut off
+at exactly 5 MiB. It **verifies** the bytes (a PDF must carry `%%EOF` near its
+end) and falls back to the next-largest on failure. And it asks the CDX index
+**once per host**, because per-URL concurrent queries get throttled and a
+throttled response comes back empty rather than as an error.
+
+Statuses are distinct on purpose: `no-capture` means the index served rows and
+none was an HTTP 200 capture; `unverified` means bytes arrived and none formed a
+whole document; `fetch-failed` means no bytes arrived; `throttled` means the
+archive refused, which is never evidence of absence.
+
+### `commoner-probe shrug` — SHRUG village-level socioeconomic tables
+
+```bash
+commoner-probe shrug --list-presets
+commoner-probe shrug --list-tables
+commoner-probe shrug --out data/shrug --preset caste
+```
+
+The catalogue is a JSON endpoint the download page's table is bound to, not the
+page itself: scraping the rendered page finds no links at all. Files come from
+presigned S3 URLs that are signed for GET only, so sizing uses a ranged GET —
+a HEAD returns 403 on a URL that downloads fine.
+
+Two facts travel with every row. **A shrid is not a village**: it can contain
+several Census villages, so any per-unit rate on these rows is per shrid.
+**Variable coverage differs by census**: `pc11_vd` carries 284 variables against
+`pc91_vd`'s 100, and the public-library variable exists only in 2011.
+
+Licence CC BY-NC-SA 4.0, share-alike. Cite `doi:10.7910/DVN/DPESAK`.
+
+### `commoner-probe go-register` — state Government Orders Issue Register
+
+```bash
+# is the host serving? never judge this from a HEAD
+commoner-probe go-register --reachable
+
+commoner-probe go-register --out data/goir --department SE \
+  --from-date 13-05-2025 --to-date 13-05-2025 --download
+```
+
+Drives a NIC "Government Orders Issue Register" through the shared WebForms
+client. Written against Andhra Pradesh's `goir.ap.gov.in`; **whether it
+generalises to another state is not verified.**
+
+Dates are `dd-mm-yyyy` with hyphens. A slashed or impossible date returns the
+blank search form with HTTP 200, which is indistinguishable from a genuine
+no-results page — so a positive control runs before any empty result is
+reported, and `--no-control` says out loud that the empty result then proves
+nothing. The grid's document links are JavaScript calls rather than hrefs, and
+some orders arrive as Word files, so each saved file is named from the bytes.
+
+### `commoner-probe doctor` — do the versions agree?
+
+```bash
+commoner-probe doctor
+commoner-probe doctor --requirements path/to/consumer/requirements.txt
+```
+
+Three versions exist at once and each is read by something different: the source
+version in `pyproject.toml`, the installed metadata that `__version__`, the
+outbound User-Agent and every run log report, and a consumer's declared pin.
+`importlib.metadata` serves the number recorded at **install** time, so a stale
+editable install silently invalidates any gate built on it — and one venv shared
+across worktrees reports whichever tree was installed last.
+
+Exits 1 when two KNOWN numbers disagree. A number that cannot be read is reported
+as unknown, never as agreement.
+
 ### `commoner-probe stats` — corpus health
 
 ```bash

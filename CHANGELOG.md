@@ -72,6 +72,84 @@ and an answer can be a different question's document.
   ministry, and the Cyrillic letters OCR substitutes for identically drawn Latin
   ones. Requiring the exact English strings called 29 complete replies unusable.
 
+- **`commoner-probe wayback-recover` — recovery, not provenance.** `wayback`
+  answers "does a capture exist"; this answers "give me the document" for a
+  government file that is gone. It prefers the **largest complete** capture, not
+  the newest, because the archive's own newest capture is frequently a truncated
+  re-crawl: one observed file carries captures of 14,561,108 and 14,561,045 bytes
+  and a newest one cut off at exactly 5 MiB. It verifies the bytes and falls back
+  to the next-largest, and it asks the CDX index once per host, because per-URL
+  concurrent queries get throttled and a throttled read comes back **empty rather
+  than as an error** — that failure once reported 375 of 391 present documents as
+  absent. `no-capture`, `unverified`, `fetch-failed` and `throttled` are four
+  distinct statements and none of them may be read as absence. Manifest kind
+  `wayback_recovery`.
+
+- **`commoner-probe shrug` — the SHRUG village-level panel.** The catalogue is a
+  JSON endpoint the download page's table is bound to, so scraping the rendered
+  page finds no links at all. Files are presigned S3 objects signed for GET only,
+  so a HEAD returns 403 on a URL that downloads fine and sizing uses a ranged
+  GET. A short stream is refused rather than hashed: a sha256 of a partial table reads
+  as verification of a whole one. A file already on disk is trusted only when its
+  size matches AND it still hashes to the digest last recorded for it, because a
+  table replaced without changing its length passed a size check while the
+  manifest kept the old digest beside it. Every row carries the licence, the DOI and
+  the unit, because a shrid is not a village. Manifest kind `shrug_table`.
+
+- **`commoner-probe go-register` — a NIC Government Orders Issue Register.**
+  Driven through the existing WebForms client rather than a second one. Dates are
+  dd-mm-yyyy with hyphens, and a slashed or impossible date returns the blank
+  search form with HTTP 200 — indistinguishable from a genuine absence — so a
+  positive control runs before any empty result is reported. A refusal is never an
+  absence: a 429, a 500 and a WAF challenge each raise, which matters because the
+  default install's stdlib session RETURNS an error body as the response. The
+  grid's document links are JavaScript calls, not hrefs. Written against Andhra
+  Pradesh; **generality is not verified.**
+
+- **`commoner_probe.admin_units` — a district index and a resolver that never
+  guesses.** A district label is not a key. The UDISE crosswalk flags 192 of its
+  782 rows `unmatched` and **177 of those still carry a populated district id**,
+  59 of them the same id — measured against the file on 2026-08-17. So the
+  resolver refuses a mapping its own source flagged weak, refuses a row whose own
+  district name contradicts the index, and answers `state_mismatch` rather than
+  "absent" when only the state filter excluded a name. Built live against the real
+  extracts: 639 districts, and all eleven Andhra spelling variants resolve.
+
+- **The HTTP layer names an AWS WAF challenge instead of reading it as an empty
+  result.** `challenge_reason` and `refuse_challenge` detect the
+  `x-amzn-waf-action` header at any status, and an empty-bodied 2xx where the
+  caller expected content. This is worse than a block because it IS a 2xx:
+  `raise_for_status()` passes and `json.loads(b"")` then throws a confusing decode
+  error, so the natural next move is to doubt the URL. Measured against a Harvard
+  Dataverse API on 2026-08-14, where the DOI had been correct the whole time. A
+  204 and a HEAD are legitimately empty, so the empty-body signature is the
+  caller's statement rather than a guess.
+
+- **`textparse.word_to_pdf` and `textparse.needs_ocr`.** Some endpoints serve a
+  Word document from the same URL and parameters as their PDFs, and only the magic
+  bytes tell them apart. `textutil` is not a substitute for the conversion: both
+  its txt and html modes FLATTEN the document's tables into one run, so a grid of
+  figures arrives as prose and every row is lost, while LibreOffice preserves it —
+  that one change recovered 337 rows from a single order. A conversion that
+  reports success and writes nothing raises rather than reading as an empty
+  document. `needs_ocr` is the routing decision the OCR rung never had: a scanned
+  page yields two ligature artefacts, and `chars > 0` counted them as a read.
+
+- **`commoner-probe doctor` — the three versions that are supposed to agree.**
+  `importlib.metadata` serves the version recorded at INSTALL time, not the one in
+  the tree in front of you, so a stale editable install silently invalidates every
+  version gate built on it. This repo's own version test failed for an unknown
+  period reading 0.14.7 against a source of 0.14.6, and one consumer ran 0.13.0
+  against a declared pin of 0.14.3. `doctor` prints the source version, the
+  installed metadata and any declared pin, and exits 1 when two KNOWN numbers
+  disagree. An unknown number is reported as unknown and never as agreement.
+
+- **`commoner_probe.checkpoint` and `commoner_probe.reachability`.** A long crawl
+  flushes atomically on an interval and on SIGTERM or SIGINT, and heals a torn
+  checkpoint even on a run that finishes nothing. `reachability` reports
+  from-here against from-India with a positive control on each side, so nobody
+  provisions an Indian host for a host that already serves.
+
 - **`commoner_probe.invariants` — the four acquisition invariants as
   callables.** Each is drawn from a defect that produced a plausible,
   complete-looking result rather than an error, and each was previously advice
@@ -95,6 +173,14 @@ and an answer can be a different question's document.
   `geoserver.verify()` now builds its saturation report through the shared
   function, so the GIS case and the general case cannot drift apart. Its
   returned keys are unchanged.
+
+### Fixed
+
+- **The manifest-kind guard could not see a kind held in a constant.** It matched
+  only a literal `"kind": "..."` in the source, so `wayback_recovery` reached the
+  tree unregistered while the guard passed. A check that sees one spelling of the
+  thing it guards is not a guard. It now reads `MANIFEST_KIND` too, and both new
+  kinds validate against records the modules actually emitted.
 
 - **Every answer is checked against the question number it prints.** sansad.in
   serves the wrong document under the right URL: fetched live again on
