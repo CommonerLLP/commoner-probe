@@ -29,6 +29,8 @@ from urllib.parse import urlencode
 
 from .base import BaseProbe, _private_tmp_path, now, safe_filename_segment
 from .http_client import iter_capped
+from .qno_guard import MISMATCH, UNREADABLE, check_question_number
+from .textparse import PdfTextUnavailable, extract_pdf_text
 from .topics import TopicProfile
 
 LS_API_BASE = "https://elibrary.sansad.in/server/api"
@@ -256,6 +258,10 @@ class SansadProbe(BaseProbe):
         self.enumerate_all = enumerate_all
         self.windows_path = out_dir / "_windows.jsonl"
         self._roster: MPRoster | None = None
+        #: Answers whose document printed a different question number than the
+        #: one requested. Reported in the run log so a consumer reads the rate
+        #: off the run rather than inferring it.
+        self.qno_mismatches = 0
         if self.member_name:
             self.log(
                 "WARNING: --member uses name-prefix matching, which is identity-UNSAFE "
@@ -446,6 +452,43 @@ class SansadProbe(BaseProbe):
             "probed_at": now(),
         }
 
+    def verify_document_qno(self, rec: dict, *, pdf_path: Path | None = None) -> None:
+        """Stamp `rec` with the question number its own answer prints.
+
+        sansad.in serves 2594's document at the AU2549 URL, live and
+        reproducibly, so the requested number and the document disagree and
+        nothing downstream can tell. The same misassignment reaches
+        the inline `answerText`, where there is no PDF to read.
+
+        The document is kept whatever the verdict. It is a real government
+        reply and belongs to SOME question; a suppressed download is harder to
+        notice than a flagged one.
+
+        Page one only, and never more than the header needs. An unreadable
+        document is recorded as unreadable, never as a mismatch — 4.7% of
+        probe-fetched LS answers print no number of their own.
+        """
+        if pdf_path is not None:
+            try:
+                text = extract_pdf_text(pdf_path, last_page=1)
+            except (PdfTextUnavailable, OSError):
+                # No backend, or the file went away. Neither says anything
+                # about the document's number, so neither may read as a
+                # verdict on it.
+                rec["document_qno"], rec["document_qno_status"] = None, UNREADABLE
+                return
+        else:
+            text = rec.get("answer_text") or ""
+        printed, status = check_question_number(rec.get("qno"), text)
+        rec["document_qno"], rec["document_qno_status"] = printed, status
+        if status == MISMATCH:
+            self.qno_mismatches += 1
+            self.log(
+                f"WARNING: {rec.get('key')} was fetched as question {rec.get('qno')} "
+                f"and its answer prints QUESTION NO. {printed}. The document is KEPT "
+                "and flagged; re-fetching cannot repair a source-side swap."
+            )
+
     def _ls_attach_pdf(self, rec: dict) -> None:
         pdf_url = self.ls_pdf_url(rec["uuid"])
         if not pdf_url:
@@ -458,6 +501,7 @@ class SansadProbe(BaseProbe):
         if self.write_pdf(pdf_url, pdf_path, HEADERS):
             rec["pdf_url"] = pdf_url
             rec["pdf_path"] = str(pdf_path.relative_to(self.out_dir))
+            self.verify_document_qno(rec, pdf_path=pdf_path)
 
     def _rs_record(self, row: dict, *, run_id: str, found_via: str) -> dict:
         date = rs_date_iso(row.get("ans_date"))
@@ -497,6 +541,11 @@ class SansadProbe(BaseProbe):
         pdf_path = self.pdf_dir / "rs" / fname
         if self.write_pdf(rec["pdf_url"], pdf_path, RS_HEADERS):
             rec["pdf_path"] = str(pdf_path.relative_to(self.out_dir))
+            self.verify_document_qno(rec, pdf_path=pdf_path)
+            return
+        # No PDF landed, so the inline answer the RS API served is all there is
+        # to check — and inline text carries the same defect.
+        self.verify_document_qno(rec)
 
     def load_window_states(self) -> dict[str, dict]:
         states: dict[str, dict] = {}
@@ -921,6 +970,7 @@ class SansadProbe(BaseProbe):
         min_page_size: int = 25,
         floor_retries: int = 4,
         recover_after: int = 4,
+        max_consecutive_skips: int = 4,
         skipped: list[tuple[int, int]] | None = None,
     ) -> Iterator[dict]:
         """Every question row for one LS session, in portal order.
@@ -962,6 +1012,15 @@ class SansadProbe(BaseProbe):
         A size that fails TWICE is abandoned for the session. That bounds the
         cost of probing at one wasted request per attempt, and stops the walk
         asking an old session for 1000 rows over and over.
+
+        **And `max_consecutive_skips` in a row ends the walk.** An empty page
+        is the only end-of-data signal, and a skipped page makes no statement
+        at all — so a session that answers every page with a 5xx has no
+        stopping condition. Measured 2026-08-16 against a portal that fails
+        everything: the walk passed 4,000 requests and was still going. That
+        is an unbounded crawl, not a slow one. An unbroken run of skips is
+        therefore read as "this session cannot be walked", the walk ends, and
+        `skipped` tells the caller the result is a hole rather than a total.
         """
         page_no, size, offset = 1, page_size, 0
         # The size to return to after stepping over a bad page. A page that
@@ -984,6 +1043,12 @@ class SansadProbe(BaseProbe):
         # it for the session; `recover_after` good pages earn a climb.
         failures: dict[int, int] = {}
         streak = 0
+        # Consecutive skipped pages, and the number of rows already yielded.
+        # `served` is the true position; `offset` is the paging cursor, and a
+        # degrade can put the cursor BEHIND the position because a coarser
+        # page's boundary lies behind the rows it already produced. Yielding
+        # from the cursor then served 25 rows twice.
+        skips, served = 0, 0
         while True:
             try:
                 rows = self.ls_question_list_page(loksabha, session_number, page_no, size)
@@ -1020,6 +1085,12 @@ class SansadProbe(BaseProbe):
                 if skipped is not None:
                     skipped.append((offset, offset + size - 1))
                 attempts = 0
+                skips += 1
+                if skips >= max_consecutive_skips:
+                    self.log(
+                        f"LS {loksabha}:{session_number}: {skips} pages skipped in a row; "
+                        "the session cannot be walked — stopping. The result is INCOMPLETE.")
+                    return
                 offset += size
                 # Restore the coarser page only where it lands exactly on the
                 # current offset. Every size is a multiple of `min_page_size`
@@ -1034,9 +1105,11 @@ class SansadProbe(BaseProbe):
                 continue
             if not rows:
                 return
-            last_good, attempts = size, 0
+            last_good, attempts, skips = size, 0, 0
             streak += 1
-            yield from rows
+            start = (page_no - 1) * size
+            yield from rows[max(0, served - start):]
+            served = max(served, start + len(rows))
             offset += size
             # Climb back toward the caller's page size. The offset must land on
             # the bigger page's boundary, or the next request would step over
@@ -1522,81 +1595,81 @@ class SansadProbe(BaseProbe):
             bkt_raw = bkt_after_date = bkt_kept = bkt_skipped_seen = 0
             bkt_drifted = 0
             bkt_error: str | None = None
+            # A consumer must be able to read the swap rate off the run rather
+            # than infer it from the records.
+            bkt_qno_before = self.qno_mismatches
+            # Holes the pager stepped over. A 5xx is NOT end-of-session — it is
+            # indistinguishable from a page that exists and could not be served,
+            # so calling it "done" would truncate a session and report success.
+            # The pager degrades the page size, retries at the floor, steps over
+            # a page that still fails, and climbs back; anything it could not
+            # serve lands here and leaves the window SUSPECT for re-crawl.
+            bkt_skipped_ranges: list[tuple[int, int]] = []
             try:
-                page_no = 1
-                while True:
-                    try:
-                        rows = self.ls_question_list_page(loksabha, ses_no, page_no, page_size)
-                    except Exception as exc:  # noqa: BLE001
-                        # Some older sessions answer page 2 with HTTP 500 rather
-                        # than an empty page: LS 15 session 10 does, LS 16 and 18
-                        # paginate normally. The HTTP client has already retried
-                        # 5xx, so this is structural, not transient.
-                        #
-                        # It is NOT treated as end-of-session. A 500 is
-                        # indistinguishable from a page that exists and could not
-                        # be served, so calling it "done" would silently truncate
-                        # a session and report success. The rows already fetched
-                        # are kept, the window is left SUSPECT so the next run
-                        # re-crawls it, and the log says the session may be
-                        # incomplete rather than merely naming the status code.
-                        if page_no == 1:
-                            raise
-                        bkt_error = f"{type(exc).__name__}: {exc}"
-                        self.log(
-                            f"LS window {window_id}: page {page_no} failed after retries "
-                            f"({exc}). Kept {bkt_kept} record(s) from earlier pages. "
-                            "The session may be INCOMPLETE — window left suspect for re-crawl."
+                for row in self.paginate_ls_question_list(
+                    loksabha, ses_no, page_size, skipped=bkt_skipped_ranges
+                ):
+                    bkt_raw += 1
+                    row_ses = (row.get("sessionNo") or "").strip()
+                    if row_ses and row_ses != str(ses_no):
+                        bkt_drifted += 1
+                        continue
+                    date = self._ls_portal_date(row.get("date"))
+                    if not date_in_range(date, from_date, to_date):
+                        continue
+                    qtype = (row.get("type") or "").strip()
+                    if qtype_filter and qtype.lower() != qtype_filter:
+                        continue
+                    bkt_after_date += 1
+                    rec = self._ls_portal_record(
+                        row, run_id=run_id, loksabha=loksabha, session_number=ses_no
+                    )
+                    if rec["key"] in seen:
+                        bkt_skipped_seen += 1
+                        continue
+                    if download and rec.get("pdf_url"):
+                        qtype_seg = safe_filename_segment((rec["qtype"] or "U").upper()[:1])
+                        qno_seg = safe_filename_segment(rec["qno"] or "X")
+                        pdf_path = self.pdf_dir / "ls" / f"{qtype_seg}{qno_seg}_{loksabha}_{ses_no}.pdf"
+                        if self.write_pdf(rec["pdf_url"], pdf_path, PDF_HEADERS):
+                            rec["pdf_path"] = str(pdf_path.relative_to(self.out_dir))
+                            self.verify_document_qno(rec, pdf_path=pdf_path)
+                        time.sleep(self.sleep)
+                    else:
+                        # Older sessions serve the answer inline and leave
+                        # `questionsFilePath` blank, which is where the
+                        # two proven cases live.
+                        self.verify_document_qno(rec)
+                    rec.setdefault("language_classified", ["en"])
+                    self._enrich_askers(rec)
+                    self.append(rec)
+                    seen.add(rec["key"])
+                    added += 1
+                    bkt_kept += 1
+                    if max_records is not None and added >= max_records:
+                        self.runlog.record_bucket(
+                            kind="ls_qa_sessions", window=window_id, session=ses_no,
+                            raw_returned=bkt_raw, after_date_filter=bkt_after_date,
+                            kept=bkt_kept, skipped_seen=bkt_skipped_seen,
+                            qno_mismatches=self.qno_mismatches - bkt_qno_before,
+                            elapsed_ms=round((time.monotonic() - bkt_t0) * 1000, 1),
+                            error=None,
                         )
-                        self.runlog.record_error(where=f"ls/{window_id}/page{page_no}", exc=exc)
-                        break
-                    if not rows:
-                        break
-                    for row in rows:
-                        bkt_raw += 1
-                        row_ses = (row.get("sessionNo") or "").strip()
-                        if row_ses and row_ses != str(ses_no):
-                            bkt_drifted += 1
-                            continue
-                        date = self._ls_portal_date(row.get("date"))
-                        if not date_in_range(date, from_date, to_date):
-                            continue
-                        qtype = (row.get("type") or "").strip()
-                        if qtype_filter and qtype.lower() != qtype_filter:
-                            continue
-                        bkt_after_date += 1
-                        rec = self._ls_portal_record(
-                            row, run_id=run_id, loksabha=loksabha, session_number=ses_no
-                        )
-                        if rec["key"] in seen:
-                            bkt_skipped_seen += 1
-                            continue
-                        if download and rec.get("pdf_url"):
-                            qtype_seg = safe_filename_segment((rec["qtype"] or "U").upper()[:1])
-                            qno_seg = safe_filename_segment(rec["qno"] or "X")
-                            pdf_path = self.pdf_dir / "ls" / f"{qtype_seg}{qno_seg}_{loksabha}_{ses_no}.pdf"
-                            if self.write_pdf(rec["pdf_url"], pdf_path, PDF_HEADERS):
-                                rec["pdf_path"] = str(pdf_path.relative_to(self.out_dir))
-                            time.sleep(self.sleep)
-                        rec.setdefault("language_classified", ["en"])
-                        self._enrich_askers(rec)
-                        self.append(rec)
-                        seen.add(rec["key"])
-                        added += 1
-                        bkt_kept += 1
-                        if max_records is not None and added >= max_records:
-                            self.runlog.record_bucket(
-                                kind="ls_qa_sessions", window=window_id, session=ses_no,
-                                raw_returned=bkt_raw, after_date_filter=bkt_after_date,
-                                kept=bkt_kept, skipped_seen=bkt_skipped_seen,
-                                elapsed_ms=round((time.monotonic() - bkt_t0) * 1000, 1),
-                                error=None,
-                            )
-                            self.log(f"LS window {window_id} stopped at max_records — window left incomplete")
-                            self.runlog.finish(added=added)
-                            return added
-                    page_no += 1
-                    time.sleep(self.sleep)
+                        self.log(f"LS window {window_id} stopped at max_records — window left incomplete")
+                        self.runlog.finish(added=added)
+                        return added
+                if bkt_skipped_ranges:
+                    holes = ", ".join(f"{lo}-{hi}" for lo, hi in bkt_skipped_ranges)
+                    bkt_error = f"skipped offsets {holes}"
+                    self.log(
+                        f"LS window {window_id}: {len(bkt_skipped_ranges)} page(s) could not be "
+                        f"served (offsets {holes}). Kept {bkt_kept} record(s). "
+                        "The session is INCOMPLETE — window left suspect for re-crawl."
+                    )
+                    self.runlog.record_error(
+                        where=f"ls/{window_id}",
+                        exc=RuntimeError(f"pages skipped at offsets {holes}"),
+                    )
             except Exception as exc:  # noqa: BLE001
                 bkt_error = f"{type(exc).__name__}: {exc}"
                 self.log(f"LS window {window_id} failed: {exc}")
@@ -1610,6 +1683,7 @@ class SansadProbe(BaseProbe):
                 kind="ls_qa_sessions", window=window_id, session=ses_no,
                 raw_returned=bkt_raw, after_date_filter=bkt_after_date,
                 kept=bkt_kept, skipped_seen=bkt_skipped_seen,
+                qno_mismatches=self.qno_mismatches - bkt_qno_before,
                 elapsed_ms=round((time.monotonic() - bkt_t0) * 1000, 1),
                 error=bkt_error,
             )

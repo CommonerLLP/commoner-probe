@@ -179,6 +179,47 @@ def test_a_size_that_keeps_failing_is_abandoned():
     assert len(oversized) <= 4, f"the walk keeps re-probing sizes that fail: {oversized}"
 
 
+def test_a_session_that_never_serves_a_page_ends_the_walk():
+    """A skipped page is indistinguishable from the end of the session.
+
+    The portal answers an empty page to say "no more rows", so a page that
+    500s carries no such statement. A walk that skips one and asks for the
+    next therefore has no stopping condition when every page fails: measured
+    on 2026-08-16, a portal that 500s everything took the walk past 4,000
+    requests and it was still going. Against the live host, with a sleep
+    between requests and an exponential backoff at the floor, that is an
+    unbounded crawl that never reports.
+    """
+    portal = _Portal(total=200, max_size=0)
+    skipped = []
+    rows = _walk(portal, page_size=25, floor_retries=1, skipped=skipped)
+    assert rows == []
+    assert len(portal.calls) < 40, f"the walk did not stop: {len(portal.calls)} requests"
+    assert skipped, "the holes must still be reported to the caller"
+
+
+def test_one_bad_page_does_not_end_a_working_session():
+    """The stop above must not fire on the LS 13 session 8 shape."""
+    portal = _Portal(total=200, max_size=25, dead={50})
+    skipped = []
+    rows = _walk(portal, page_size=25, skipped=skipped)
+    assert len(rows) == 175, "a single dead page must not stop the walk"
+    assert skipped == [(50, 74)]
+
+
+def test_no_row_is_served_twice_after_a_degrade():
+    """page_size 500 against a portal that serves 125, with a dead page at 125.
+
+    The walk resumes at the coarser page's boundary, which lies BEHIND the
+    rows it already yielded, so 25 rows were emitted twice. Downstream dedupe
+    by key hid it; the pager's own contract is exactly-once.
+    """
+    portal = _Portal(total=1000, max_size=125, dead={125})
+    rows = _walk(portal, page_size=500, skipped=[], recover_after=2)
+    qnos = [r["quesNo"] for r in rows]
+    assert len(qnos) == len(set(qnos)), f"{len(qnos) - len(set(qnos))} row(s) served twice"
+
+
 def test_the_climb_lands_only_on_an_aligned_offset():
     """A bigger page starting mid-page would step over rows."""
     portal = _FlakyOnceAtSize(total=1000, max_size=10_000, size=100, times=1)

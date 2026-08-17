@@ -176,6 +176,7 @@ def extract_pdf_text(
     ocr: bool = False,
     ocr_lang: str = "eng",
     ocr_max_pages: int = 50,
+    last_page: int | None = None,
 ) -> str:
     """Text from a PDF: pdftotext, then pdfminer, then optionally OCR.
 
@@ -190,6 +191,14 @@ def extract_pdf_text(
     into unreadable order and reading order is what the parser wants; it only
     affects the pdftotext rung, since pdfminer has no equivalent flag.
 
+    ``last_page`` stops after that many pages. A caller that only needs the
+    header — the question-number guard reads page one — should not pay for a
+    200-page annexure. It bounds the work rather than saving time on a typical
+    document: measured over 50 live LS answer PDFs on 2026-08-16, page one and
+    the whole document both took a median 19 ms. **pdfminer has no page bound
+    here**, so a document that falls through to it is read whole; the bound is
+    an upper limit on the common path, not a guarantee.
+
     ``ocr`` wires in the last rung for documents whose text layer is absent or
     untrustworthy. It is opt-in: rasterising and running tesseract costs
     orders of magnitude more than reading an embedded text layer, and it needs
@@ -200,7 +209,8 @@ def extract_pdf_text(
     backend_ran = False
     try:
         out = subprocess.run(
-            ["pdftotext", *(["-layout"] if layout else []), str(path), "-"],
+            ["pdftotext", *(["-layout"] if layout else []),
+             *(["-f", "1", "-l", str(last_page)] if last_page else []), str(path), "-"],
             capture_output=True,
             text=True,
             timeout=60,
@@ -222,7 +232,7 @@ def extract_pdf_text(
             backend_ran = True
 
     if ocr:
-        pages = min(_pdf_page_count(path), ocr_max_pages)
+        pages = min(_pdf_page_count(path), ocr_max_pages, last_page or ocr_max_pages)
         return "\n".join(
             ocr_pdf_text(path, page=page, lang=ocr_lang)
             for page in range(1, pages + 1)
