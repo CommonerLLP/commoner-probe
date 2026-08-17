@@ -231,3 +231,32 @@ def test_a_falsey_injected_session_is_still_used():
     c = aspnet_cascade.CascadeCrawler("https://x.gov.in/r.aspx",
                                       {"a": "ctl00$a"}, session=mine)
     assert c.session is mine
+
+
+def test_a_falsey_session_factory_is_still_used():
+    """A factory is often a callable object, not a lambda, and an object with
+    `__len__` can be falsey. `or` dropped it and built the default client."""
+    class _Sess:
+        def get(self, url, **kw):
+            class R:
+                content = b""
+            return R()
+
+    class _Factory:
+        def __init__(self):
+            self.built = []
+
+        def __len__(self):
+            return 0            # falsey, and still a perfectly good factory
+
+        def __call__(self):
+            s = _Sess()
+            self.built.append(s)
+            return s
+
+    factory = _Factory()
+    c = aspnet_cascade.CascadeCrawler("https://x.gov.in/r.aspx",
+                                      {"a": "ctl00$a"}, session_factory=factory)
+    c.reset()
+    assert len(factory.built) == 2, "the caller's factory built both sessions"
+    assert c.session is factory.built[-1]

@@ -70,10 +70,17 @@ class CascadeCrawler:
         """
         self.report_url = report_url
         self.controls = controls
-        self._factory = session_factory or (
-            None if session is not None
-            else lambda: make_session(rate_limit_sec=rate_limit_sec,
-                                      user_agent=user_agent))
+        # `is not None` on BOTH, for the same reason. A factory is a callable
+        # OBJECT as often as a lambda, and one that defines __len__ or __bool__
+        # can be falsey. `or` would then drop the caller's factory and rebuild
+        # with the default client, or with nothing.
+        if session_factory is not None:
+            self._factory = session_factory
+        elif session is not None:
+            self._factory = None
+        else:
+            self._factory = lambda: make_session(rate_limit_sec=rate_limit_sec,
+                                                 user_agent=user_agent)
         # `session is not None`, never truthiness. A session object that
         # defines __len__ or __bool__ can be falsey, and `or` would discard the
         # caller's object and build another one in silence.
