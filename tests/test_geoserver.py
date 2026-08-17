@@ -204,3 +204,23 @@ def test_saturation_is_refused_when_a_verification_tile_failed():
                     start_span=2.0, key="code")
     assert out["saturated"] is False
     assert out["partial"] is True
+
+
+def test_the_offset_grid_still_overlaps_a_box_smaller_than_one_cell():
+    """The one-cell shift must not walk off the region it is verifying.
+
+    A 1-degree box with 2-degree cells would move a full degree and land
+    entirely outside itself. The pass then finds nothing, finds nothing NEW,
+    and certifies saturation from ground the layer was never claimed to cover.
+    """
+    import re
+    from urllib.parse import unquote
+
+    sess = _Session([])
+    gs = GeoServer("http://x/geoserver", session=sess)
+    gs.verify("ws:layer", (76.0, 12.0, 77.0, 13.0), known=[], start_span=2.0, key="code")
+    boxes = [[float(x) for x in unquote(re.search(r"bbox=([^&]+)", u, re.I).group(1)).split(",")]
+             for u in sess.urls]
+    assert boxes, "the verification pass made no request"
+    overlaps = [b for b in boxes if b[0] < 77.0 and b[2] > 76.0 and b[1] < 13.0 and b[3] > 12.0]
+    assert overlaps, f"no verification tile overlaps the original box: {boxes}"

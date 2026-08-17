@@ -336,12 +336,18 @@ class GeoServer:
         """
         known = set(known)
         west, south, east, north = bbox
-        # Shift by half a CELL, not half the region. A 4-degree box with
-        # 2-degree cells must move 1 degree. Moving 2 degrees queries ground
-        # outside the region, leaves the leading edge untested, and then calls
-        # the result saturated.
-        step = start_span / 2
-        shifted = (west + step, south + step, east + step, north + step)
+        # Shift by half a CELL, not half the region: a 4-degree box with
+        # 2-degree cells must move 1 degree. Moving half the region queries
+        # ground outside it and leaves the leading edge untested.
+        #
+        # And never by more than half the region itself. A box smaller than one
+        # cell would otherwise move clean off its own ground: (76,12,77,13) with
+        # a 2-degree cell became (77,13,78,14), where finding nothing new
+        # certifies saturation over a region this layer never claimed. Bounded
+        # per axis, because a box can be wide and short.
+        step_x = min(start_span, east - west) / 2
+        step_y = min(start_span, north - south) / 2
+        shifted = (west + step_x, south + step_y, east + step_x, north + step_y)
         status: dict = {}
         got = self.sweep(layer, shifted, start_span=start_span, key=key, status=status)
         new = set(got) - known
