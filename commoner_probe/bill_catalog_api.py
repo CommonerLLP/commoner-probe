@@ -57,11 +57,48 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
+class UnreadableDate(ValueError):
+    """A date field carried a shape this reader does not know.
+
+    Raised rather than passed through. A value returned under a field name that
+    implies ISO, in a format that is not ISO, compares as a string against ISO
+    bounds and silently matches nothing.
+    """
+
+
+#: THIS ENDPOINT SERVES TWO DATE FORMATS IN ONE RECORD, and the second one is
+#: the trap. Five fields arrive as `YYYY-MM-DD HH:MM:SS.0`. `billAssentedDate`
+#: alone arrives as `DD/MM/YYYY`. Measured over the live catalogue 2026-08-17:
+#: 3,576 records carry an assent date, all ten characters, and all 3,576 parse
+#: as `%d/%m/%Y`. Zero fail — so this is the source's convention, not corruption.
+#:
+#: The old reader kept the first ten characters, so `20/12/2025` travelled
+#: through beside `passed_ls_date: "2025-12-16"`. A two-year count of assents
+#: compared those strings against ISO bounds and reported 0 where the answer is
+#: 53. No exception, no empty field, a clean-looking run.
+_DATE_FORMATS = ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d", "%d/%m/%Y")
+
+
 def _date(value: object) -> str | None:
-    """sansad dates arrive as ``"2026-04-16 00:00:00.0"`` — keep the ISO date."""
+    """One date field as ISO ``YYYY-MM-DD``, or None when the field is empty.
+
+    Raises :class:`UnreadableDate` for a value that matches no known format. A
+    truncated string is never returned: a shape nobody has seen must stop the
+    run, not enter the record looking like every other date.
+    """
     if not isinstance(value, str) or not value.strip():
         return None
-    return value.strip()[:10]
+    text = value.strip()
+    for fmt in _DATE_FORMATS:
+        try:
+            return datetime.strptime(text, fmt).strftime("%Y-%m-%d")
+        except ValueError:
+            continue
+    raise UnreadableDate(
+        f"{text!r} matches no date format this endpoint is known to serve "
+        f"({', '.join(_DATE_FORMATS)}). It is not being truncated into the record: "
+        "a field named for ISO that is not ISO compares against ISO bounds and "
+        "matches nothing, with no error.")
 
 
 def bill_key(house: str, raw: dict) -> str:
@@ -217,7 +254,21 @@ class BillsProbe:
             added = 0
             try:
                 for raw in self.bills_all(house):
-                    rec = self._record(raw, house)
+                    # One unreadable date must not discard the house. The catch
+                    # below is per HOUSE, so a single bad record used to abort the
+                    # walk and leave one `fetch_error` where thousands of good
+                    # records belonged. A bad unit degrades the result; it never
+                    # empties it.
+                    try:
+                        rec = self._record(raw, house)
+                    except UnreadableDate as exc:
+                        rec = self._status_record(
+                            house, fetch_status="parse_error", error=str(exc))
+                        rec["bill_no"] = raw.get("billNumber")
+                        rec["bill_year"] = raw.get("billYear")
+                        self.append_manifest(rec)
+                        out.append(rec)
+                        continue
                     if rec["key"] in seen:
                         continue
                     seen.add(rec["key"])

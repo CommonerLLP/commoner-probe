@@ -8,6 +8,26 @@ and an answer can be a different question's document.
 
 ### Fixed
 
+- **`assent_date` was not ISO, and a two-year count of bills that became law
+  returned 0 instead of 53.** RE-RUN THE BILLS PROBE: rows already on disk carry
+  the raw value, and no published figure computed from `assent_date` can be
+  trusted until they are re-fetched. The bills endpoint serves TWO date formats
+  in one record — five fields as `YYYY-MM-DD HH:MM:SS.0` and `billAssentedDate`
+  alone as `DD/MM/YYYY` — and the reader kept the first ten characters, so the
+  second shape travelled through under a field name that implies ISO. Measured
+  over the live catalogue on 2026-08-17: 3,576 records carry an assent date and
+  all 3,576 parse as `%d/%m/%Y`, so this is the source's convention rather than
+  corruption. Nothing raised, no field was empty, and the run looked clean; an
+  independent `actYear` count in the same record caught it. Every date field is
+  now parsed and emitted as ISO, and a value matching no known format raises
+  `UnreadableDate` rather than entering the record truncated.
+
+- **One unreadable date no longer discards a whole house.** The crawl caught
+  exceptions per house, so a single bad record would abort the walk and leave one
+  `fetch_error` where thousands of good records belonged. A bad record is now
+  recorded as `parse_error` and the walk continues, which is this package's own
+  invariant: a bad unit degrades a result and never empties it.
+
 - **Session enumeration now uses the degrading paginator.** `sansad --all
   --house ls` ran its own page loop, so the degrade, the floor retry, the skip
   and the climb-back reached nothing a user could invoke. `LS_PORTAL_PAGE_SIZE`
