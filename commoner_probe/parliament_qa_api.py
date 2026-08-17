@@ -122,9 +122,14 @@ class SessionEntry:
 #: Page size for member-less LS session enumeration. Live-verified 2026-08-14
 #: against lkNo 18 session 8: sizes 100/500/1000 are all honoured, and 1000
 #: returns a whole session in five requests (1000/1000/1000/1000/500, then
-#: empty) for 4,500 records. There is no per-session cap — an earlier note
-#: read `totalRecordSize: 1000` as a session total; it echoes the page size.
+#: empty) for 4,500 records. There is no per-session cap.
 #: The per-member path keeps the 100 default, where paging is not the cost.
+#:
+#: `totalRecordSize` IS the session total, and a note here said the opposite —
+#: that it echoes the page size — until it was measured. Re-measured live
+#: 2026-08-17: session 8 declares 4,500 at pageSize 1, 100 and 1000, on page 1
+#: and page 2 alike; lkNo 13 session 8 declares 5,082 and session 9 declares
+#: 8,628. So it reconciles a read, and `paginate_ls_question_list` uses it.
 LS_PORTAL_PAGE_SIZE = 1000
 
 HEADERS = {
@@ -944,6 +949,30 @@ class SansadProbe(BaseProbe):
         not an empty list. Use `paginate_ls_question_list` to walk a whole
         session without reimplementing the loop.
         """
+        rows, declared = self._ls_question_list_block(
+            loksabha, session_number, page_no, page_size)
+        # The pager reads the declared total from here rather than from a second
+        # return value, so this method's signature stays what five callers and
+        # every test already expect. It is reset before each call, so a stubbed
+        # page method reports no total instead of the previous page's.
+        self._last_ls_declared_total = declared
+        return rows
+
+    #: Set by `ls_question_list_page` from the envelope it just read. `None`
+    #: means the last page declared no `totalRecordSize` — or that something
+    #: replaced the page method and never declared one.
+    _last_ls_declared_total: int | None = None
+
+    def _ls_question_list_block(
+        self, loksabha: int, session_number: int, page_no: int, page_size: int = 100
+    ) -> tuple[list[dict], int | None]:
+        """One page, plus the session total the envelope declares.
+
+        `None` for the total means the envelope OMITTED the field, which is not
+        the same statement as a declared zero: a session with no questions is a
+        real state, and reading the two the same way turns a good empty read
+        into a reconciliation failure.
+        """
         if page_no < 1:
             raise ValueError(
                 f"page_no is 1-indexed (the LS portal returns HTTP 500 for pageNo=0); got {page_no}"
@@ -957,9 +986,19 @@ class SansadProbe(BaseProbe):
         r.raise_for_status()
         data = r.json()
         rows: list[dict] = []
+        declared: int | None = None
         for block in data if isinstance(data, list) else []:
             rows.extend(block.get("listOfQuestions") or [])
-        return rows
+            if declared is None:
+                raw = block.get("totalRecordSize")
+                if raw is not None and str(raw).strip().isdigit():
+                    declared = int(raw)
+        return rows, declared
+
+    @staticmethod
+    def _ls_row_id(row: dict) -> tuple:
+        """What makes a question row distinct: its number on its sitting day."""
+        return (row.get("quesNo"), row.get("date"), row.get("type"))
 
     def paginate_ls_question_list(
         self,
@@ -972,6 +1011,7 @@ class SansadProbe(BaseProbe):
         recover_after: int = 4,
         max_consecutive_skips: int = 4,
         skipped: list[tuple[int, int]] | None = None,
+        totals: dict | None = None,
     ) -> Iterator[dict]:
         """Every question row for one LS session, in portal order.
 
@@ -1021,7 +1061,38 @@ class SansadProbe(BaseProbe):
         is an unbounded crawl, not a slow one. An unbroken run of skips is
         therefore read as "this session cannot be walked", the walk ends, and
         `skipped` tells the caller the result is a hole rather than a total.
+
+        **And an empty page is not proof the session ended.** Pass a dict as
+        `totals` and it is filled with `declared` (the envelope's
+        `totalRecordSize`), `yielded`, `repeated_page`, and `complete`. The
+        declared figure is a session total — see `LS_PORTAL_PAGE_SIZE` for the
+        measurement — so a walk that yields fewer rows than the portal claims
+        has been truncated by something the walk cannot see. `complete` is
+        `None` when the envelope declares no total, because a missing field is
+        not a verdict either way.
+
+        **A portal that ignores `pageNo` also passes a count check.** This API
+        mishandles that parameter already (`pageNo=0` is an HTTP 500), and a
+        server re-serving page one would satisfy any row count by padding it
+        with copies. So a page whose rows carry exactly the previous page's
+        question ids ends the walk and sets `repeated_page`.
+
+        `totals` is only final once the walk is exhausted. A caller that stops
+        early — `--max-records` — leaves it mid-flight by design.
         """
+        if totals is not None:
+            totals.update({"declared": None, "yielded": 0, "repeated_page": False,
+                           "complete": None})
+
+        def _settle() -> None:
+            if totals is None:
+                return
+            declared = totals["declared"]
+            totals["complete"] = (
+                None if declared is None
+                else totals["yielded"] >= declared and not totals["repeated_page"]
+            )
+
         page_no, size, offset = 1, page_size, 0
         # The size to return to after stepping over a bad page. A page that
         # fails even at the floor is bad at every size, so the failure says
@@ -1049,9 +1120,16 @@ class SansadProbe(BaseProbe):
         # page's boundary lies behind the rows it already produced. Yielding
         # from the cursor then served 25 rows twice.
         skips, served = 0, 0
+        # The question ids of the page just served, so a page that repeats them
+        # can be told from a page that continues.
+        prev_ids: set | None = None
         while True:
             try:
+                self._last_ls_declared_total = None
                 rows = self.ls_question_list_page(loksabha, session_number, page_no, size)
+                declared = self._last_ls_declared_total
+                if totals is not None and declared is not None and totals["declared"] is None:
+                    totals["declared"] = declared
             except Exception as exc:  # noqa: BLE001 - re-raised below unless 5xx
                 if "HTTP 5" not in str(exc):
                     raise
@@ -1090,6 +1168,7 @@ class SansadProbe(BaseProbe):
                     self.log(
                         f"LS {loksabha}:{session_number}: {skips} pages skipped in a row; "
                         "the session cannot be walked — stopping. The result is INCOMPLETE.")
+                    _settle()
                     return
                 offset += size
                 # Restore the coarser page only where it lands exactly on the
@@ -1104,11 +1183,26 @@ class SansadProbe(BaseProbe):
                 time.sleep(self.sleep)
                 continue
             if not rows:
+                _settle()
                 return
+            ids = {self._ls_row_id(row) for row in rows}
+            if prev_ids is not None and ids == prev_ids:
+                self.log(
+                    f"LS {loksabha}:{session_number} page {page_no}: the portal re-served the "
+                    f"previous page's {len(ids)} question(s) — it is ignoring pageNo. Stopping. "
+                    "The result is INCOMPLETE.")
+                if totals is not None:
+                    totals["repeated_page"] = True
+                _settle()
+                return
+            prev_ids = ids
             last_good, attempts, skips = size, 0, 0
             streak += 1
             start = (page_no - 1) * size
-            yield from rows[max(0, served - start):]
+            fresh = rows[max(0, served - start):]
+            yield from fresh
+            if totals is not None:
+                totals["yielded"] += len(fresh)
             served = max(served, start + len(rows))
             offset += size
             # Climb back toward the caller's page size. The offset must land on
@@ -1605,9 +1699,15 @@ class SansadProbe(BaseProbe):
             # a page that still fails, and climbs back; anything it could not
             # serve lands here and leaves the window SUSPECT for re-crawl.
             bkt_skipped_ranges: list[tuple[int, int]] = []
+            # What the portal says the session holds, against what the walk
+            # actually read. An empty page ends the walk, and a portal that
+            # stops serving mid-session produces one — so without this a short
+            # read is filed `complete` and never re-crawled.
+            bkt_totals: dict = {}
             try:
                 for row in self.paginate_ls_question_list(
-                    loksabha, ses_no, page_size, skipped=bkt_skipped_ranges
+                    loksabha, ses_no, page_size, skipped=bkt_skipped_ranges,
+                    totals=bkt_totals,
                 ):
                     bkt_raw += 1
                     row_ses = (row.get("sessionNo") or "").strip()
@@ -1652,6 +1752,7 @@ class SansadProbe(BaseProbe):
                             raw_returned=bkt_raw, after_date_filter=bkt_after_date,
                             kept=bkt_kept, skipped_seen=bkt_skipped_seen,
                             qno_mismatches=self.qno_mismatches - bkt_qno_before,
+                            declared_total=bkt_totals.get("declared"),
                             elapsed_ms=round((time.monotonic() - bkt_t0) * 1000, 1),
                             error=None,
                         )
@@ -1670,6 +1771,24 @@ class SansadProbe(BaseProbe):
                         where=f"ls/{window_id}",
                         exc=RuntimeError(f"pages skipped at offsets {holes}"),
                     )
+                # Reported alongside a skipped page rather than instead of it.
+                # The skipped offsets name WHERE the hole is; the shortfall says
+                # how big the session was supposed to be, and either one alone
+                # under-describes the result.
+                if bkt_totals.get("complete") is False:
+                    declared = bkt_totals.get("declared")
+                    read = bkt_totals.get("yielded", 0)
+                    cause = ("the portal re-served a page" if bkt_totals.get("repeated_page")
+                             else "the walk ran out of pages")
+                    shortfall = f"declared {declared} rows, read {read}"
+                    bkt_error = f"{bkt_error}; {shortfall}" if bkt_error else shortfall
+                    self.log(
+                        f"LS window {window_id}: the portal declared {declared} row(s) and "
+                        f"served {read} — {cause}. The session is INCOMPLETE — window left "
+                        "suspect for re-crawl.")
+                    self.runlog.record_error(
+                        where=f"ls/{window_id}", exc=RuntimeError(shortfall),
+                    )
             except Exception as exc:  # noqa: BLE001
                 bkt_error = f"{type(exc).__name__}: {exc}"
                 self.log(f"LS window {window_id} failed: {exc}")
@@ -1684,6 +1803,7 @@ class SansadProbe(BaseProbe):
                 raw_returned=bkt_raw, after_date_filter=bkt_after_date,
                 kept=bkt_kept, skipped_seen=bkt_skipped_seen,
                 qno_mismatches=self.qno_mismatches - bkt_qno_before,
+                declared_total=bkt_totals.get("declared"),
                 elapsed_ms=round((time.monotonic() - bkt_t0) * 1000, 1),
                 error=bkt_error,
             )

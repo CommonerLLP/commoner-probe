@@ -35,6 +35,43 @@ and an answer can be a different question's document.
 
 ### Added
 
+- **A Lok Sabha session read is reconciled against the total the portal
+  declares.** `totalRecordSize` IS the session total, and a note in this package
+  said the opposite — that it echoed the page size — so no completeness check
+  was ever built on it. Measured live 2026-08-17: session 8 of the 18th Lok
+  Sabha declares 4,500 at page sizes 1, 100 and 1000, on page 1 and page 2
+  alike; the 13th Lok Sabha declares 5,082 for session 8 and 8,628 for session
+  9. Pass a dict as `totals` to `paginate_ls_question_list` and it reports
+  `declared`, `yielded`, `repeated_page` and `complete`. A session that yields
+  fewer rows than the portal claims is now left **suspect** for re-crawl, and
+  the run log carries `declared_total`. An empty page had been the only
+  end-of-data signal, so a portal that stopped serving mid-session produced a
+  short read filed as complete — and a complete window is skipped on every
+  later run. `complete` is `None` where the envelope declares no total, because
+  a missing field is not a verdict.
+
+- **A portal that ignores `pageNo` no longer walks forever.** This endpoint
+  mishandles that parameter already — `pageNo=0` answers HTTP 500 — and a
+  server re-serving page one satisfies any row count by padding it with copies.
+  A page carrying exactly the previous page's question numbers now ends the walk
+  and reports `repeated_page`.
+
+- **`textparse.recover_with_ocr` returns a decision, not a string.**
+  `extract_pdf_text(ocr=True)` gives back text a caller cannot judge: it cannot
+  tell OCR that helped from OCR that read a page of running heads, and
+  `chars > 0` counts a scanned page's two ligature artefacts as a successful
+  read. `OcrRecovery` carries `accepted`, `reason`, and the before and after
+  character counts. It refuses a result shorter than the text layer, because
+  writing that back loses a partial extraction to a bad scan. It also declines
+  to run at all where the existing text already passes, since rasterising costs
+  orders of magnitude more.
+
+- **`answers.looks_like_answer` is the acceptance test for a reply.** It
+  requires an ANSWER heading and a letterhead, tolerates `ANSWERED ON`, the
+  Devanagari layouts where conjuncts drop, the letterheads that name only a
+  ministry, and the Cyrillic letters OCR substitutes for identically drawn Latin
+  ones. Requiring the exact English strings called 29 complete replies unusable.
+
 - **Every answer is checked against the question number it prints.** sansad.in
   serves the wrong document under the right URL: fetched live again on
   2026-08-16, `AU2549` returns 637,244 bytes printing QUESTION NO. 2594 and

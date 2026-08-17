@@ -85,6 +85,59 @@ _QA_REPLY_RES = [
 ]
 
 
+# A real reply carries an ANSWER heading and a letterhead. Requiring BOTH is
+# deliberate: a stray annexure page passes a length check and is not the answer,
+# so treating it as one truncates the record silently.
+#
+# Each marker has to tolerate how the source actually prints it, and requiring
+# the exact English strings called 29 complete replies unusable for four
+# separate reasons:
+#
+# * `\bANSWER\b` cannot match "ANSWERED ON" — the word boundary fails on the
+#   E — and that is the commonest heading of all;
+# * the House arrives as "RAJYASABHA" and "RAJYA SHABHA" in the ministries' own
+#   letterheads, and as "RAJYA SAВНА" when OCR substitutes the Cyrillic letters
+#   drawn identically to the Latin ones;
+# * many replies are laid out in Devanagari, where the extractor drops
+#   conjuncts — "राज्य सभा" comes out "रा य सभा";
+# * some letterheads name the ministry and department but never the House.
+#
+# So the second marker is a LETTERHEAD, not a House name. A test strict enough
+# to reject the document it looks for is measuring its own spelling.
+_ANSWER_MARKERS = (
+    re.compile(r"\bANSWER(?:ED)?\b", re.I),
+    re.compile(r"उ.{0,4}राथ|उत्तर"),
+)
+_LETTERHEAD_MARKERS = (
+    re.compile(r"\b(?:LOK|RAJYA)\s*S[AH]{1,3}BHA\b", re.I),
+    re.compile(r"GOVERNMENT\s+OF\s+INDIA", re.I),
+    re.compile(r"(?:UN[-\s]?)?STARRED\s+QUESTION", re.I),
+    re.compile(r"(?:लोक|रा.{0,3}?)\s*सभा"),
+    re.compile(r"भारत\s*सरकार"),
+    re.compile(r"अतारां|तारांिकत"),
+)
+
+#: Cyrillic letters drawn identically to Latin ones. Tesseract picks the wrong
+#: codepoint often enough to break an otherwise exact header match.
+_HOMOGLYPHS = str.maketrans("АВЕКМНОРСТХУІЈ", "ABEKMHOPCTXYIJ")
+
+
+def looks_like_answer(text: str, *, min_chars: int = 200) -> bool:
+    """Whether this text plausibly IS a parliamentary reply, not merely non-empty.
+
+    Pass it to :func:`commoner_probe.textparse.recover_with_ocr` as the
+    acceptance test. ``chars > 0`` is the wrong question: a scanned reply yields
+    a couple of ligature artefacts and passes it, which is how one corpus
+    reported complete answer text while 76 answers held nothing readable.
+    """
+    body = (text or "").strip()
+    if len(body) < min_chars:
+        return False
+    body = body.translate(_HOMOGLYPHS)
+    return (any(m.search(body) for m in _ANSWER_MARKERS)
+            and any(m.search(body) for m in _LETTERHEAD_MARKERS))
+
+
 @dataclass
 class QaExtraction:
     question_text: str       # Full raw question half (incl. boilerplate)

@@ -6,6 +6,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -137,6 +138,94 @@ def ocr_pdf_text(
 def ocr_toolchain_missing() -> list[str]:
     """Which OCR command-line tools are absent, so a caller can say so up front."""
     return [tool for tool in ("pdftoppm", "tesseract") if shutil.which(tool) is None]
+
+
+#: Below this, extracted text is an artefact rather than a document. A scanned
+#: page yields a couple of ligature fragments, and `chars > 0` counts them as a
+#: successful read: one corpus reported complete answer text while 76 answers
+#: held nothing readable.
+OCR_MIN_CHARS = 200
+
+
+@dataclass(frozen=True)
+class OcrRecovery:
+    """One OCR attempt, and what it did or did not recover.
+
+    `accepted` is the only field a writer should act on. The counts are here so
+    a run can report the size of what it gained rather than only that OCR ran,
+    and `reason` names the refusal so a rejected document is distinguishable
+    from one that was never tried.
+    """
+
+    accepted: bool
+    reason: str
+    before: int
+    after: int
+    text: str = ""
+
+    @property
+    def gain(self) -> int:
+        return self.after - self.before
+
+
+def _long_enough(text: str) -> bool:
+    return len((text or "").strip()) >= OCR_MIN_CHARS
+
+
+def recover_with_ocr(
+    path: Path,
+    existing: str,
+    *,
+    accept: Any = None,
+    ocr: Any = None,
+    lang: str = "eng",
+    dpi: int = DEFAULT_OCR_DPI,
+    max_pages: int = 50,
+) -> OcrRecovery:
+    """Try OCR for one document and decide whether to keep the result.
+
+    The decision, not the string, is what a caller needs. Three refusals are
+    each a measured failure rather than a hypothetical:
+
+    * **The text layer is already usable.** OCR costs orders of magnitude more
+      than reading an embedded layer, so it is not paid for a document that
+      does not need it.
+    * **OCR read less than the text layer did.** Writing that back loses a
+      partial extraction to a bad scan, which is a silent regression.
+    * **OCR read something that is not the document.** A page of running heads
+      passes any length check. `accept` is where a caller supplies what its
+      documents look like — :func:`commoner_probe.answers.looks_like_answer`
+      for a parliamentary reply. The default only checks length, because this
+      module cannot know the document class.
+
+    ``ocr`` is injected for testing and to let a caller bound the work its own
+    way. The default rasterises up to ``max_pages`` pages through
+    :func:`ocr_pdf_text`, so :class:`OcrUnavailable` from a missing toolchain
+    reaches the caller rather than arriving as empty text.
+    """
+    check = accept or _long_enough
+    before = len((existing or "").strip())
+    if check(existing or ""):
+        return OcrRecovery(False, "text layer already usable", before, before)
+
+    if ocr is None:
+        pages = min(_pdf_page_count(path), max_pages)
+
+        def ocr() -> str:  # noqa: E731 - a named default, not a lambda
+            return "\n".join(
+                ocr_pdf_text(path, page=page, lang=lang, dpi=dpi)
+                for page in range(1, pages + 1)
+            )
+
+    text = ocr()
+    after = len((text or "").strip())
+    if not after:
+        return OcrRecovery(False, "rasterise or OCR produced nothing", before, 0)
+    if after <= before:
+        return OcrRecovery(False, "OCR read no better than the text layer", before, after)
+    if not check(text):
+        return OcrRecovery(False, "OCR text does not look like the document", before, after)
+    return OcrRecovery(True, "recovered", before, after, text)
 
 
 def _pdfminer_extract(path: Path) -> str:
