@@ -121,6 +121,14 @@ _LETTERHEAD_MARKERS = (
 #: codepoint often enough to break an otherwise exact header match.
 _HOMOGLYPHS = str.maketrans("АВЕКМНОРСТХУІЈ", "ABEKMHOPCTXYIJ")
 
+#: "TO BE ANSWERED ON" is the QUESTION side's header, and it carries the word
+#: the answer marker looks for. A question page also prints the House and runs
+#: past any length threshold, so it passed as a reply — which stores a question
+#: where the answer belongs and leaves the record looking complete. It is
+#: discounted before the answer markers run, and an answer PDF that reprints
+#: this header above its own ANSWER line still matches on that line.
+_QUESTION_SIDE_HEADER = re.compile(r"\bTO\s+BE\s+ANSWER(?:ED)?\b", re.I)
+
 
 def looks_like_answer(text: str, *, min_chars: int = 200) -> bool:
     """Whether this text plausibly IS a parliamentary reply, not merely non-empty.
@@ -134,7 +142,8 @@ def looks_like_answer(text: str, *, min_chars: int = 200) -> bool:
     if len(body) < min_chars:
         return False
     body = body.translate(_HOMOGLYPHS)
-    return (any(m.search(body) for m in _ANSWER_MARKERS)
+    replied = _QUESTION_SIDE_HEADER.sub(" ", body)
+    return (any(m.search(replied) for m in _ANSWER_MARKERS)
             and any(m.search(body) for m in _LETTERHEAD_MARKERS))
 
 

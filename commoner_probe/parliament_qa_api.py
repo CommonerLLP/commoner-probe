@@ -1088,10 +1088,17 @@ class SansadProbe(BaseProbe):
             if totals is None:
                 return
             declared = totals["declared"]
-            totals["complete"] = (
-                None if declared is None
-                else totals["yielded"] >= declared and not totals["repeated_page"]
-            )
+            # A repeat decides the verdict on its own, because it is direct
+            # evidence of truncation. Older envelopes declare no total, and
+            # reading `complete` as None there filed a KNOWN truncation as
+            # finished — and the caller skips a finished window on every later
+            # run, so the loss is permanent.
+            if totals["repeated_page"]:
+                totals["complete"] = False
+            elif declared is None:
+                totals["complete"] = None
+            else:
+                totals["complete"] = totals["yielded"] >= declared
 
         page_no, size, offset = 1, page_size, 0
         # The size to return to after stepping over a bad page. A page that

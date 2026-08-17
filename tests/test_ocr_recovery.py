@@ -123,3 +123,22 @@ class TestLooksLikeAnAnswer:
         """A stray annexure passes a length check and is not the answer.
         Treating it as one silently truncates the record."""
         assert looks_like_answer("Statement referred to in reply " + "row " * 80) is False
+
+    def test_a_question_page_is_not_an_answer(self):
+        """`TO BE ANSWERED ON` is the QUESTION side's header. The same page
+        carries LOK SABHA and runs well past 200 characters, so accepting it
+        stores a question where the reply belongs and the record reads complete."""
+        question = ("GOVERNMENT OF INDIA\nLOK SABHA\nUNSTARRED QUESTION NO. 2549\n"
+                    "TO BE ANSWERED ON 23.07.2026\n"
+                    "Will the Minister of CULTURE be pleased to state:\n"
+                    + "(a) the number of libraries sanctioned; " * 8)
+        assert looks_like_answer(question) is False
+
+    def test_a_reply_that_reprints_the_question_header_still_passes(self):
+        """An answer PDF reprints that header above its own ANSWER line, so
+        discounting the question marker must not reject the reply."""
+        reply = ("GOVERNMENT OF INDIA\nLOK SABHA\nUNSTARRED QUESTION NO. 2549\n"
+                 "TO BE ANSWERED ON 23.07.2026\nANSWER\n"
+                 "MINISTER OF STATE IN THE MINISTRY OF CULTURE (SHRI TEST NAME)\n"
+                 + "(a) The Ministry has sanctioned library grants. " * 6)
+        assert looks_like_answer(reply) is True

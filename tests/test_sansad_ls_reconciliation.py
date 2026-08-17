@@ -79,6 +79,15 @@ class PageIgnoringSession:
         return FakeResponse([{"listOfQuestions": rows, "totalRecordSize": self.declared}])
 
 
+class PageIgnoringNoTotalSession(PageIgnoringSession):
+    """Repeats page one AND declares no total, which is the older envelope."""
+
+    def get(self, url, params=None, headers=None, timeout=None, **kwargs):
+        self.pages_requested.append(int((params or {})["pageNo"]))
+        rows = [_row(q) for q in range(1, self.page_size + 1)]
+        return FakeResponse([{"listOfQuestions": rows}])
+
+
 class NoTotalSession:
     """Serves rows and omits `totalRecordSize` — an older shape, and not the
     same statement as a declared zero."""
@@ -153,6 +162,26 @@ class TestRepeatedPageGuard:
         assert len(session.pages_requested) <= 2, "stop on the first repeat, not later"
         assert totals["complete"] is False
         assert totals["repeated_page"] is True
+
+    def test_a_repeat_is_incomplete_even_with_no_declared_total(self, tmp_path):
+        """A repeat is direct evidence of truncation. Reading `complete` as None
+        because the envelope declared no total files a knowingly truncated
+        window as finished, and a finished window is skipped on every later run."""
+        session = PageIgnoringNoTotalSession()
+        probe = _probe(tmp_path, session)
+        totals: dict = {}
+        rows = list(probe.paginate_ls_question_list(18, 8, PAGE_SIZE, totals=totals))
+        assert len(rows) == PAGE_SIZE
+        assert totals["declared"] is None
+        assert totals["repeated_page"] is True
+        assert totals["complete"] is False
+
+    def test_a_repeat_with_no_total_leaves_the_window_suspect(self, tmp_path):
+        probe = _enumerating_probe(tmp_path, PageIgnoringNoTotalSession())
+        probe.probe_ls_sessions(
+            set(), loksabha=18, sessions=[8], from_date=None, to_date=None,
+            qtype_filter=None, max_records=None, download=False, page_size=PAGE_SIZE)
+        assert _windows(probe.out_dir)[-1]["status"] == "suspect"
 
     def test_distinct_pages_are_not_mistaken_for_a_repeat(self, tmp_path):
         session = TruncatingSession(declared=300, serves=300)
