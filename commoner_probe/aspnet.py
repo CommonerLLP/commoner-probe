@@ -202,8 +202,11 @@ def write_buttons(page: str) -> list[tuple[str, str]]:
     before submitting anything is the difference between reading a government
     database and inserting a false record into one.
     """
+    # The label arrives as numeric HTML entities on Hindi-labelled forms, so a
+    # literal match against the Devanagari hints never fires and a live write
+    # control reads as harmless. Decode first.
     return [(n, v) for n, v in submit_buttons(page)
-            if any(h in (n + " " + v).lower() for h in WRITE_HINTS)]
+            if any(h in _html.unescape(n + " " + v).lower() for h in WRITE_HINTS)]
 
 
 def export_controls(page: str) -> list[tuple[str, str]]:

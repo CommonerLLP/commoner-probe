@@ -354,6 +354,14 @@ class StdlibSession:
             url = url + sep + urlencode(params)
         timeout = kwargs.get("timeout") or 60
         body = kwargs.get("data")
+        if body is None and kwargs.get("json") is not None:
+            # The requests path reads `json=`; this one read only `data=` and
+            # dropped it in silence, so a default install posted an EMPTY body
+            # and the server answered as if the caller had sent nothing. Encode
+            # it here rather than in each caller: every adapter shares this
+            # client, and the next one would repeat the bug.
+            body = json.dumps(kwargs["json"]).encode("utf-8")
+            headers.setdefault("Content-Type", "application/json")
         if isinstance(body, str):
             body = body.encode("utf-8")
         req = urllib.request.Request(url, data=body, headers=headers, method=method)

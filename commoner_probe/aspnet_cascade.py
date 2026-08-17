@@ -35,7 +35,7 @@ from __future__ import annotations
 
 import html
 import re
-from typing import Any, Iterable, Iterator
+from typing import Any, Callable, Iterable, Iterator
 
 from .http_client import make_session
 
@@ -49,10 +49,25 @@ class CascadeCrawler:
     """
 
     def __init__(self, report_url: str, controls: dict[str, str], *,
-                 session: Any | None = None, rate_limit_sec: float = 1.0) -> None:
+                 session: Any | None = None, rate_limit_sec: float = 1.0,
+                 user_agent: str | None = None,
+                 session_factory: Callable[[], Any] | None = None) -> None:
+        """`user_agent` is exposed because some deployments answer HTTP 500 to
+        this package's own identifier and 200 to a browser string. See failure
+        mode 10 in `aspnet`. Overriding it is a deliberate act, so there is no
+        default: a caller decides, and records the decision where it is made.
+
+        `session_factory` builds a REPLACEMENT session on reseat. An injected
+        `session` is never replaced, because a caller's authenticated session
+        is not this class's to discard.
+        """
         self.report_url = report_url
         self.controls = controls
-        self.session = session or make_session(rate_limit_sec=rate_limit_sec)
+        self._factory = session_factory or (
+            None if session is not None
+            else lambda: make_session(rate_limit_sec=rate_limit_sec,
+                                      user_agent=user_agent))
+        self.session = session or self._factory()
         self._selected: dict[str, str] = {}
         self.page = self._get()
 
@@ -110,8 +125,16 @@ class CascadeCrawler:
         self.page = resp.content.decode("utf8", "replace")
 
     def reset(self) -> None:
-        """Drop every selection and refetch, recovering an expired session."""
+        """Replace the session, drop every selection, and refetch.
+
+        The stale state lives in the session cookie, so refetching with the
+        SAME session returns the same HTTP 500 and the crawl never recovers.
+        A session the caller injected is kept: replacing it would discard an
+        authentication this class did not create.
+        """
         self._selected.clear()
+        if self._factory is not None:
+            self.session = self._factory()
         self.page = self._get()
 
     def reseat(self, path: Iterable[tuple[str, str]]) -> None:

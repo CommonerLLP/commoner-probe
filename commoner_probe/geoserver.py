@@ -248,7 +248,8 @@ class GeoServer:
     def sweep(self, layer: str, bbox: Sequence[float], *, start_span: float = 2.0,
               min_span: float = 1 / 32, key: str | None = None,
               on_batch: Callable[[dict[str, dict]], None] | None = None,
-              tolerate_tile_errors: bool = True) -> dict[str, dict]:
+              tolerate_tile_errors: bool = True,
+              status: dict | None = None) -> dict[str, dict]:
         """Recursively subdivide ``bbox`` until no tile is capped, collecting points.
 
         ``key`` names the attribute that identifies a feature (a school code, an
@@ -276,6 +277,7 @@ class GeoServer:
 
         found: dict[str, dict] = {}
         failures: list[tuple[Tile, str]] = []
+        capped: list[Tile] = []
         while queue:
             tile = queue.pop()
             try:
@@ -288,19 +290,39 @@ class GeoServer:
             if len(feats) >= self.feature_count and tile.span > min_span:
                 queue.extend(tile.quarter())
                 continue
+            if len(feats) >= self.feature_count:
+                # The tile is at `min_span` and still capped, so the walk cannot
+                # subdivide further. A cap means "there may be more", so this
+                # leaf is INCOMPLETE. Ingesting it as a complete result truncates
+                # the densest clusters, which are the ones a reader most wants.
+                capped.append(tile)
             for f in feats:
                 props = f.get("properties", {}) or {}
                 ident = str(props.get(key)) if key else str(f.get("id"))
                 if ident and ident not in ("None", ""):
-                    found[ident] = props
+                    # Keep the WHOLE feature. Storing only `properties` dropped
+                    # the coordinates, and a point extractor that returns no
+                    # points answers a different question than the one asked.
+                    found[ident] = f
             if on_batch and len(found) % 500 < len(feats):
                 on_batch(found)
 
         if failures:
             self.log(f"  {layer}: {len(failures)} tile(s) failed and were SKIPPED — "
                      f"this sweep is PARTIAL, not complete")
-            for t, msg in failures[:5]:
-                self.log(f"    {t.west},{t.south},{t.east},{t.north}: {msg}")
+            for tl, msg in failures[:5]:
+                self.log(f"    {tl.west},{tl.south},{tl.east},{tl.north}: {msg}")
+        if capped:
+            self.log(f"  {layer}: {len(capped)} tile(s) hit the feature cap at the "
+                     f"minimum span — this sweep is PARTIAL, and those tiles are "
+                     f"a LOWER BOUND")
+        if status is not None:
+            # The caller cannot see a log line. `verify` must not certify a
+            # sweep it cannot see the holes in.
+            box = lambda t: (t.west, t.south, t.east, t.north)  # noqa: E731
+            status.update(failed=[box(t) for t, _ in failures],
+                          capped=[box(t) for t in capped],
+                          partial=bool(failures or capped))
         return found
 
     def verify(self, layer: str, bbox: Sequence[float], known: Iterable[str], *,
@@ -314,16 +336,33 @@ class GeoServer:
         """
         known = set(known)
         west, south, east, north = bbox
-        shifted = Tile(west, south, east, north).offset(0.5)
-        got = self.sweep(layer, (shifted.west, shifted.south, shifted.east, shifted.north),
-                         start_span=start_span, key=key)
+        # Shift by half a CELL, not half the region. A 4-degree box with
+        # 2-degree cells must move 1 degree. Moving 2 degrees queries ground
+        # outside the region, leaves the leading edge untested, and then calls
+        # the result saturated.
+        step = start_span / 2
+        shifted = (west + step, south + step, east + step, north + step)
+        status: dict = {}
+        got = self.sweep(layer, shifted, start_span=start_span, key=key, status=status)
         new = set(got) - known
+        partial = bool(status.get("partial"))
+        if partial:
+            self.log(f"  {layer}: the verification pass is itself PARTIAL — "
+                     f"{len(status.get('failed', []))} failed and "
+                     f"{len(status.get('capped', []))} capped tile(s). "
+                     "Saturation is NOT claimed.")
         return {
             "pass1": len(known),
             "pass2": len(got),
             "new": len(new),
             "recall": (len(known & set(got)) / len(known)) if known else 0.0,
-            "saturated": not new,
+            # An empty `new` proves saturation only when the second pass
+            # actually asked every question. A pass with holes produces the
+            # same empty set for the opposite reason.
+            "saturated": not new and not partial,
+            "partial": partial,
+            "failed_tiles": status.get("failed", []),
+            "capped_tiles": status.get("capped", []),
             "new_ids": sorted(new)[:50],
         }
 

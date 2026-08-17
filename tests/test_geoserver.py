@@ -138,3 +138,69 @@ def test_verify_reports_saturation_only_when_nothing_new_appears():
     out2 = gs2.verify("ws:layer", (76.0, 12.0, 77.0, 13.0),
                       known={"1000"}, key="code")
     assert out2["saturated"] is False and out2["new"] == 3
+
+
+# --- findings from review, 2026-08-17 ------------------------------------------
+
+
+def _fc_geo(n, start=0):
+    """A feature collection in the shape the standard actually specifies:
+    coordinates live in `geometry`, not in `properties`."""
+    return json.dumps({"features": [
+        {"id": f"f.{i}", "properties": {"code": str(1000 + i)},
+         "geometry": {"type": "Point", "coordinates": [76.0 + i, 12.0 + i]}}
+        for i in range(start, start + n)]})
+
+
+def test_the_point_location_survives_the_sweep():
+    """This module exists to extract POINTS. Returning attributes without
+    coordinates answers a different question than the one asked."""
+    sess = _Session([_fc_geo(2)])
+    gs = GeoServer("http://x/geoserver", session=sess, feature_count=400)
+    got = gs.sweep("ws:layer", (76.0, 12.0, 77.0, 13.0), start_span=2.0, key="code")
+    assert got["1000"]["geometry"]["coordinates"] == [76.0, 12.0]
+    assert got["1000"]["properties"]["code"] == "1000"
+
+
+def test_a_tile_capped_at_the_floor_is_reported_not_ingested():
+    """A cap means 'there may be more'. At `min_span` the walk can subdivide no
+    further, so the honest move is to record the leaf as incomplete."""
+    sess = _Session([_fc(2)])
+    gs = GeoServer("http://x/geoserver", session=sess, feature_count=2)
+    status: dict = {}
+    gs.sweep("ws:layer", (76.0, 12.0, 76.5, 12.5), start_span=0.5,
+             min_span=0.5, key="code", status=status)
+    assert status["capped"], "a capped leaf must be reported"
+    assert status["partial"] is True
+
+
+def test_the_offset_grid_shifts_by_one_cell_not_by_the_whole_region():
+    """A 4-degree box with 2-degree cells must move 1 degree, not 2. Moving by
+    half the region tests ground outside it and leaves the leading edge
+    unexamined, then calls the result saturated."""
+    import re
+    from urllib.parse import unquote
+
+    sess = _Session([])
+    gs = GeoServer("http://x/geoserver", session=sess)
+    gs.verify("ws:layer", (76.0, 12.0, 80.0, 16.0), known=[], start_span=2.0, key="code")
+    wests = sorted(float(unquote(re.search(r"bbox=([^&]+)", u, re.I).group(1)).split(",")[0])
+                   for u in sess.urls)
+    assert wests[0] == 77.0, f"expected a one-cell shift to 77.0, got {wests[0]}"
+    assert wests[-1] == 79.0, f"the grid must not run past one cell beyond the box: {wests}"
+
+
+def test_saturation_is_refused_when_a_verification_tile_failed():
+    """With every offset tile failing, `new` is empty for the wrong reason.
+    Reporting saturation there certifies completeness from no evidence."""
+    class _Failing:
+        urls: list = []
+
+        def get(self, url, timeout=None):
+            raise RuntimeError("boom")
+
+    gs = GeoServer("http://x/geoserver", session=_Failing(), feature_count=400)
+    out = gs.verify("ws:layer", (76.0, 12.0, 80.0, 16.0), known=["1000"],
+                    start_span=2.0, key="code")
+    assert out["saturated"] is False
+    assert out["partial"] is True
