@@ -158,7 +158,7 @@ that job silently return a fraction of the layer.
 
 ### Added
 
-- **`commoner_probe.otp_download_portal` — bulk microdata from a portal that
+- **`commoner_probe.microdata_download_api` — bulk microdata from a portal that
   gates it behind a mobile OTP.** The Ministry of Education's UDISE+ Data
   Sharing Portal serves six CSV datasets for each academic year since 2018-19.
   The module records the whole route, because each step has a trap that returns

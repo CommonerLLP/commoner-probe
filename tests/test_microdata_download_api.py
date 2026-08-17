@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from commoner_probe import otp_download_portal as portal
+from commoner_probe import microdata_download_api as portal
 
 
 class TestTheAllIndiaSentinel:

@@ -1,5 +1,8 @@
 # SPDX-License-Identifier: MIT
-"""Download bulk microdata from a portal that gates it behind a mobile OTP.
+"""Download bulk statistical microdata as per-year CSV archives.
+
+The portal gates the download behind a mobile OTP and a captcha. It compiles
+its API base into a JavaScript bundle. Both facts are below.
 
 CONTEXT
 =======
