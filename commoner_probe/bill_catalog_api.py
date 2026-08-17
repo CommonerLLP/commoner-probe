@@ -79,20 +79,22 @@ class UnreadableDate(ValueError):
 _DATE_FORMATS = ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d", "%d/%m/%Y")
 
 
-def _date(value: object) -> str | None:
+def _date(value: object, field: str = "date") -> str | None:
     """One date field as ISO ``YYYY-MM-DD``, or None when the field is empty.
 
     Raises :class:`UnreadableDate` for a value that matches no known format. A
     truncated string is never returned: a shape nobody has seen must stop the
-    run, not enter the record looking like every other date.
+    field, not enter the record looking like every other date. `field` names
+    the source key, because six fields go through here and the value alone
+    does not say which one failed.
     """
     if value is None:
         return None
     if not isinstance(value, str):
         raise UnreadableDate(
-            f"{value!r} is a {type(value).__name__}, and every date this endpoint "
-            "has ever served is a string. A number here is a shape change in the "
-            "source; reading it as an absent date hides that.")
+            f"{field}: {value!r} is a {type(value).__name__}, and every date this "
+            "endpoint has ever served is a string. A number here is a shape change "
+            "in the source; reading it as an absent date hides that.")
     if not value.strip():
         return None
     text = value.strip()
@@ -101,11 +103,16 @@ def _date(value: object) -> str | None:
             return datetime.strptime(text, fmt).strftime("%Y-%m-%d")
         except ValueError:
             continue
+    try:
+        # The shape a modernising endpoint moves TO: `2025-12-20T00:00:00Z`.
+        return datetime.fromisoformat(text.replace("Z", "+00:00")).strftime("%Y-%m-%d")
+    except ValueError:
+        pass
     raise UnreadableDate(
-        f"{text!r} matches no date format this endpoint is known to serve "
-        f"({', '.join(_DATE_FORMATS)}). It is not being truncated into the record: "
-        "a field named for ISO that is not ISO compares against ISO bounds and "
-        "matches nothing, with no error.")
+        f"{field}: {text!r} matches no date format this endpoint is known to serve "
+        f"({', '.join(_DATE_FORMATS)}, or ISO 8601). It is not being truncated into "
+        "the record: a field named for ISO that is not ISO compares against ISO "
+        "bounds and matches nothing, with no error.")
 
 
 #: Fields that differ between two runs of an unchanged record, and so cannot
@@ -218,8 +225,27 @@ class BillsProbe:
             time.sleep(self.sleep)
 
     def _record(self, raw: dict, house: str) -> dict:
+        """One bill, with every date read as ISO.
+
+        A date this reader cannot parse degrades THAT FIELD, not the record. The
+        field goes to null, `fetch_status` becomes `parse_error`, and `error`
+        names the field and the value. Discarding the record instead would throw
+        away the bill's name, ministry, status and every file URL over one bad
+        string — and if the source ever changes the shape of `billAssentedDate`,
+        that is 3,576 bills stripped to a key. A bad unit degrades a result and
+        never empties it, and one field is a unit.
+        """
         now = _now_iso()
-        return {
+        unreadable: list[str] = []
+
+        def date(key: str, field: str) -> str | None:
+            try:
+                return _date(raw.get(key), field)
+            except UnreadableDate as exc:
+                unreadable.append(str(exc))
+                return None
+
+        record = {
             "key": bill_key(house, raw),
             "kind": "bill_record",
             "record_type": "bill_record",
@@ -233,19 +259,20 @@ class BillsProbe:
             "bill_year": raw.get("billYear"),
             "introduced_house": raw.get("billIntroducedInHouse"),
             "introduced_by": raw.get("billIntroducedBy"),
-            "introduced_date": _date(raw.get("billIntroducedDate")),
+            "introduced_date": date("billIntroducedDate", "introduced_date"),
             "introduced_file": raw.get("billIntroducedFile"),
-            "passed_ls_date": _date(raw.get("billPassedInLSDate")),
+            "passed_ls_date": date("billPassedInLSDate", "passed_ls_date"),
             "passed_ls_file": raw.get("billPassedInLSFile"),
-            "passed_rs_date": _date(raw.get("billPassedInRSDate")),
+            "passed_rs_date": date("billPassedInRSDate", "passed_rs_date"),
             "passed_rs_file": raw.get("billPassedInRSFile"),
             "passed_both_houses_file": raw.get("billPassedInBothHousesFile"),
-            "referred_to_committee_date": _date(raw.get("referredToCommitteeDate")),
-            "report_presented_date": _date(raw.get("reportPresentedDate")),
+            "referred_to_committee_date": date(
+                "referredToCommitteeDate", "referred_to_committee_date"),
+            "report_presented_date": date("reportPresentedDate", "report_presented_date"),
             "report_file": raw.get("reportFile"),
             "act_no": raw.get("actNo"),
             "act_year": raw.get("actYear"),
-            "assent_date": _date(raw.get("billAssentedDate")),
+            "assent_date": date("billAssentedDate", "assent_date"),
             "gazetted_file": raw.get("billGazettedFile"),
             "synopsis_file": raw.get("billSynopsisFile"),
             "errata_file": raw.get("errataFile"),
@@ -254,18 +281,16 @@ class BillsProbe:
             "fetched_at": now,
             "probed_at": now,
         }
+        if unreadable:
+            record["fetch_status"] = "parse_error"
+            record["error"] = "; ".join(unreadable)[:500]
+        return record
 
-    def _status_record(self, house: str, *, fetch_status: str, error: str | None = None,
-                       key: str | None = None) -> dict:
-        """A row that stands in for a record this run could not produce.
-
-        `key` names the one bill a per-record failure belongs to. Without it two
-        unreadable bills in one house share `BILL|ls|_parse_error`, and a
-        key-indexed consumer collapses them into one failure.
-        """
+    def _status_record(self, house: str, *, fetch_status: str, error: str | None = None) -> dict:
+        """A row that stands in for a whole house this run could not fetch."""
         now = _now_iso()
         rec = {
-            "key": key or f"BILL|{house}|_{fetch_status}",
+            "key": f"BILL|{house}|_{fetch_status}",
             "kind": "bill_record",
             "record_type": "bill_record",
             "source": "sansad.in/api_rs/legislation/getBills",
@@ -281,6 +306,7 @@ class BillsProbe:
 
     def probe(self, *, max_records: int | None = None, dry_run: bool = False) -> list[dict]:
         seen = self.load_seen()
+        superseded: set[str] = set()
         out: list[dict] = []
         for house in self.houses:
             if dry_run:
@@ -289,28 +315,13 @@ class BillsProbe:
             added = 0
             try:
                 for raw in self.bills_all(house):
-                    # One unreadable date must not discard the house. The catch
-                    # below is per HOUSE, so a single bad record used to abort the
-                    # walk and leave one `fetch_error` where thousands of good
-                    # records belonged. A bad unit degrades the result; it never
-                    # empties it.
-                    try:
-                        rec = self._record(raw, house)
-                    except UnreadableDate as exc:
-                        rec = self._status_record(
-                            house, fetch_status="parse_error", error=str(exc),
-                            key=bill_key(house, raw))
-                        rec["bill_no"] = raw.get("billNumber")
-                        rec["bill_year"] = raw.get("billYear")
-                        if seen.get(rec["key"]) == _fingerprint(rec):
-                            continue
-                        seen[rec["key"]] = _fingerprint(rec)
-                        self.append_manifest(rec)
-                        out.append(rec)
+                    rec = self._record(raw, house)
+                    digest = _fingerprint(rec)
+                    if seen.get(rec["key"]) == digest:
                         continue
-                    if seen.get(rec["key"]) == _fingerprint(rec):
-                        continue
-                    seen[rec["key"]] = _fingerprint(rec)
+                    if rec["key"] in seen:
+                        superseded.add(rec["key"])
+                    seen[rec["key"]] = digest
                     self.append_manifest(rec)
                     out.append(rec)
                     added += 1
@@ -322,4 +333,35 @@ class BillsProbe:
                 out.append(rec)
             if self.sleep:
                 time.sleep(self.sleep)
+        self._compact(superseded)
         return out
+
+    def _compact(self, superseded: set[str]) -> None:
+        """Drop the rows this run replaced, so one bill is one row.
+
+        The manifest is append-only, and every reader of it — `Corpus
+        .manifest_bills()` included — streams every line. A corrected record
+        appended beside the wrong one therefore serves BOTH: the run that
+        repairs the `DD/MM/YYYY` assent dates would double the catalogue and
+        still hand the old value to anyone who reads it. Only the keys this run
+        actually rewrote are touched, and only their earlier rows.
+        """
+        if not superseded or not self.manifest.exists():
+            return
+        with self.manifest.open(encoding="utf-8") as f:
+            lines = f.readlines()
+        rows: dict[str, list[int]] = {}
+        for i, line in enumerate(lines):
+            try:
+                key = json.loads(line).get("key")
+            except json.JSONDecodeError:
+                continue
+            if key in superseded:
+                rows.setdefault(key, []).append(i)
+        drop = {i for indexes in rows.values() for i in indexes[:-1]}
+        if not drop:
+            return
+        tmp = self.manifest.with_suffix(".jsonl.tmp")
+        with tmp.open("w", encoding="utf-8") as f:
+            f.writelines(line for i, line in enumerate(lines) if i not in drop)
+        tmp.replace(self.manifest)

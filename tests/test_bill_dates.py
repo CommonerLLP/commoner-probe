@@ -36,6 +36,13 @@ class TestBothFormatsTheEndpointServes:
     def test_a_bare_iso_date_survives(self):
         assert _date("2025-12-16") == "2025-12-16"
 
+    def test_canonical_iso_8601_is_read_not_rejected(self):
+        """The shape a modernising endpoint moves TO. A field named for ISO
+        must not raise on ISO."""
+        assert _date("2025-12-20T00:00:00Z") == "2025-12-20"
+        assert _date("2025-12-20T00:00:00") == "2025-12-20"
+        assert _date("2025-12-20T05:30:00+05:30") == "2025-12-20"
+
     def test_the_two_fields_of_one_record_now_agree(self):
         """`assent_date: "20/12/2025"` sat beside `passed_ls_date: "2025-12-16"`,
         and nothing told the caller."""
@@ -108,6 +115,31 @@ class TestOneBadDateDoesNotZeroTheHouse:
         probe.bills_all = lambda house: iter(records)
         return probe
 
+    def test_the_bad_record_keeps_everything_it_could_read(self, tmp_path):
+        """The failure is one FIELD. Discarding the record over it throws away
+        the bill's name, ministry, status and every file URL."""
+        bad = {"billNumber": "2", "billYear": "2025", "billName": "Second",
+               "ministryName": "Law and Justice", "status": "Passed",
+               "billIntroducedDate": "2026-08-10 00:00:00.0",
+               "billAssentedDate": "last Tuesday"}
+        row = self._probe(tmp_path, [bad]).probe()[0]
+        assert row["fetch_status"] == "parse_error"
+        assert row["assent_date"] is None
+        assert row["bill_name"] == "Second"
+        assert row["ministry"] == "Law and Justice"
+        assert row["introduced_date"] == "2026-08-10"
+        assert "assent_date" in row["error"], "the error must name the field"
+
+    def test_the_brake_holds_when_the_dates_are_unreadable(self, tmp_path):
+        """`--max-records 1` exists to keep a smoke test off the whole
+        catalogue. A parse failure used to skip the counter, so a shape change
+        in one date field walked all ten thousand records."""
+        rows = self._probe(tmp_path, [
+            {"billNumber": str(n), "billYear": "2025",
+             "billAssentedDate": "last Tuesday"} for n in range(50)
+        ]).probe(max_records=1)
+        assert len(rows) == 1
+
     def test_the_good_records_survive_a_bad_one(self, tmp_path):
         good = {"billNumber": "1", "billYear": "2025", "billName": "First",
                 "billIntroducedDate": "2026-08-10 00:00:00.0"}
@@ -161,6 +193,23 @@ class TestTheFixReachesTheRecordsAlreadyOnDisk:
         written = [json.loads(x) for x in
                    (tmp_path / "out" / "manifest.jsonl").read_text().splitlines()]
         assert written[-1]["assent_date"] == "2025-12-20"
+
+    def test_the_replaced_row_is_gone_not_merely_outnumbered(self, tmp_path):
+        """Every reader of the manifest streams every line, `Corpus
+        .manifest_bills()` included. A corrected record appended BESIDE the
+        wrong one serves both, doubles the catalogue, and still hands the
+        `DD/MM/YYYY` value to whoever reads it."""
+        from commoner_probe import Corpus
+
+        raw = {"billNumber": "9", "billYear": "2025", "billName": "A Bill",
+               "billAssentedDate": "20/12/2025"}
+        legacy = self._probe(tmp_path, [raw])._record(raw, "ls")
+        legacy["assent_date"] = "20/12/2025"
+        self._probe(tmp_path, [raw]).append_manifest(legacy)
+
+        self._probe(tmp_path, [raw]).probe()
+        read = [r.assent_date for r in Corpus(tmp_path / "out").manifest_bills()]
+        assert read == ["2025-12-20"], read
 
     def test_an_unchanged_record_is_not_written_again(self, tmp_path):
         raw = {"billNumber": "9", "billYear": "2025", "billName": "A Bill",

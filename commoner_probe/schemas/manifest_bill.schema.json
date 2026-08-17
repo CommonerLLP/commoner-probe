@@ -44,7 +44,7 @@
     "synopsis_file": { "type": ["string", "null"] },
     "errata_file": { "type": ["string", "null"] },
     "status": { "type": ["string", "null"] },
-    "fetch_status": { "type": "string", "enum": ["ok", "dry_run", "fetch_error", "parse_error"], "description": "`parse_error` is one record the reader could not normalise, recorded so the walk continues past it. A record-level failure never empties the house." },
+    "fetch_status": { "type": "string", "enum": ["ok", "dry_run", "fetch_error", "parse_error"], "description": "`parse_error` means at least one DATE FIELD of this record was unreadable. That field is null and `error` names it; every other field the reader could read is present. A null date on such a row is 'unreadable', not 'absent' — read `fetch_status` before treating a null as a real absence." },
     "api_url": { "type": "string" },
     "fetched_at": { "type": "string" },
     "probed_at": { "type": "string" },

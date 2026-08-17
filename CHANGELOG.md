@@ -28,19 +28,30 @@ and an answer can be a different question's document.
   alone, so a second run over the same directory found every bill already held
   and wrote nothing — the instruction to re-fetch would have left every wrong
   date exactly where it was. `load_seen()` now maps each key to a digest of what
-  that record asserts, and a record whose content changed is written again. An
-  unchanged record still costs nothing.
+  that record asserts, and a record whose content changed is written again. The
+  row it replaces is then dropped from the manifest, because every reader of
+  that file — `Corpus.manifest_bills()` included — streams every line: a
+  corrected record appended beside the wrong one would serve both, and double
+  the catalogue. An unchanged record still costs nothing.
 
 - **Two unreadable bills in one house were one row.** Every `parse_error` was
   keyed `BILL|<house>|_parse_error`, so a key-indexed consumer collapsed
   distinct failures into one. A parse failure now carries the failing bill's own
   key, and clears when that bill later reads.
 
-- **One unreadable date no longer discards a whole house.** The crawl caught
-  exceptions per house, so a single bad record would abort the walk and leave one
-  `fetch_error` where thousands of good records belonged. A bad record is now
-  recorded as `parse_error` and the walk continues, which is this package's own
-  invariant: a bad unit degrades a result and never empties it.
+- **One unreadable date no longer discards a whole house, or the bill.** The
+  crawl caught exceptions per house, so a single bad record would abort the walk
+  and leave one `fetch_error` where thousands of good records belonged. The bad
+  unit is one FIELD: that date is now null, `fetch_status` is `parse_error`,
+  `error` names the field, and the bill's name, ministry, status and file URLs
+  are all still there. Read `fetch_status` before treating a null date as a real
+  absence. `--max-records` counts these rows too, so a smoke run against a
+  changed date shape stops at the brake instead of walking the whole catalogue.
+
+- **`load_seen()` on `BillsProbe` returns `dict[str, str]`, not `set[str]`** —
+  key to a content digest, the same shape `statute_dspace` and
+  `drupal_publication_index` already use. Membership tests are unaffected; a
+  caller doing set arithmetic on the return value is not.
 
 - **Session enumeration now uses the degrading paginator.** `sansad --all
   --house ls` ran its own page loop, so the degrade, the floor retry, the skip
