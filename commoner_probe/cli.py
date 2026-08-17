@@ -1062,6 +1062,15 @@ def abhilekh_patal_cmd(args: argparse.Namespace) -> None:
         raise SystemExit(str(exc)) from exc
 
 
+def doctor_cmd(args: argparse.Namespace) -> None:
+    from .doctor import version_report
+
+    report = version_report(requirements=tuple(args.requirements or ()))
+    print(report.report)
+    if not report.agrees:
+        raise SystemExit(1)
+
+
 def wayback_recover_cmd(args: argparse.Namespace) -> None:
     from .wayback_recover import IndexUnavailable, recover
 
@@ -2153,6 +2162,27 @@ def build_parser() -> argparse.ArgumentParser:
     wayback.add_argument("--sleep", type=float, default=1.0, help="Pause between CDX requests")
     wayback.add_argument("--dry-run", action="store_true", help="Print records without writing anything")
     wayback.set_defaults(func=wayback_cmd)
+
+    doctor = sub.add_parser(
+        "doctor",
+        help=(
+            "Compare the source version, the installed metadata and any declared "
+            "pin. Exits 1 when two KNOWN numbers disagree."
+        ),
+        epilog=(
+            "Examples:\n"
+            "  commoner-probe doctor\n"
+            "  commoner-probe doctor --requirements path/to/consumer/requirements.txt\n"
+            "\n`importlib.metadata` serves the version recorded at INSTALL time, not the "
+            "one in the tree in front of you, so a stale editable install silently "
+            "invalidates every version gate built on it. One venv shared across "
+            "worktrees reports whichever tree was installed last."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    doctor.add_argument("--requirements", action="append",
+                       help="A requirements file to read a pin from; repeatable")
+    doctor.set_defaults(func=doctor_cmd)
 
     wayback_recover = sub.add_parser(
         "wayback-recover",

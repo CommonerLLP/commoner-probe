@@ -112,6 +112,15 @@ and an answer can be a different question's document.
   "absent" when only the state filter excluded a name. Built live against the real
   extracts: 639 districts, and all eleven Andhra spelling variants resolve.
 
+- **`commoner-probe doctor` — the three versions that are supposed to agree.**
+  `importlib.metadata` serves the version recorded at INSTALL time, not the one in
+  the tree in front of you, so a stale editable install silently invalidates every
+  version gate built on it. This repo's own version test failed for an unknown
+  period reading 0.14.7 against a source of 0.14.6, and one consumer ran 0.13.0
+  against a declared pin of 0.14.3. `doctor` prints the source version, the
+  installed metadata and any declared pin, and exits 1 when two KNOWN numbers
+  disagree. An unknown number is reported as unknown and never as agreement.
+
 - **`commoner_probe.checkpoint` and `commoner_probe.reachability`.** A long crawl
   flushes atomically on an interval and on SIGTERM or SIGINT, and heals a torn
   checkpoint even on a run that finishes nothing. `reachability` reports

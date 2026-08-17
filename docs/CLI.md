@@ -936,6 +936,23 @@ reported, and `--no-control` says out loud that the empty result then proves
 nothing. The grid's document links are JavaScript calls rather than hrefs, and
 some orders arrive as Word files, so each saved file is named from the bytes.
 
+### `commoner-probe doctor` — do the versions agree?
+
+```bash
+commoner-probe doctor
+commoner-probe doctor --requirements path/to/consumer/requirements.txt
+```
+
+Three versions exist at once and each is read by something different: the source
+version in `pyproject.toml`, the installed metadata that `__version__`, the
+outbound User-Agent and every run log report, and a consumer's declared pin.
+`importlib.metadata` serves the number recorded at **install** time, so a stale
+editable install silently invalidates any gate built on it — and one venv shared
+across worktrees reports whichever tree was installed last.
+
+Exits 1 when two KNOWN numbers disagree. A number that cannot be read is reported
+as unknown, never as agreement.
+
 ### `commoner-probe stats` — corpus health
 
 ```bash

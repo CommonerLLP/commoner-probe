@@ -85,6 +85,7 @@ class CliCommandSyncTests(unittest.TestCase):
                 "render",
                 "abhilekh-patal",
                 "wayback",
+                "doctor",
                 "wayback-recover",
                 "shrug",
                 "go-register",
