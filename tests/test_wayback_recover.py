@@ -2,7 +2,7 @@
 
 Each test names the defect it prevents. The measurements come from the
 theright2read recovery of the Samagra Shiksha Project Approval Board minutes
-(391 URLs, 2026-08-04), recorded in REQ-0046.
+(391 URLs, 2026-08-04), recorded in the request.
 
 Fixtures mirror the real CDX contract: row 0 is a header naming the requested
 ``fl`` fields, and a resumeKey response ends with a blank row then a one-element
