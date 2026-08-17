@@ -361,7 +361,11 @@ class StdlibSession:
             # it here rather than in each caller: every adapter shares this
             # client, and the next one would repeat the bug.
             body = json.dumps(kwargs["json"]).encode("utf-8")
-            headers.setdefault("Content-Type", "application/json")
+            # HTTP header names are case-insensitive. `setdefault` is not, so a
+            # caller who sent `content-type` in another case got a SECOND,
+            # conflicting header instead of keeping their own.
+            if not any(k.lower() == "content-type" for k in headers):
+                headers["Content-Type"] = "application/json"
         if isinstance(body, str):
             body = body.encode("utf-8")
         req = urllib.request.Request(url, data=body, headers=headers, method=method)

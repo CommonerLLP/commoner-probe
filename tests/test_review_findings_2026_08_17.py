@@ -137,10 +137,32 @@ def test_the_cryptography_extra_is_declared():
     """`decrypt_envelope` imports cryptography. A clean install must be able to
     get it from a named extra rather than by guessing."""
     import pathlib
+    import re
 
-    import tomllib
-
+    # No tomllib. It arrived in 3.11, and CI runs this suite on 3.10 too.
     root = pathlib.Path(spa_jwt_api.__file__).resolve().parent.parent
-    extras = tomllib.loads((root / "pyproject.toml").read_text())["project"]["optional-dependencies"]
-    assert any("cryptography" in dep for dep in extras.get("crypto", []))
-    assert any("cryptography" in dep for dep in extras.get("all", []))
+    text = (root / "pyproject.toml").read_text(encoding="utf-8")
+    for extra in ("crypto", "all"):
+        block = re.search(rf"^{extra} = (\[.*?\])", text, re.S | re.M)
+        assert block, f"no {extra} extra is declared"
+        assert "cryptography" in block.group(1), f"{extra} does not carry cryptography"
+
+
+def test_a_lower_cased_content_type_is_not_duplicated(monkeypatch):
+    """Header names are case-insensitive. A caller's own `content-type` must
+    survive, rather than gain a second header beside it."""
+    sent = {}
+
+    def fake_open(self, req, timeout=None):
+        sent["headers"] = dict(req.headers)
+        raise SystemExit
+
+    monkeypatch.setattr("commoner_probe.http_client.is_safe_url", lambda u: True)
+    monkeypatch.setattr("urllib.request.OpenerDirector.open", fake_open)
+    s = StdlibSession()
+    with pytest.raises(SystemExit):
+        s.post("https://example.gov.in/api", json={"a": 1},
+               headers={"content-type": "application/vnd.api+json"},
+               respect_robots=False)
+    types = [v for k, v in sent["headers"].items() if k.lower() == "content-type"]
+    assert types == ["application/vnd.api+json"], types
