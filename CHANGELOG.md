@@ -72,6 +72,30 @@ and an answer can be a different question's document.
   ministry, and the Cyrillic letters OCR substitutes for identically drawn Latin
   ones. Requiring the exact English strings called 29 complete replies unusable.
 
+- **`commoner_probe.invariants` — the four acquisition invariants as
+  callables.** Each is drawn from a defect that produced a plausible,
+  complete-looking result rather than an error, and each was previously advice
+  in a docstring, which is executed only by whoever remembers it.
+
+  - `unmapped` / `require_full_coverage` — enumerate what the source offers.
+    One register published ten drillable reason columns to a map that named six,
+    and the four skipped ones were the revealing ones. Checked in both
+    directions, because a map naming a column the source dropped reads a
+    different column and returns correct-looking numbers.
+  - `saturation` — verify with a different query shape, never the same one
+    again. Re-running an identical query confirms any systematic miss.
+  - `collect` — one bad unit degrades a result to PARTIAL and never empties it.
+    A single non-JSON tile made a run record "0 rows" for two layers, which in a
+    results table is indistinguishable from "this layer is empty".
+    `KeyboardInterrupt` is deliberately not caught: a cancelled crawl is not a
+    partial source.
+  - `assert_finds` — a positive control precedes any claim of absence. A query
+    that raises is a failed control too.
+
+  `geoserver.verify()` now builds its saturation report through the shared
+  function, so the GIS case and the general case cannot drift apart. Its
+  returned keys are unchanged.
+
 - **Every answer is checked against the question number it prints.** sansad.in
   serves the wrong document under the right URL: fetched live again on
   2026-08-16, `AU2549` returns 637,244 bytes printing QUESTION NO. 2594 and

@@ -64,6 +64,7 @@ from typing import Any, Callable, Iterable, Sequence
 from urllib.parse import urlencode
 
 from .http_client import make_session
+from .invariants import saturation
 
 __all__ = [
     "GeoServer",
@@ -405,29 +406,32 @@ class GeoServer:
             if verdict is None:
                 unlocatable += 1
             got[ident] = feature
-        new = set(got) - known
         partial = bool(status.get("partial"))
+        # The report shape is the general invariant, not a GIS one: compare a
+        # first pass against a re-query of a DIFFERENT shape, and refuse to
+        # certify saturation when the second pass had holes of its own.
+        report = saturation(known, got, partial=partial)
         if partial:
             self.log(f"  {layer}: the verification pass is itself PARTIAL — "
                      f"{len(status.get('failed', []))} failed and "
                      f"{len(status.get('capped', []))} capped tile(s). "
                      "Saturation is NOT claimed.")
         return {
-            "pass1": len(known),
-            "pass2": len(got),
-            "new": len(new),
-            "recall": (len(known & set(got)) / len(known)) if known else 0.0,
+            "pass1": report.first_pass,
+            "pass2": report.second_pass,
+            "new": report.new,
+            "recall": report.recall,
             # An empty `new` proves saturation only when the second pass
             # actually asked every question. A pass with holes produces the
             # same empty set for the opposite reason.
-            "saturated": not new and not partial,
+            "saturated": report.saturated,
             "partial": partial,
             # Features the second pass could not place. They are counted as
             # in-region, so this number is the doubt in `new`.
             "unlocatable": unlocatable,
             "failed_tiles": status.get("failed", []),
             "capped_tiles": status.get("capped", []),
-            "new_ids": sorted(new)[:50],
+            "new_ids": report.new_ids,
         }
 
     @property
