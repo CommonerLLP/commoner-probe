@@ -25,9 +25,22 @@ PYPROJECT = (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
 
 class VersionSyncTests(unittest.TestCase):
     def test_pyproject_version_matches_package_version(self):
+        """`__version__` reads the INSTALLED metadata, not this checkout.
+
+        So a mismatch means the environment is stale, never that the code is
+        wrong, and the message has to say so: `pip install -e .` after a bump,
+        and one venv shared across worktrees reports whichever tree was
+        installed last.
+        """
         match = re.search(r'^version = "([^"]+)"$', PYPROJECT, re.MULTILINE)
         self.assertIsNotNone(match)
-        self.assertEqual(__version__, match.group(1))
+        import commoner_probe
+        self.assertEqual(
+            __version__, match.group(1),
+            f"installed metadata says {__version__}, {REPO_ROOT}/pyproject.toml says "
+            f"{match.group(1)}. The package imported from "
+            f"{Path(commoner_probe.__file__).parent}. Run `pip install -e .` in this "
+            "tree; a venv shared across worktrees reports the last one installed.")
 
 
     def test_cli_reports_the_installed_version(self):
