@@ -662,6 +662,7 @@ class ManifestBillRecord:
     status: str | None = None
     api_url: str | None = None
     fetched_at: str | None = None
+    unreadable_fields: list[str] | None = None
     error: str | None = None
 
     @classmethod

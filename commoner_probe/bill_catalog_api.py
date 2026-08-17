@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -78,6 +79,13 @@ class UnreadableDate(ValueError):
 #: 53. No exception, no empty field, a clean-looking run.
 _DATE_FORMATS = ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d", "%d/%m/%Y")
 
+#: An ISO 8601 date carrying a time: `2025-12-20T00:00:00Z`, `2025-12-20T05:30`,
+#: with or without an offset. The date half is taken; the time half is checked
+#: for shape and discarded, because these fields carry midnight.
+_ISO_STAMP = re.compile(
+    r"^(\d{4}-\d{2}-\d{2})[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?"
+    r"(?:Z|[+-]\d{2}:?\d{2})?$")
+
 
 def _date(value: object, field: str = "date") -> str | None:
     """One date field as ISO ``YYYY-MM-DD``, or None when the field is empty.
@@ -103,11 +111,14 @@ def _date(value: object, field: str = "date") -> str | None:
             return datetime.strptime(text, fmt).strftime("%Y-%m-%d")
         except ValueError:
             continue
-    try:
-        # The shape a modernising endpoint moves TO: `2025-12-20T00:00:00Z`.
-        return datetime.fromisoformat(text.replace("Z", "+00:00")).strftime("%Y-%m-%d")
-    except ValueError:
-        pass
+    # The shape a modernising endpoint moves TO: `2025-12-20T00:00:00Z`. Matched
+    # by pattern rather than by `fromisoformat`, which accepts a different set of
+    # strings on every Python this package supports — 3.10 takes only
+    # `isoformat()` output, 3.11 took basic form as well. A date field must not
+    # read differently on two machines walking the same source.
+    stamped = _ISO_STAMP.match(text)
+    if stamped:
+        return datetime.strptime(stamped.group(1), "%Y-%m-%d").strftime("%Y-%m-%d")
     raise UnreadableDate(
         f"{field}: {text!r} matches no date format this endpoint is known to serve "
         f"({', '.join(_DATE_FORMATS)}, or ISO 8601). It is not being truncated into "
@@ -173,15 +184,26 @@ class BillsProbe:
         seen: dict[str, str] = {}
         if not self.manifest.exists():
             return seen
+        for rec in self._rows():
+            if rec.get("key"):
+                seen[rec["key"]] = _fingerprint(rec)
+        return seen
+
+    def _rows(self) -> Iterator[dict]:
+        """Each manifest line that is a JSON object.
+
+        A line that is valid JSON but not an object — `null`, `123`, `[]` — is
+        skipped rather than crashed on. `json.loads(line).get(...)` raises
+        AttributeError there, which JSONDecodeError does not cover.
+        """
         with self.manifest.open(encoding="utf-8") as f:
             for line in f:
                 try:
                     rec = json.loads(line)
                 except json.JSONDecodeError:
                     continue
-                if rec.get("key"):
-                    seen[rec["key"]] = _fingerprint(rec)
-        return seen
+                if isinstance(rec, dict):
+                    yield rec
 
     def append_manifest(self, record: dict) -> None:
         self.out_dir.mkdir(parents=True, exist_ok=True)
@@ -236,13 +258,13 @@ class BillsProbe:
         never empties it, and one field is a unit.
         """
         now = _now_iso()
-        unreadable: list[str] = []
+        unreadable: dict[str, object] = {}
 
         def date(key: str, field: str) -> str | None:
             try:
                 return _date(raw.get(key), field)
-            except UnreadableDate as exc:
-                unreadable.append(str(exc))
+            except UnreadableDate:
+                unreadable[field] = raw.get(key)
                 return None
 
         record = {
@@ -282,8 +304,17 @@ class BillsProbe:
             "probed_at": now,
         }
         if unreadable:
+            # Every field, not the first two. One 250-character explanation per
+            # field filled the 500-character budget after two, and the case this
+            # exists for is a source-wide shape change where all six fail at
+            # once — the run where knowing WHICH fields failed matters most.
             record["fetch_status"] = "parse_error"
-            record["error"] = "; ".join(unreadable)[:500]
+            record["unreadable_fields"] = sorted(unreadable)
+            pairs = ", ".join(f"{f}={unreadable[f]!r}" for f in sorted(unreadable))
+            record["error"] = (
+                f"unreadable date: {pairs}"[:400]
+                + ". The field is null and this row is not `ok`; a null here means "
+                  "unreadable, not absent.")
         return record
 
     def _status_record(self, house: str, *, fetch_status: str, error: str | None = None) -> dict:
@@ -306,7 +337,6 @@ class BillsProbe:
 
     def probe(self, *, max_records: int | None = None, dry_run: bool = False) -> list[dict]:
         seen = self.load_seen()
-        superseded: set[str] = set()
         out: list[dict] = []
         for house in self.houses:
             if dry_run:
@@ -319,8 +349,6 @@ class BillsProbe:
                     digest = _fingerprint(rec)
                     if seen.get(rec["key"]) == digest:
                         continue
-                    if rec["key"] in seen:
-                        superseded.add(rec["key"])
                     seen[rec["key"]] = digest
                     self.append_manifest(rec)
                     out.append(rec)
@@ -333,35 +361,49 @@ class BillsProbe:
                 out.append(rec)
             if self.sleep:
                 time.sleep(self.sleep)
-        self._compact(superseded)
+        self.compact()
         return out
 
-    def _compact(self, superseded: set[str]) -> None:
-        """Drop the rows this run replaced, so one bill is one row.
+    def compact(self) -> int:
+        """Leave one row per key, the last, and return how many rows went.
 
-        The manifest is append-only, and every reader of it — `Corpus
-        .manifest_bills()` included — streams every line. A corrected record
-        appended beside the wrong one therefore serves BOTH: the run that
-        repairs the `DD/MM/YYYY` assent dates would double the catalogue and
-        still hand the old value to anyone who reads it. Only the keys this run
-        actually rewrote are touched, and only their earlier rows.
+        ARCHITECTURE.md states the contract this keeps: one schema-validated
+        record per item. Every reader of the file — `Corpus.manifest_bills()`
+        included — streams every line, so a corrected record appended beside the
+        wrong one serves BOTH: the run that repairs the `DD/MM/YYYY` assent
+        dates would double the catalogue and still hand out the old value.
+
+        It scans for duplicates rather than trusting what THIS run rewrote,
+        because a run killed between the append and the compaction leaves pairs
+        behind, and resume then reads the newest row, finds the record
+        unchanged, and rewrites nothing. Under the narrower rule that repair was
+        unreachable: the duplicates were permanent and the stale value was
+        served forever.
+
+        The write is a temp file and a rename, which is atomic for readers.
+        Rows this class did not write are copied through untouched. One
+        directory holds one corpus, so a second writer appending to the same
+        `manifest.jsonl` DURING this rewrite would still lose those rows; run
+        one probe per output directory.
         """
-        if not superseded or not self.manifest.exists():
-            return
+        if not self.manifest.exists():
+            return 0
         with self.manifest.open(encoding="utf-8") as f:
             lines = f.readlines()
         rows: dict[str, list[int]] = {}
         for i, line in enumerate(lines):
             try:
-                key = json.loads(line).get("key")
+                rec = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            if key in superseded:
-                rows.setdefault(key, []).append(i)
-        drop = {i for indexes in rows.values() for i in indexes[:-1]}
+            if isinstance(rec, dict) and rec.get("key"):
+                rows.setdefault(rec["key"], []).append(i)
+        drop = {i for indexes in rows.values() if len(indexes) > 1
+                for i in indexes[:-1]}
         if not drop:
-            return
+            return 0
         tmp = self.manifest.with_suffix(".jsonl.tmp")
         with tmp.open("w", encoding="utf-8") as f:
             f.writelines(line for i, line in enumerate(lines) if i not in drop)
         tmp.replace(self.manifest)
+        return len(drop)

@@ -32,7 +32,10 @@ and an answer can be a different question's document.
   row it replaces is then dropped from the manifest, because every reader of
   that file — `Corpus.manifest_bills()` included — streams every line: a
   corrected record appended beside the wrong one would serve both, and double
-  the catalogue. An unchanged record still costs nothing.
+  the catalogue. An unchanged record still costs nothing. `BillsProbe.compact()`
+  scans for duplicate keys rather than trusting what one run rewrote, so a
+  repair killed part-way is finished by the next run instead of leaving a pair
+  no later run could see.
 
 - **Two unreadable bills in one house were one row.** Every `parse_error` was
   keyed `BILL|<house>|_parse_error`, so a key-indexed consumer collapsed
@@ -44,9 +47,16 @@ and an answer can be a different question's document.
   and leave one `fetch_error` where thousands of good records belonged. The bad
   unit is one FIELD: that date is now null, `fetch_status` is `parse_error`,
   `error` names the field, and the bill's name, ministry, status and file URLs
-  are all still there. Read `fetch_status` before treating a null date as a real
-  absence. `--max-records` counts these rows too, so a smoke run against a
-  changed date shape stops at the brake instead of walking the whole catalogue.
+  are all still there. `unreadable_fields` names every date that failed, because
+  the case this exists for is a source-wide shape change where all six fail at
+  once. Read `fetch_status` before treating a null date as a real absence.
+  `--max-records` counts these rows too, so a smoke run against a changed date
+  shape stops at the brake instead of walking the whole catalogue.
+
+- **A date read the same on every Python this package supports.** The ISO-8601
+  rung used `datetime.fromisoformat`, which accepts a different set of strings
+  on 3.10, 3.11 and later. Two machines walking one source wrote different
+  records for the same bill. The accepted shapes are now pinned by pattern.
 
 - **`load_seen()` on `BillsProbe` returns `dict[str, str]`, not `set[str]`** —
   key to a content digest, the same shape `statute_dspace` and

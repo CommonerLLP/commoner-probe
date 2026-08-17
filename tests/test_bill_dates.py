@@ -43,6 +43,13 @@ class TestBothFormatsTheEndpointServes:
         assert _date("2025-12-20T00:00:00") == "2025-12-20"
         assert _date("2025-12-20T05:30:00+05:30") == "2025-12-20"
 
+    def test_the_reader_does_not_depend_on_the_interpreter(self):
+        """`fromisoformat` accepts a different set of strings on every Python
+        this package supports. Basic form parsed on 3.11 and raised on 3.10, so
+        two machines walking the same source wrote different records."""
+        with pytest.raises(UnreadableDate):
+            _date("20251220")
+
     def test_the_two_fields_of_one_record_now_agree(self):
         """`assent_date: "20/12/2025"` sat beside `passed_ls_date: "2025-12-16"`,
         and nothing told the caller."""
@@ -130,6 +137,24 @@ class TestOneBadDateDoesNotZeroTheHouse:
         assert row["introduced_date"] == "2026-08-10"
         assert "assent_date" in row["error"], "the error must name the field"
 
+    def test_every_failed_field_is_named_not_the_first_two(self, tmp_path):
+        """The case this exists for is a source-wide shape change, where all six
+        fail at once. One long explanation per field filled the 500-character
+        budget after two, and the other four failures went unnamed."""
+        bad = {"billNumber": "3", "billYear": "2025",
+               "billIntroducedDate": "last Tuesday",
+               "billPassedInLSDate": "last Tuesday",
+               "billPassedInRSDate": "last Tuesday",
+               "referredToCommitteeDate": "last Tuesday",
+               "reportPresentedDate": "last Tuesday",
+               "billAssentedDate": "last Tuesday"}
+        row = self._probe(tmp_path, [bad]).probe()[0]
+        assert row["unreadable_fields"] == [
+            "assent_date", "introduced_date", "passed_ls_date", "passed_rs_date",
+            "referred_to_committee_date", "report_presented_date"]
+        for field in row["unreadable_fields"]:
+            assert field in row["error"], field
+
     def test_the_brake_holds_when_the_dates_are_unreadable(self, tmp_path):
         """`--max-records 1` exists to keep a smoke test off the whole
         catalogue. A parse failure used to skip the counter, so a shape change
@@ -210,6 +235,35 @@ class TestTheFixReachesTheRecordsAlreadyOnDisk:
         self._probe(tmp_path, [raw]).probe()
         read = [r.assent_date for r in Corpus(tmp_path / "out").manifest_bills()]
         assert read == ["2025-12-20"], read
+
+    def test_an_interrupted_repair_is_repaired_by_the_next_run(self, tmp_path):
+        """The repair walks ten thousand records at half a second each. Kill it
+        in that window and both rows are on disk. Resume then reads the NEWEST
+        row, finds the record unchanged, and rewrites nothing — so a rule that
+        only dropped what THIS run replaced left the duplicate forever."""
+        from commoner_probe import Corpus
+
+        raw = {"billNumber": "9", "billYear": "2025", "billName": "A Bill",
+               "billAssentedDate": "20/12/2025"}
+        probe = self._probe(tmp_path, [raw])
+        legacy = probe._record(raw, "ls")
+        legacy["assent_date"] = "20/12/2025"
+        probe.append_manifest(legacy)
+        probe.append_manifest(probe._record(raw, "ls"))   # the run dies here
+
+        self._probe(tmp_path, [raw]).probe()
+        read = [r.assent_date for r in Corpus(tmp_path / "out").manifest_bills()]
+        assert read == ["2025-12-20"], read
+
+    def test_a_line_that_is_not_an_object_does_not_stop_the_run(self, tmp_path):
+        """`json.loads(line).get(...)` raises AttributeError on `null`, which
+        JSONDecodeError does not cover."""
+        raw = {"billNumber": "9", "billYear": "2025", "billAssentedDate": "20/12/2025"}
+        probe = self._probe(tmp_path, [raw])
+        probe.append_manifest({"key": "BILL|ls|2025|1", "kind": "bill_record"})
+        with probe.manifest.open("a", encoding="utf-8") as f:
+            f.write("null\n123\n[]\n")
+        assert self._probe(tmp_path, [raw]).probe()[0]["assent_date"] == "2025-12-20"
 
     def test_an_unchanged_record_is_not_written_again(self, tmp_path):
         raw = {"billNumber": "9", "billYear": "2025", "billName": "A Bill",

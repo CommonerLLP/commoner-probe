@@ -48,6 +48,7 @@
     "api_url": { "type": "string" },
     "fetched_at": { "type": "string" },
     "probed_at": { "type": "string" },
+    "unreadable_fields": { "type": "array", "items": { "type": "string" }, "description": "The date fields of THIS record the reader could not parse. Each is null above. Present only where `fetch_status` is `parse_error`." },
     "error": { "type": "string" }
   }
 }
