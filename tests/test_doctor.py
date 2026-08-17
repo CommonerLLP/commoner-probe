@@ -112,3 +112,39 @@ class TestAgainstThisTree:
         assert report.source is not None
         assert report.installed is not None
         assert report.agrees, report.report
+
+
+class TestEveryPinFormTheOrgActuallyUses:
+    """Measured against the seven live consumer files on 2026-08-17. The first
+    version of this reader found ONE pin where three existed, because it required
+    the requirement to start the line and carry no extras."""
+
+    def test_it_reads_a_pin_carrying_extras(self, tmp_path):
+        path = tmp_path / "requirements.txt"
+        path.write_text("commoner-probe[http,pdf]==0.14.3\n", encoding="utf-8")
+        assert declared_pins(path) == {str(path): "0.14.3"}
+
+    def test_it_reads_a_pin_inside_a_pyproject_dependency_list(self, tmp_path):
+        path = tmp_path / "pyproject.toml"
+        path.write_text('[project]\ndependencies = [\n    "commoner-probe==0.14.3",\n]\n',
+                        encoding="utf-8")
+        assert declared_pins(path) == {str(path): "0.14.3"}
+
+    def test_it_reads_a_pin_with_extras_inside_a_pyproject(self, tmp_path):
+        path = tmp_path / "pyproject.toml"
+        path.write_text('dependencies = ["commoner-probe[budget]==0.15.0"]\n', encoding="utf-8")
+        assert declared_pins(path) == {str(path): "0.15.0"}
+
+    def test_a_file_that_names_the_package_and_pins_no_version_is_reported(self, tmp_path):
+        """Unpinned is not unmentioned. The org requires an exact pin, so a
+        consumer that depends on this package without one is a finding, and
+        returning nothing hid it among the files that never mention it."""
+        path = tmp_path / "requirements.txt"
+        path.write_text("commoner-probe>=0.14\n", encoding="utf-8")
+        assert declared_pins(path) == {str(path): "unpinned"}
+
+    def test_a_comment_naming_the_package_is_not_a_pin(self, tmp_path):
+        path = tmp_path / "requirements.txt"
+        path.write_text("# acquisition is delegated to commoner-probe\nrequests==2.32.0\n",
+                        encoding="utf-8")
+        assert declared_pins(path) == {}

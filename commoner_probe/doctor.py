@@ -29,12 +29,23 @@ from pathlib import Path
 __all__ = ["VersionReport", "declared_pins", "installed_version", "source_version",
            "version_report"]
 
-#: Requirement lines that pin this package, in the two forms the org uses: an
-#: exact `==` pin from PyPI, and a git URL pinned to a tag.
+#: Every form the org's consumers actually use, measured against the seven live
+#: pin files on 2026-08-17. The requirement is NOT anchored to the start of a
+#: line, because a `pyproject.toml` writes it quoted inside a dependency list,
+#: and extras are optional, because four of the seven carry them
+#: (`commoner-probe[http,pdf]==0.14.3`). The first reader required both and found
+#: one pin where three existed.
+_EXTRAS = r"(?:\[[^\]]*\])?"
 _PIN_PATTERNS = (
-    re.compile(r"^\s*commoner[-_]probe\s*==\s*([0-9][^\s;#]*)", re.I | re.MULTILINE),
-    re.compile(r"commoner-probe(?:\.git)?@v?([0-9][^\s;#\"']*)", re.I),
+    re.compile(rf"commoner[-_]probe{_EXTRAS}\s*==\s*([0-9][^\s;#,\"']*)", re.I),
+    re.compile(rf"commoner-probe(?:\.git)?{_EXTRAS}@v?([0-9][^\s;#\"']*)", re.I),
 )
+
+#: The package named as a requirement with no exact version. The org requires an
+#: exact pin, so this is a finding rather than an absence — reporting nothing
+#: filed it beside the files that never mention the package at all.
+_UNPINNED = re.compile(
+    rf"^\s*[\"']?commoner[-_]probe{_EXTRAS}\s*(?:[<>~!=]=|@|$)", re.I | re.MULTILINE)
 
 
 class VersionReport:
@@ -62,6 +73,12 @@ class VersionReport:
                 "this tree; one venv shared across worktrees reports whichever was "
                 "installed last.")
         for where, pin in self.pins.items():
+            if pin == "unpinned":
+                out.append(
+                    f"{where} names this package with no exact version. The org pins "
+                    "with == or @vX.Y.Z, because a range moves under the consumer "
+                    "without anyone deciding to move it.")
+                continue
             if self.installed and pin != self.installed:
                 out.append(
                     f"{where} pins {pin} and the environment runs {self.installed}. A "
@@ -136,6 +153,9 @@ def declared_pins(*paths: Path | str) -> dict[str, str]:
             if match:
                 found[str(p)] = match.group(1)
                 break
+        else:
+            if _UNPINNED.search(text):
+                found[str(p)] = "unpinned"
     return found
 
 
