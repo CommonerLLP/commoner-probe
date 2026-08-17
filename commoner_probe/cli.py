@@ -1128,10 +1128,24 @@ def go_register_cmd(args: argparse.Namespace) -> None:
     # runs, and `--no-control` answers that by removing the safeguard rather than
     # replacing it. A different deployment needs a record IT holds.
     control = None
-    if args.control_department:
+    # All THREE fields, not the department alone. `GoQuery` reads an empty
+    # `go_no` as a broad date-range search, so a control missing the number is
+    # satisfied by any order that department issued that day — and it then
+    # licenses a false empty result for the caller's real query.
+    given = [n for n in ("control_department", "control_date", "control_go_no")
+             if getattr(args, n)]
+    if given and len(given) < 3:
+        missing = [n for n in ("control_department", "control_date", "control_go_no")
+                   if not getattr(args, n)]
+        raise SystemExit(
+            "a control must name ONE record: --control-department, --control-date and "
+            f"--control-go-no. Missing {', '.join('--' + m.replace('_', '-') for m in missing)}. "
+            "An empty order number searches the whole date range, so any order that "
+            "department issued that day would pass the control.")
+    if len(given) == 3:
         control = GoQuery(department=args.control_department,
                           from_date=args.control_date, to_date=args.control_date,
-                          go_no=args.control_go_no or "",
+                          go_no=args.control_go_no,
                           go_type=args.control_go_type)
     elif args.base_url and not args.no_control:
         raise SystemExit(

@@ -412,14 +412,16 @@ def _matches_record(dest: Path, total: int, previous: dict | None) -> bool:
     outcome as a download, the manifest kept the old digest beside bytes that no
     longer hash to it. Where a digest was recorded, the file is re-hashed.
 
-    With no recorded digest there is nothing to check against, so the size stands
-    and the caller learns the size from the row.
+    With NO recorded digest there is nothing to check against, and the file is
+    fetched. Accepting it on its length alone kept an unrelated same-sized file
+    for ever and recorded it with a null digest — a held table nobody had ever
+    verified. One download is cheaper than a wrong table.
     """
-    if dest.stat().st_size != total:
-        return False
     digest = (previous or {}).get("sha256")
     if not digest:
-        return True
+        return False
+    if dest.stat().st_size != total:
+        return False
     return hashlib.sha256(dest.read_bytes()).hexdigest() == digest
 
 
@@ -457,7 +459,7 @@ def _outcome(status: str) -> str:
     return _OUTCOME.get(status, status)
 
 
-def _append(manifest: Path, record: dict, *, seen: dict[str, str]) -> None:
+def _append(manifest: Path, record: dict, *, previous: dict[str, dict]) -> None:
     """One manifest row per OUTCOME, written for a skip as well as a download.
 
     A file already on disk used to produce no row at all, so a reader of the
@@ -468,12 +470,20 @@ def _append(manifest: Path, record: dict, *, seen: dict[str, str]) -> None:
     does not grow the file, and a recovered short table is not left reported as
     short for ever.
     """
-    key, status = record["key"], record["status"]
-    if _outcome(seen.get(key, "")) == _outcome(status):
+    key = record["key"]
+    prior = previous.get(key)
+    # The comparison covers the FILE, not only the outcome word. A replacement
+    # downloaded after an upstream change carries a new digest and byte count
+    # while the outcome stays "held", so comparing outcomes alone suppressed the
+    # row — and every later run then rejected the new file against the stale
+    # digest and downloaded it again.
+    if prior is not None and _outcome(prior.get("status", "")) == _outcome(record["status"]) \
+            and prior.get("sha256") == record["sha256"] \
+            and prior.get("bytes") == record["bytes"]:
         return
     with manifest.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(record, ensure_ascii=False) + "\n")
-    seen[key] = status
+    previous[key] = dict(record)
 
 
 def _filename_for(table: ShrugTable) -> str:
@@ -486,7 +496,11 @@ def _filename_for(table: ShrugTable) -> str:
     """
     basename = Path(urlparse(table.url or "").path).name or "download.zip"
     stem = safe_filename_segment(table.table_label, collapse=True)
-    return safe_filename_segment(f"{stem}-{basename}", collapse=True)
+    # Sanitising is not injective: `A/B` and `A B` both collapse to `A_B`, and at
+    # equal sizes the second table was reported held without ever being fetched.
+    # The digest of the label restores what the collapse removes.
+    fingerprint = hashlib.sha256(table.table_label.encode("utf-8")).hexdigest()[:8]
+    return safe_filename_segment(f"{stem}-{fingerprint}-{basename}", collapse=True)
 
 
 def fetch_preset(
@@ -519,7 +533,6 @@ def fetch_preset(
 
     out.mkdir(parents=True, exist_ok=True)
     manifest = out / "manifest.jsonl"
-    seen = _recorded_status(manifest)
     recorded = _recorded_rows(manifest)
     rows: list[dict] = []
     for table in tables:
@@ -555,7 +568,7 @@ def fetch_preset(
             record.update(bytes=held, sha256=(recorded.get(record["key"]) or {}).get("sha256"),
                           status="skipped_exists")
             log(f"have {filename} ({held} bytes)")
-            _append(manifest, record, seen=seen)
+            _append(manifest, record, previous=recorded)
             rows.append(record)
             continue
         if dest.exists():
@@ -569,7 +582,7 @@ def fetch_preset(
             sess, table.url, dest, timeout=timeout, max_bytes=max_bytes, expect=total
         )
         record.update(sha256=sha256, bytes=written, status="downloaded")
-        _append(manifest, record, seen=seen)
+        _append(manifest, record, previous=recorded)
         rows.append(record)
         log(f"  -> {filename}  sha256 {sha256[:16]}…")
     return rows
