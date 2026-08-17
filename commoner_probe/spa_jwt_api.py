@@ -1,8 +1,22 @@
 # SPDX-License-Identifier: MIT
-"""Download bulk statistical microdata as per-year CSV archives.
+"""Drive a JWT-authenticated REST API that sits behind an Angular single-page app.
 
-The portal gates the download behind a mobile OTP and a captcha. It compiles
-its API base into a JavaScript bundle. Both facts are below.
+THE STACK, WHICH IS THE REUSABLE PART
+=====================================
+The page ships as an empty shell. It renders only after JavaScript runs.
+
+The API base is not in the HTML. The build compiles it into one bundle as a
+variable, and assembles endpoints with template literals. A grep for URL string
+literals therefore finds almost nothing. Recover the base from the bundle:
+
+    grep -oE '[A-Za-z0-9_$]+_apiBaseUrl' main.*.js | head -1
+
+The auth flow is three calls. Fetch a captcha. Send an OTP. Verify the OTP for
+a bearer token. A human must read the captcha image. This module ships no
+solver. The OTP expires quickly, so build the verify call before you ask for
+the code.
+
+Downloads then use the bearer token. They key on ids, never on names.
 
 CONTEXT
 =======
