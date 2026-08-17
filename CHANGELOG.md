@@ -158,6 +158,24 @@ that job silently return a fraction of the layer.
 
 ### Added
 
+- **`commoner_probe.otp_download_portal` — bulk microdata from a portal that
+  gates it behind a mobile OTP.** The Ministry of Education's UDISE+ Data
+  Sharing Portal serves six CSV datasets for each academic year since 2018-19.
+  The module records the whole route, because each step has a trap that returns
+  a plausible wrong answer instead of an error.
+
+  **The expensive one is the all-India sentinel: it is 99, not 0.**
+  `stateId=0&districtId=0` answers HTTP 200 with `Content-Type: application/zip`
+  and a body that is actually `%PDF-1.7` — the schema document, not data. Every
+  `reportId` except 1 then 404s, which reads convincingly as "only one report
+  exists". Always check the payload begins `PK`. Never trust the header.
+
+  Also recorded: the portal times out from a non-Indian connection and answers
+  from ap-south-1; the API base sits in a 2.25 MB Angular bundle as
+  `Y3_apiBaseUrl`, assembled with template literals, so grepping for URL string
+  literals finds almost nothing; the auth flow is captcha, send-OTP, verify-OTP,
+  and the captcha needs a human, so this module ships no solver.
+
 - **`commoner_probe.geoserver` — point extraction from a WMS-only GeoServer.**
   State spatial-data infrastructures are GeoServer deployments and many publish
   WMS while disabling WFS, so there is no vector download. This sweeps a bounding

@@ -1,5 +1,16 @@
 # SPDX-License-Identifier: MIT
-"""UDISE+ — the two national school portals, and how to get the microdata out.
+"""Download bulk microdata from a portal that gates it behind a mobile OTP.
+
+CONTEXT
+=======
+The Ministry of Education operates the source. The programme is UDISE+.
+It is the national school-data system of India.
+Two portals serve it. KYS answers hierarchy queries and holds no microdata.
+The Data Sharing Portal holds the microdata and needs an account.
+The hosts are kys.udiseplus.gov.in and microdata.udiseplus.gov.in.
+The portal serves six CSV datasets for each academic year, from 2018-19.
+A human must read the captcha image. This module ships no solver.
+The OTP reaches the phone of the account holder. It expires quickly.
 
 India's school data sits behind two Ministry of Education portals with completely
 different contracts:

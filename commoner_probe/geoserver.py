@@ -60,7 +60,7 @@ import json
 import re
 import time
 from dataclasses import dataclass, field
-from typing import Any, Callable, Iterable, Iterator, Sequence
+from typing import Any, Callable, Iterable, Sequence
 from urllib.parse import urlencode
 
 from .http_client import make_session
