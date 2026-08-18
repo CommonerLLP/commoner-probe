@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **An impossible calendar date discarded a whole house.** `2025-02-30T00:00:00Z`
+  has the shape of an ISO timestamp and names a day that does not exist.
+  `strptime` raised a bare `ValueError`, `_record()` catches `UnreadableDate`
+  alone, so the error reached the house handler, wrote one `fetch_error`, and
+  abandoned every later bill in that house. It now raises `UnreadableDate`, the
+  bad field goes to null, and the bill keeps everything else. This is the defect
+  0.15.0 fixed for other date shapes and missed for this one.
+
+
 ## 0.15.0 — 2026-08-18
 
 **Two of these change published numbers. Re-run the bills probe, and read the
