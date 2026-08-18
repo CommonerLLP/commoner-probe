@@ -30,20 +30,29 @@ __all__ = ["VersionReport", "declared_pins", "installed_version", "source_versio
            "version_report"]
 
 #: Every form the org's consumers actually use, measured against the seven live
-#: pin files on 2026-08-17. The requirement is NOT anchored to the start of a
-#: line, because a `pyproject.toml` writes it quoted inside a dependency list,
-#: and extras are optional, because four of the seven carry them
+#: pin files on 2026-08-17. The requirement does not have to start the line,
+#: because a `pyproject.toml` writes it quoted inside a dependency list, and
+#: extras are optional, because four of the seven carry them
 #: (`commoner-probe[http,pdf]==0.14.3`). The first reader required both and found
 #: one pin where three existed.
-#: `my-commoner-probe==9.9.9` is a different package. Without a boundary the
-#: pattern started matching at the inner substring and reported 9.9.9 as this
-#: package's pin, so `doctor` failed a consumer that never depended on it. `/`
-#: stays legal on the left, because a git URL carries one.
+#: It must still open a requirement token. `my-commoner-probe==9.9.9` is a
+#: different package, and `description = "built for commoner-probe==9.9.9"` is
+#: prose; each was read as this package's pin, and `doctor` then failed a
+#: consumer that never depended on it.
 _EXTRAS = r"(?:\[[^\]]*\])?"
-_NAME = rf"(?<![\w.-])commoner[-_]probe{_EXTRAS}"
+_NAME = rf"commoner[-_]probe{_EXTRAS}"
+#: A requirement token opens a line, or opens a quoted element of an array.
+#: Prose names the package mid-sentence, and TOML names it on both sides of a
+#: scalar assignment — `name = "commoner-probe"` and the console-script key —
+#: so an opening quote alone is not enough. Only `[` and `,` open a dependency
+#: list.
+_TOKEN = r"(?:^|[\[,]\s*[\"'])\s*"
+#: The git form carries the name inside a URL, so a `/` opens it too.
+_URL_TOKEN = r"(?:^|[\[,]\s*[\"']|/)\s*"
 _PIN_PATTERNS = (
-    re.compile(rf"{_NAME}\s*==\s*([0-9][^\s;#,\"']*)", re.I),
-    re.compile(rf"(?<![\w.-])commoner-probe(?:\.git)?{_EXTRAS}@v?([0-9][^\s;#\"']*)", re.I),
+    re.compile(rf"{_TOKEN}{_NAME}\s*==\s*([0-9][^\s;#,\"']*)", re.I | re.MULTILINE),
+    re.compile(rf"{_URL_TOKEN}commoner-probe(?:\.git)?{_EXTRAS}@v?([0-9][^\s;#\"']*)",
+               re.I | re.MULTILINE),
 )
 
 #: The package named as a requirement with no exact version. The org requires an
@@ -53,13 +62,15 @@ _PIN_PATTERNS = (
 #: `dependencies = ["commoner-probe>=0.14"]` is valid and a start-of-line test
 #: could not reach it: a violated pin policy then exited successfully.
 #:
-#: Two shapes, and no third. A range operator follows the name, or the name IS
-#: the whole requirement token. Accepting any closing quote made
-#: `description = "built on commoner-probe"` a dependency, and prose is not a
-#: declaration.
+#: Three shapes, and no fourth. A range operator follows the name, or the name
+#: is the whole line, or the name is a whole quoted element of a list. Accepting
+#: any closing quote made `description = "built on commoner-probe"` a dependency
+#: and `commoner-probe = "commoner_probe.cli:main"` a dependency, and neither
+#: prose nor an entry-point key declares one.
 _UNPINNED_PATTERNS = (
-    re.compile(rf"{_NAME}\s*(?:[<>~!]=|[<>@])", re.I),
-    re.compile(rf"(?:^|[\"'])\s*{_NAME}\s*(?:[\"']|$)", re.I | re.MULTILINE),
+    re.compile(rf"{_TOKEN}{_NAME}\s*(?:[<>~!]=|[<>@])", re.I | re.MULTILINE),
+    re.compile(rf"^\s*{_NAME}\s*$", re.I | re.MULTILINE),
+    re.compile(rf"[\[,]\s*[\"']\s*{_NAME}\s*[\"']", re.I | re.MULTILINE),
 )
 
 

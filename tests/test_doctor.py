@@ -204,3 +204,48 @@ class TestTheNameMustBeThisPackage:
         path = tmp_path / "pyproject.toml"
         path.write_text('dependencies = ["commoner-probe"]\n', encoding="utf-8")
         assert declared_pins(path) == {str(path): "unpinned"}
+
+
+class TestProseIsNotAnExactPin:
+    """From Codex on `761c483`: only the unpinned patterns were narrowed to a
+    requirement token, so version-like prose was still read as a pin."""
+
+    def test_a_version_inside_prose_is_not_a_pin(self, tmp_path):
+        """`doctor` reported 9.9.9 for a project that depends on nothing of ours,
+        and a reader sent to fix that pin finds no pin to fix."""
+        path = tmp_path / "pyproject.toml"
+        path.write_text('[project]\ndescription = "built for commoner-probe==9.9.9"\n'
+                        'dependencies = ["requests==2.32.3"]\n', encoding="utf-8")
+        assert declared_pins(path) == {}
+
+    def test_the_pin_wins_over_prose_naming_another_version(self, tmp_path):
+        path = tmp_path / "pyproject.toml"
+        path.write_text('[project]\ndescription = "built for commoner-probe==9.9.9"\n'
+                        'dependencies = ["commoner-probe[http]==0.15.0"]\n', encoding="utf-8")
+        assert declared_pins(path) == {str(path): "0.15.0"}
+
+    def test_a_git_url_pin_still_reads(self, tmp_path):
+        """The narrowing must not lose the second form the org uses: the name
+        sits inside a URL, so `/` stays legal on the left."""
+        path = tmp_path / "requirements.txt"
+        path.write_text("commoner-probe @ git+https://github.com/CommonerLLP/"
+                        "commoner-probe.git@v0.15.0\n", encoding="utf-8")
+        assert declared_pins(path) == {str(path): "0.15.0"}
+
+    def test_the_package_s_own_metadata_is_not_a_dependency_on_itself(self, tmp_path):
+        """Found by running the reader over the eight live pin files. This
+        repo's own `pyproject.toml` was reported `unpinned`: `name =` and a
+        console-script key both name the package, and neither declares a
+        dependency."""
+        path = tmp_path / "pyproject.toml"
+        path.write_text('[project]\nname = "commoner-probe"\ndependencies = ["requests==2.32.3"]\n'
+                        '[project.scripts]\ncommoner-probe = "commoner_probe.cli:main"\n',
+                        encoding="utf-8")
+        assert declared_pins(path) == {}
+
+    def test_a_dependency_list_entry_is_still_reached(self, tmp_path):
+        """The narrowing must not lose either shape of the list."""
+        path = tmp_path / "pyproject.toml"
+        path.write_text('[project]\nname = "consumer"\ndependencies = [\n'
+                        '    "requests==2.32.3",\n    "commoner-probe",\n]\n', encoding="utf-8")
+        assert declared_pins(path) == {str(path): "unpinned"}
