@@ -69,9 +69,52 @@ _PIN_PATTERNS = (
 #: prose nor an entry-point key declares one.
 _UNPINNED_PATTERNS = (
     re.compile(rf"{_TOKEN}{_NAME}\s*(?:[<>~!]=|[<>@])", re.I | re.MULTILINE),
-    re.compile(rf"^\s*{_NAME}\s*$", re.I | re.MULTILINE),
-    re.compile(rf"[\[,]\s*[\"']\s*{_NAME}\s*[\"']", re.I | re.MULTILINE),
+    re.compile(rf"^\s*{_NAME}\s*(?:;|$)", re.I | re.MULTILINE),
+    re.compile(rf"[\[,]\s*[\"']\s*{_NAME}\s*(?:;[^\"']*)?[\"']", re.I | re.MULTILINE),
 )
+
+#: A `pyproject.toml` holds arrays that are not dependency lists — `keywords`,
+#: `classifiers`, `packages` — and a requirement-shaped string in one of them
+#: declares nothing. Only these keys carry requirements: `dependencies` and
+#: `requires` by name, and every key of an optional-dependency or
+#: dependency-group table.
+_DEP_KEYS = frozenset({"dependencies", "requires", "requires-dist"})
+_DEP_TABLES = ("optional-dependencies", "dependency-groups")
+_TABLE_HEADER = re.compile(r"^\s*\[([^\]]+)\]\s*$", re.MULTILINE)
+_ARRAY_KEY = re.compile(r"^\s*([A-Za-z_][\w.-]*)\s*=\s*\[", re.MULTILINE)
+
+
+def _dependency_arrays(text: str) -> list[str]:
+    """Every dependency array in a TOML text, brackets included.
+
+    Bracket counting rather than a TOML parser: `tomllib` arrived in 3.11 and
+    this package supports 3.10, and an extras marker (`commoner-probe[http]`)
+    nests one balanced pair inside a string.
+    """
+    tables = [(m.start(), m.group(1).strip()) for m in _TABLE_HEADER.finditer(text)]
+    out: list[str] = []
+    for match in _ARRAY_KEY.finditer(text):
+        table = ""
+        for start, name in tables:
+            if start < match.start():
+                table = name
+            else:
+                break
+        declares = (match.group(1) in _DEP_KEYS
+                    or any(table.endswith(t) for t in _DEP_TABLES))
+        if not declares:
+            continue
+        depth, i = 0, match.end() - 1
+        while i < len(text):
+            if text[i] == "[":
+                depth += 1
+            elif text[i] == "]":
+                depth -= 1
+                if depth == 0:
+                    out.append(text[match.end() - 1:i + 1])
+                    break
+            i += 1
+    return out
 
 
 def _uncommented(text: str) -> str:
@@ -186,13 +229,16 @@ def declared_pins(*paths: Path | str) -> dict[str, str]:
         except OSError:
             continue
         text = _uncommented(text)
+        # A requirements file is a list of requirements, so all of it counts. A
+        # `pyproject.toml` is mostly metadata, so only its dependency arrays do.
+        haystacks = _dependency_arrays(text) if p.suffix == ".toml" else [text]
         for pattern in _PIN_PATTERNS:
-            match = pattern.search(text)
+            match = next((m for m in map(pattern.search, haystacks) if m), None)
             if match:
                 found[str(p)] = match.group(1)
                 break
         else:
-            if any(p.search(text) for p in _UNPINNED_PATTERNS):
+            if any(pat.search(h) for h in haystacks for pat in _UNPINNED_PATTERNS):
                 found[str(p)] = "unpinned"
     return found
 

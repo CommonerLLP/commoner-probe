@@ -249,3 +249,45 @@ class TestProseIsNotAnExactPin:
         path.write_text('[project]\nname = "consumer"\ndependencies = [\n'
                         '    "requests==2.32.3",\n    "commoner-probe",\n]\n', encoding="utf-8")
         assert declared_pins(path) == {str(path): "unpinned"}
+
+
+class TestOnlyADependencyArrayDeclaresADependency:
+    """From Codex on `31f2381`. Narrowing to a quoted list element still read
+    every TOML array as a dependency list, and a marker with no version was read
+    as no declaration at all."""
+
+    def test_a_keyword_list_is_not_a_dependency_list(self, tmp_path):
+        path = tmp_path / "pyproject.toml"
+        path.write_text('[project]\nkeywords = ["commoner-probe==9.9.9"]\n'
+                        'dependencies = ["requests==2.32.3"]\n', encoding="utf-8")
+        assert declared_pins(path) == {}
+
+    def test_an_optional_dependency_still_counts(self, tmp_path):
+        path = tmp_path / "pyproject.toml"
+        path.write_text('[project.optional-dependencies]\nprobe = ["commoner-probe==0.15.0"]\n',
+                        encoding="utf-8")
+        assert declared_pins(path) == {str(path): "0.15.0"}
+
+    def test_a_build_requirement_still_counts(self, tmp_path):
+        path = tmp_path / "pyproject.toml"
+        path.write_text('[build-system]\nrequires = ["commoner-probe==0.15.0"]\n',
+                        encoding="utf-8")
+        assert declared_pins(path) == {str(path): "0.15.0"}
+
+    def test_a_marker_with_no_version_is_unpinned(self, tmp_path):
+        """The org requires an exact pin. A marker is not a version, and
+        reporting nothing let the file pass the check it violates."""
+        path = tmp_path / "requirements.txt"
+        path.write_text('commoner-probe; python_version < "3.12"\n', encoding="utf-8")
+        assert declared_pins(path) == {str(path): "unpinned"}
+
+    def test_a_marker_with_no_version_in_toml_is_unpinned(self, tmp_path):
+        path = tmp_path / "pyproject.toml"
+        path.write_text("dependencies = [\"commoner-probe; python_version < '3.12'\"]\n",
+                        encoding="utf-8")
+        assert declared_pins(path) == {str(path): "unpinned"}
+
+    def test_a_pin_carrying_a_marker_is_still_a_pin(self, tmp_path):
+        path = tmp_path / "requirements.txt"
+        path.write_text('commoner-probe==0.15.0; python_version < "3.12"\n', encoding="utf-8")
+        assert declared_pins(path) == {str(path): "0.15.0"}
