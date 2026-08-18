@@ -169,8 +169,7 @@ def test_a_reply_citing_the_question_it_follows_up_keeps_its_own_number():
     A document's own header is unaffected. It opens "ANSWER TO LOK SABHA
     UNSTARRED QUESTION NO. 2549" with no preposition in front.
     """
-    from commoner_probe.qno_guard import (UNREADABLE, VERIFIED,
-                                          check_question_number)
+    from commoner_probe.qno_guard import UNREADABLE, VERIFIED, check_question_number
 
     cited = ("Will the Minister of POWER be pleased to state :to the answer to "
              "Unstarred Question 233 given in the Rajya Sabha on the 1st "
