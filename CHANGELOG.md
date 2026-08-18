@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.15.0 — 2026-08-18
+
+**Two of these change published numbers. Re-run the bills probe, and read the
+Python floor before you upgrade.**
+
 
 ### Changed — the minimum Python is now 3.11
 
