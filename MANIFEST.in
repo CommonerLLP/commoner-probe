@@ -12,4 +12,5 @@ prune .ai
 prune .claude
 prune .codex
 prune notes
+prune tests
 prune memory
