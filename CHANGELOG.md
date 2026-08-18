@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+### Changed — the minimum Python is now 3.11
+
+**`requires-python` moves from `>=3.10` to `>=3.11`.** Install 0.15.0 on 3.10
+and pip will refuse it. Every consumer repo in the org runs 3.14, so nothing
+here needs a change. Python 3.10 reaches end of life in October 2026, and
+SPEC 0 dropped it in 2024.
+
+The floor bought a real deletion. `doctor` read `pyproject.toml` with a
+hand-written scanner, because `tomllib` arrived in 3.11. Seven review findings
+in three rounds were all the same defect: escaped quotes, quoted keys, dotted
+keys, brackets inside markers, comments after punctuation, and a tool's own
+tables read as project metadata. The scanner is gone and `tomllib` reads the
+file. `doctor.py` loses 97 lines and gains 64.
+
+`source_version()` uses the parser too. The regex it replaced took the first
+`version = "…"` in the file, which is the project's version only while no other
+table declares one above it.
+
+
 **Take this one if you enumerate Lok Sabha sessions, or read any Sansad answer.**
 The degrading paginator that 0.14.8 and 0.14.9 built had no production caller,
 and an answer can be a different question's document.

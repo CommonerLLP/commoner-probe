@@ -25,16 +25,137 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from typing import Any
 
 __all__ = ["VersionReport", "declared_pins", "installed_version", "source_version",
            "version_report"]
 
-#: Requirement lines that pin this package, in the two forms the org uses: an
-#: exact `==` pin from PyPI, and a git URL pinned to a tag.
+#: Every form the org's consumers actually use, measured against the seven live
+#: pin files on 2026-08-17. The requirement does not have to start the line,
+#: because a `pyproject.toml` writes it quoted inside a dependency list, and
+#: extras are optional, because four of the seven carry them
+#: (`commoner-probe[http,pdf]==0.14.3`). The first reader required both and found
+#: one pin where three existed.
+#: It must still open a requirement token. `my-commoner-probe==9.9.9` is a
+#: different package, and `description = "built for commoner-probe==9.9.9"` is
+#: prose; each was read as this package's pin, and `doctor` then failed a
+#: consumer that never depended on it.
+_EXTRAS = r"(?:\[[^\]]*\])?"
+#: PEP 503 normalises `-`, `_` and `.` to one name, so `commoner.probe` is
+#: this package and pip installs it as such.
+_NAME = rf"commoner[-_.]probe{_EXTRAS}"
+#: A requirement token opens a line, or opens a quoted element of an array.
+#: Prose names the package mid-sentence, and TOML names it on both sides of a
+#: scalar assignment — `name = "commoner-probe"` and the console-script key —
+#: so an opening quote alone is not enough. Only `[` and `,` open a dependency
+#: list.
+_TOKEN = r"(?:^|[\[,]\s*[\"'])\s*"
+#: The git form carries the name inside a URL, so a `/` opens it too.
+_URL_TOKEN = r"(?:^|[\[,]\s*[\"']|/)\s*"
 _PIN_PATTERNS = (
-    re.compile(r"^\s*commoner[-_]probe\s*==\s*([0-9][^\s;#]*)", re.I | re.MULTILINE),
-    re.compile(r"commoner-probe(?:\.git)?@v?([0-9][^\s;#\"']*)", re.I),
+    re.compile(rf"{_TOKEN}{_NAME}\s*==\s*([0-9][^\s;#,\"']*)", re.I | re.MULTILINE),
+    re.compile(rf"{_URL_TOKEN}commoner-probe(?:\.git)?{_EXTRAS}@v?([0-9][^\s;#\"']*)",
+               re.I | re.MULTILINE),
 )
+
+#: The package named as a requirement with no exact version. The org requires an
+#: exact pin, so this is a finding rather than an absence — reporting nothing
+#: filed it beside the files that never mention the package at all. Unanchored,
+#: like the pin patterns, because the compact TOML form
+#: `dependencies = ["commoner-probe>=0.14"]` is valid and a start-of-line test
+#: could not reach it: a violated pin policy then exited successfully.
+#:
+#: Three shapes, and no fourth. A range operator follows the name, or the name
+#: is the whole line, or the name is a whole quoted element of a list. Accepting
+#: any closing quote made `description = "built on commoner-probe"` a dependency
+#: and `commoner-probe = "commoner_probe.cli:main"` a dependency, and neither
+#: prose nor an entry-point key declares one.
+_UNPINNED_PATTERNS = (
+    re.compile(rf"{_TOKEN}{_NAME}\s*(?:[<>~!]=|[<>@])", re.I | re.MULTILINE),
+    re.compile(rf"^\s*{_NAME}\s*(?:;|$)", re.I | re.MULTILINE),
+    re.compile(rf"[\[,]\s*[\"']\s*{_NAME}\s*(?:;[^\"']*)?[\"']", re.I | re.MULTILINE),
+)
+
+#: The tables a `pyproject.toml` declares installable requirements in. A tool's
+#: own `[tool.x]` table may hold a `dependencies` array; that configures the
+#: tool and installs nothing, so a version in it is not a pin on this package.
+#: The root entries are not PEP 621, but a file that writes `dependencies` with
+#: no table above it is still declaring one, and reading it costs nothing.
+_DEP_PATHS = (
+    ("project", "dependencies"),
+    ("build-system", "requires"),
+    ("dependencies",),
+    ("requires",),
+)
+_DEP_GROUP_PATHS = (
+    ("project", "optional-dependencies"),
+    ("dependency-groups",),
+    ("optional-dependencies",),
+)
+
+
+def _toml_requirements(text: str) -> list[str]:
+    """Every requirement string a `pyproject.toml` declares, or [] if unreadable.
+
+    Parsed by `tomllib`, not scanned. The scan this replaced grew a rule per
+    round of review — escaped quotes, quoted keys, dotted keys, brackets inside
+    markers, comments after punctuation — because each was another thing real
+    TOML does. Reading a format needs a reader for that format.
+
+    A file that does not parse yields nothing rather than raising. `doctor`
+    reports what it can read and calls the rest unknown; a broken consumer file
+    is not this repo's version question.
+    """
+    import tomllib
+
+    try:
+        data = tomllib.loads(text)
+    except (tomllib.TOMLDecodeError, ValueError):
+        return []
+    out: list[str] = []
+    for path in _DEP_PATHS:
+        node: Any = data
+        for key in path:
+            node = node.get(key) if isinstance(node, dict) else None
+        if isinstance(node, list):
+            out.extend(x for x in node if isinstance(x, str))
+    for path in _DEP_GROUP_PATHS:
+        node: Any = data
+        for key in path:
+            node = node.get(key) if isinstance(node, dict) else None
+        if isinstance(node, dict):
+            for group in node.values():
+                if isinstance(group, list):
+                    out.extend(x for x in group if isinstance(x, str))
+    return out
+
+
+def _uncommented(text: str) -> str:
+    """The text with comment tails removed.
+
+    `search()` returns the FIRST occurrence, so a commented old pin above an
+    active one won: `doctor` reported a mismatch that did not exist and exited 1.
+    A `#` counts as a comment when it opens a line or follows whitespace, which
+    is how both requirements files and TOML write one.
+    """
+    return re.sub(r"(?m)(?:^|(?<=\s))#.*$", "", text)
+
+
+#: Every `==` version in one requirement's specifier set. PEP 508 allows a list
+#: — `commoner-probe==0.15.0,==9.9.9` is one declaration and cannot be
+#: satisfied — and reading only the first specifier reported it as a clean pin.
+#: The marker after `;` is not a specifier and is cut before the scan.
+_EXACT = re.compile(r"==\s*([0-9][^\s,;#\"']*)")
+
+
+def _exact_versions(declaration: str, start: int) -> list[str]:
+    """The versions the specifier set after *start* pins, in order."""
+    specifiers = declaration[start:].split(";", 1)[0]
+    return _EXACT.findall(specifiers)
+
+
+#: Marks a file that pins this package at two versions at once.
+_CONFLICT = "conflict"
 
 
 class VersionReport:
@@ -62,6 +183,18 @@ class VersionReport:
                 "this tree; one venv shared across worktrees reports whichever was "
                 "installed last.")
         for where, pin in self.pins.items():
+            if pin.startswith(_CONFLICT):
+                out.append(
+                    f"{where} pins this package at two different versions "
+                    f"({pin.split(': ', 1)[-1]}). Which one installs depends on the "
+                    "resolver, so the file does not state what the consumer runs.")
+                continue
+            if pin == "unpinned":
+                out.append(
+                    f"{where} names this package with no exact version. The org pins "
+                    "with == or @vX.Y.Z, because a range moves under the consumer "
+                    "without anyone deciding to move it.")
+                continue
             if self.installed and pin != self.installed:
                 out.append(
                     f"{where} pins {pin} and the environment runs {self.installed}. A "
@@ -94,16 +227,22 @@ class VersionReport:
 def source_version(pyproject: Path | str) -> str | None:
     """The version in a ``pyproject.toml``, or None when it cannot be read.
 
-    Read with a regex rather than a TOML parser on purpose: ``tomllib`` arrived in
-    Python 3.11 and this package supports 3.10, so a parser import would make the
-    check unavailable on the oldest version it claims to run on.
+    Read by ``tomllib``. The regex this replaced took the first ``version = "…"``
+    in the file, which is the project's version only while no other table
+    declares one above it.
     """
+    import tomllib
+
     try:
         text = Path(pyproject).read_text(encoding="utf-8")
     except OSError:
         return None
-    match = re.search(r'^version\s*=\s*"([^"]+)"', text, re.MULTILINE)
-    return match.group(1) if match else None
+    try:
+        data = tomllib.loads(text)
+    except (tomllib.TOMLDecodeError, ValueError):
+        return None
+    version = data.get("project", {}).get("version")
+    return version if isinstance(version, str) else None
 
 
 def installed_version(package: str = "commoner-probe") -> str | None:
@@ -131,11 +270,42 @@ def declared_pins(*paths: Path | str) -> dict[str, str]:
             text = p.read_text(encoding="utf-8")
         except OSError:
             continue
-        for pattern in _PIN_PATTERNS:
-            match = pattern.search(text)
+        if p.suffix == ".toml":
+            # `tomllib` handles TOML comments itself; stripping them first would
+            # corrupt a `#` that sits inside a string.
+            declarations = _toml_requirements(text)
+        else:
+            declarations = _uncommented(text).splitlines()
+        # Every declaration is classified, not just the first. One file can name
+        # the package twice — an exact pin in `dependencies` and a range in an
+        # optional group — and stopping at the first pin reported a compliant
+        # file; if that pin matched the environment, `doctor` exited 0 over a
+        # file that breaks the policy this check exists to enforce.
+        #
+        # Classification is per declaration, because the two pattern sets
+        # overlap inside one requirement. A git pin reads as `commoner-probe @
+        # git+...@v0.15.0`: the `@` opens an unpinned URL requirement and the
+        # tag closes an exact one, in the same string. A file-wide "unpinned
+        # wins" rule therefore called every git tag pin unpinned.
+        pins: list[str] = []
+        unpinned = False
+        for declaration in declarations:
+            match = next(
+                (m for m in (pat.search(declaration) for pat in _PIN_PATTERNS) if m), None)
             if match:
-                found[str(p)] = match.group(1)
-                break
+                found_here = _exact_versions(declaration, match.start()) or [match.group(1)]
+                pins.extend(v for v in found_here if v not in pins)
+            elif any(pat.search(declaration) for pat in _UNPINNED_PATTERNS):
+                unpinned = True
+        if unpinned:
+            found[str(p)] = "unpinned"
+        elif len(pins) > 1:
+            # Keeping the first hid the second. One file pinning two versions
+            # installs whichever resolver wins, and if the first matched the
+            # environment `doctor` exited 0 over it.
+            found[str(p)] = f"{_CONFLICT}: {', '.join(pins)}"
+        elif pins:
+            found[str(p)] = pins[0]
     return found
 
 

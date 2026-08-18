@@ -33,4 +33,4 @@ python -m twine check dist/*
 2. Add or update tests for behavior changes.
 3. Update docs (`README.md`, `docs/SCHEMAS.md`) if user-facing behavior changes.
 4. Reference related issues in the PR description.
-5. Ensure CI passes on Python 3.10, 3.11, and 3.12.
+5. Ensure CI passes on Python 3.11, 3.12, and 3.13.

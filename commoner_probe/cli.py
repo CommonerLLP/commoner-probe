@@ -2199,7 +2199,8 @@ def build_parser() -> argparse.ArgumentParser:
         "doctor",
         help=(
             "Compare the source version, the installed metadata and any declared "
-            "pin. Exits 1 when two KNOWN numbers disagree."
+            "pin. Exits 1 when two KNOWN numbers disagree, and when a "
+            "--requirements file declares this package without an exact pin."
         ),
         epilog=(
             "Examples:\n"

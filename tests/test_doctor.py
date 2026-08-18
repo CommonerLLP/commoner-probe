@@ -112,3 +112,326 @@ class TestAgainstThisTree:
         assert report.source is not None
         assert report.installed is not None
         assert report.agrees, report.report
+
+
+class TestEveryPinFormTheOrgActuallyUses:
+    """Measured against the seven live consumer files on 2026-08-17. The first
+    version of this reader found ONE pin where three existed, because it required
+    the requirement to start the line and carry no extras."""
+
+    def test_it_reads_a_pin_carrying_extras(self, tmp_path):
+        path = tmp_path / "requirements.txt"
+        path.write_text("commoner-probe[http,pdf]==0.14.3\n", encoding="utf-8")
+        assert declared_pins(path) == {str(path): "0.14.3"}
+
+    def test_it_reads_a_pin_inside_a_pyproject_dependency_list(self, tmp_path):
+        path = tmp_path / "pyproject.toml"
+        path.write_text('[project]\ndependencies = [\n    "commoner-probe==0.14.3",\n]\n',
+                        encoding="utf-8")
+        assert declared_pins(path) == {str(path): "0.14.3"}
+
+    def test_it_reads_a_pin_with_extras_inside_a_pyproject(self, tmp_path):
+        path = tmp_path / "pyproject.toml"
+        path.write_text('dependencies = ["commoner-probe[budget]==0.15.0"]\n', encoding="utf-8")
+        assert declared_pins(path) == {str(path): "0.15.0"}
+
+    def test_a_file_that_names_the_package_and_pins_no_version_is_reported(self, tmp_path):
+        """Unpinned is not unmentioned. The org requires an exact pin, so a
+        consumer that depends on this package without one is a finding, and
+        returning nothing hid it among the files that never mention it."""
+        path = tmp_path / "requirements.txt"
+        path.write_text("commoner-probe>=0.14\n", encoding="utf-8")
+        assert declared_pins(path) == {str(path): "unpinned"}
+
+    def test_a_comment_naming_the_package_is_not_a_pin(self, tmp_path):
+        path = tmp_path / "requirements.txt"
+        path.write_text("# acquisition is delegated to commoner-probe\nrequests==2.32.0\n",
+                        encoding="utf-8")
+        assert declared_pins(path) == {}
+
+
+class TestCommentsAndInlineRanges:
+    """Two ways the reader read the wrong thing, both from Codex on the fix that
+    made the pattern unanchored."""
+
+    def test_a_commented_pin_does_not_win_over_the_active_one(self, tmp_path):
+        """`search()` takes the first occurrence, so a commented old pin above an
+        active one made `doctor` report a mismatch that does not exist and exit 1."""
+        path = tmp_path / "requirements.txt"
+        path.write_text("# commoner-probe==0.14.3\ncommoner-probe==0.15.0\n",
+                        encoding="utf-8")
+        assert declared_pins(path) == {str(path): "0.15.0"}
+
+    def test_a_file_holding_only_a_commented_pin_reports_nothing(self, tmp_path):
+        path = tmp_path / "requirements.txt"
+        path.write_text("# commoner-probe==0.14.3 (dropped)\nrequests==2.32.0\n",
+                        encoding="utf-8")
+        assert declared_pins(path) == {}
+
+    def test_an_inline_toml_range_is_reported_unpinned(self, tmp_path):
+        """The compact form is valid TOML, and the start-of-line test could not
+        reach it, so a violated exact-pin policy exited successfully."""
+        path = tmp_path / "pyproject.toml"
+        path.write_text('dependencies = ["commoner-probe>=0.14"]\n', encoding="utf-8")
+        assert declared_pins(path) == {str(path): "unpinned"}
+
+    def test_a_commented_range_is_not_reported_unpinned(self, tmp_path):
+        path = tmp_path / "requirements.txt"
+        path.write_text("# commoner-probe>=0.14 was the old floor\n", encoding="utf-8")
+        assert declared_pins(path) == {}
+
+
+class TestTheNameMustBeThisPackage:
+    """Both from Codex on the unanchored patterns. A false pin and a false
+    `unpinned` each make `doctor` exit 1 over a file that is correct, which
+    teaches a reader to stop believing it."""
+
+    def test_a_different_package_whose_name_ends_in_ours_is_not_our_pin(self, tmp_path):
+        path = tmp_path / "requirements.txt"
+        path.write_text("my-commoner-probe==9.9.9\n", encoding="utf-8")
+        assert declared_pins(path) == {}
+
+    def test_prose_naming_the_package_is_not_a_dependency(self, tmp_path):
+        """`description = "built on commoner-probe"` declares nothing. The
+        closing quote satisfied the unpinned pattern."""
+        path = tmp_path / "pyproject.toml"
+        path.write_text('[project]\ndescription = "built on commoner-probe"\n'
+                        'dependencies = ["requests==2.32.3"]\n', encoding="utf-8")
+        assert declared_pins(path) == {}
+
+    def test_a_bare_dependency_with_no_version_is_still_unpinned(self, tmp_path):
+        """The narrowing must not lose the case it exists for."""
+        path = tmp_path / "pyproject.toml"
+        path.write_text('dependencies = ["commoner-probe"]\n', encoding="utf-8")
+        assert declared_pins(path) == {str(path): "unpinned"}
+
+
+class TestProseIsNotAnExactPin:
+    """From Codex on `761c483`: only the unpinned patterns were narrowed to a
+    requirement token, so version-like prose was still read as a pin."""
+
+    def test_a_version_inside_prose_is_not_a_pin(self, tmp_path):
+        """`doctor` reported 9.9.9 for a project that depends on nothing of ours,
+        and a reader sent to fix that pin finds no pin to fix."""
+        path = tmp_path / "pyproject.toml"
+        path.write_text('[project]\ndescription = "built for commoner-probe==9.9.9"\n'
+                        'dependencies = ["requests==2.32.3"]\n', encoding="utf-8")
+        assert declared_pins(path) == {}
+
+    def test_the_pin_wins_over_prose_naming_another_version(self, tmp_path):
+        path = tmp_path / "pyproject.toml"
+        path.write_text('[project]\ndescription = "built for commoner-probe==9.9.9"\n'
+                        'dependencies = ["commoner-probe[http]==0.15.0"]\n', encoding="utf-8")
+        assert declared_pins(path) == {str(path): "0.15.0"}
+
+    def test_a_git_url_pin_still_reads(self, tmp_path):
+        """The narrowing must not lose the second form the org uses: the name
+        sits inside a URL, so `/` stays legal on the left."""
+        path = tmp_path / "requirements.txt"
+        path.write_text("commoner-probe @ git+https://github.com/CommonerLLP/"
+                        "commoner-probe.git@v0.15.0\n", encoding="utf-8")
+        assert declared_pins(path) == {str(path): "0.15.0"}
+
+    def test_the_package_s_own_metadata_is_not_a_dependency_on_itself(self, tmp_path):
+        """Found by running the reader over the eight live pin files. This
+        repo's own `pyproject.toml` was reported `unpinned`: `name =` and a
+        console-script key both name the package, and neither declares a
+        dependency."""
+        path = tmp_path / "pyproject.toml"
+        path.write_text('[project]\nname = "commoner-probe"\ndependencies = ["requests==2.32.3"]\n'
+                        '[project.scripts]\ncommoner-probe = "commoner_probe.cli:main"\n',
+                        encoding="utf-8")
+        assert declared_pins(path) == {}
+
+    def test_a_dependency_list_entry_is_still_reached(self, tmp_path):
+        """The narrowing must not lose either shape of the list."""
+        path = tmp_path / "pyproject.toml"
+        path.write_text('[project]\nname = "consumer"\ndependencies = [\n'
+                        '    "requests==2.32.3",\n    "commoner-probe",\n]\n', encoding="utf-8")
+        assert declared_pins(path) == {str(path): "unpinned"}
+
+
+class TestOnlyADependencyArrayDeclaresADependency:
+    """From Codex on `31f2381`. Narrowing to a quoted list element still read
+    every TOML array as a dependency list, and a marker with no version was read
+    as no declaration at all."""
+
+    def test_a_keyword_list_is_not_a_dependency_list(self, tmp_path):
+        path = tmp_path / "pyproject.toml"
+        path.write_text('[project]\nkeywords = ["commoner-probe==9.9.9"]\n'
+                        'dependencies = ["requests==2.32.3"]\n', encoding="utf-8")
+        assert declared_pins(path) == {}
+
+    def test_an_optional_dependency_still_counts(self, tmp_path):
+        path = tmp_path / "pyproject.toml"
+        path.write_text('[project.optional-dependencies]\nprobe = ["commoner-probe==0.15.0"]\n',
+                        encoding="utf-8")
+        assert declared_pins(path) == {str(path): "0.15.0"}
+
+    def test_a_build_requirement_still_counts(self, tmp_path):
+        path = tmp_path / "pyproject.toml"
+        path.write_text('[build-system]\nrequires = ["commoner-probe==0.15.0"]\n',
+                        encoding="utf-8")
+        assert declared_pins(path) == {str(path): "0.15.0"}
+
+    def test_a_marker_with_no_version_is_unpinned(self, tmp_path):
+        """The org requires an exact pin. A marker is not a version, and
+        reporting nothing let the file pass the check it violates."""
+        path = tmp_path / "requirements.txt"
+        path.write_text('commoner-probe; python_version < "3.12"\n', encoding="utf-8")
+        assert declared_pins(path) == {str(path): "unpinned"}
+
+    def test_a_marker_with_no_version_in_toml_is_unpinned(self, tmp_path):
+        path = tmp_path / "pyproject.toml"
+        path.write_text("dependencies = [\"commoner-probe; python_version < '3.12'\"]\n",
+                        encoding="utf-8")
+        assert declared_pins(path) == {str(path): "unpinned"}
+
+    def test_a_pin_carrying_a_marker_is_still_a_pin(self, tmp_path):
+        path = tmp_path / "requirements.txt"
+        path.write_text('commoner-probe==0.15.0; python_version < "3.12"\n', encoding="utf-8")
+        assert declared_pins(path) == {str(path): "0.15.0"}
+
+
+class TestAViolationIsNotHiddenByAPin:
+    """From Codex on `17a6854`. Two of these let a file that breaks the exact-pin
+    policy pass the check that exists to enforce it."""
+
+    def test_an_unpinned_group_is_reported_even_beside_an_exact_pin(self, tmp_path):
+        """`search()` stopped at the first exact pin, so a range in another
+        group was never looked for. If that pin matched the environment,
+        `doctor` exited 0 over a file that violates the policy."""
+        path = tmp_path / "pyproject.toml"
+        path.write_text('[project]\ndependencies = ["commoner-probe==0.15.0"]\n'
+                        '[project.optional-dependencies]\nprobe = ["commoner-probe>=0.14"]\n',
+                        encoding="utf-8")
+        assert declared_pins(path) == {str(path): "unpinned"}
+
+    def test_a_bracket_inside_a_marker_does_not_end_the_array(self, tmp_path):
+        """Bracket counting read a `]` inside a quoted marker as the end of the
+        dependency list, so every later entry fell outside the search."""
+        path = tmp_path / "pyproject.toml"
+        path.write_text('dependencies = [\n    "other; platform_version == \']\'",\n'
+                        '    "commoner-probe>=0.14",\n]\n', encoding="utf-8")
+        assert declared_pins(path) == {str(path): "unpinned"}
+
+    def test_an_extras_bracket_inside_a_string_is_still_read(self, tmp_path):
+        path = tmp_path / "pyproject.toml"
+        path.write_text('dependencies = ["commoner-probe[http,pdf]==0.15.0"]\n', encoding="utf-8")
+        assert declared_pins(path) == {str(path): "0.15.0"}
+
+
+class TestTheTomlScannerIsNotFooled:
+    """From Codex on `2e63b1f`. Three ways a valid `pyproject.toml` defeated the
+    array scanner. Two hid a violation; one invented a pin."""
+
+    def test_an_escaped_quote_does_not_end_the_string(self, tmp_path):
+        path = tmp_path / "pyproject.toml"
+        path.write_text('dependencies = [\n    "other; platform_version == \\"]\\"",\n'
+                        '    "commoner-probe>=0.14",\n]\n', encoding="utf-8")
+        assert declared_pins(path) == {str(path): "unpinned"}
+
+    def test_a_quoted_group_key_is_still_a_group(self, tmp_path):
+        path = tmp_path / "pyproject.toml"
+        path.write_text('[project.optional-dependencies]\n"test" = ["commoner-probe>=0.14"]\n',
+                        encoding="utf-8")
+        assert declared_pins(path) == {str(path): "unpinned"}
+
+    def test_a_tool_table_does_not_declare_project_dependencies(self, tmp_path):
+        """`[tool.example] dependencies = [...]` is that tool's own config. It
+        installs nothing, so a version in it is not a pin on this package."""
+        path = tmp_path / "pyproject.toml"
+        path.write_text('[project]\ndependencies = ["requests==2.32.3"]\n'
+                        '[tool.example]\ndependencies = ["commoner-probe==9.9.9"]\n',
+                        encoding="utf-8")
+        assert declared_pins(path) == {}
+
+    def test_the_project_and_build_tables_still_declare(self, tmp_path):
+        path = tmp_path / "pyproject.toml"
+        path.write_text('[build-system]\nrequires = ["commoner-probe==0.15.0"]\n'
+                        '[project]\ndependencies = ["requests==2.32.3"]\n', encoding="utf-8")
+        assert declared_pins(path) == {str(path): "0.15.0"}
+
+
+class TestTheParserReadsWhatTheScannerCouldNot:
+    """Round 7 from Codex, and the reason the hand-written scanner went away.
+    Each of these is valid TOML that the scanner read wrongly. A real parser
+    answers all three without a rule per case."""
+
+    def test_a_tool_s_own_optional_dependencies_are_not_ours(self, tmp_path):
+        path = tmp_path / "pyproject.toml"
+        path.write_text('[project]\ndependencies = ["requests==2.32.3"]\n'
+                        '[tool.example.optional-dependencies]\nx = ["commoner-probe==9.9.9"]\n',
+                        encoding="utf-8")
+        assert declared_pins(path) == {}
+
+    def test_a_dotted_key_declares_a_dependency(self, tmp_path):
+        path = tmp_path / "pyproject.toml"
+        path.write_text('project.dependencies = ["commoner-probe>=0.14"]\n', encoding="utf-8")
+        assert declared_pins(path) == {str(path): "unpinned"}
+
+    def test_a_comment_after_punctuation_is_a_comment(self, tmp_path):
+        """TOML starts a comment at `#` outside a string, with or without a
+        space before it. The old remover required whitespace."""
+        path = tmp_path / "pyproject.toml"
+        path.write_text('[project]\ndependencies = [#"commoner-probe==9.9.9"\n'
+                        '    "requests==2.32.3",\n]\n', encoding="utf-8")
+        assert declared_pins(path) == {}
+
+
+class TestTwoMoreWaysAPolicyBreachHid:
+    """Round 8 from Codex, on the `tomllib` rewrite. Both let a file that
+    breaks the exact-pin policy exit 0."""
+
+    def test_a_dot_spelled_name_is_this_package(self, tmp_path):
+        """PEP 503 normalises `.`, `-` and `_` to one name, so
+        `commoner.probe` names this package and the reader must see it."""
+        path = tmp_path / "pyproject.toml"
+        path.write_text('project.dependencies = ["commoner.probe>=0.14"]\n', encoding="utf-8")
+        assert declared_pins(path) == {str(path): "unpinned"}
+
+    def test_a_dot_spelled_exact_pin_reads(self, tmp_path):
+        path = tmp_path / "requirements.txt"
+        path.write_text("commoner.probe==0.15.0\n", encoding="utf-8")
+        assert declared_pins(path) == {str(path): "0.15.0"}
+
+    def test_two_exact_pins_that_disagree_are_a_conflict(self, tmp_path):
+        """Keeping the first hid the second. If the first matched the
+        environment, `doctor` exited 0 over a file pinning two versions."""
+        path = tmp_path / "pyproject.toml"
+        path.write_text('[project]\ndependencies = ["commoner-probe==0.15.0"]\n'
+                        '[project.optional-dependencies]\nx = ["commoner-probe==9.9.9"]\n',
+                        encoding="utf-8")
+        assert declared_pins(path) == {str(path): "conflict: 0.15.0, 9.9.9"}
+
+    def test_a_conflict_is_a_mismatch_even_when_one_pin_matches(self):
+        from commoner_probe.doctor import VersionReport
+
+        report = VersionReport("0.15.0", "0.15.0", {"req.txt": "conflict: 0.15.0, 9.9.9"})
+        assert not report.agrees
+        assert "two different versions" in report.report
+
+    def test_one_version_repeated_is_not_a_conflict(self, tmp_path):
+        path = tmp_path / "pyproject.toml"
+        path.write_text('[project]\ndependencies = ["commoner-probe==0.15.0"]\n'
+                        '[project.optional-dependencies]\nx = ["commoner-probe==0.15.0"]\n',
+                        encoding="utf-8")
+        assert declared_pins(path) == {str(path): "0.15.0"}
+
+    def test_one_declaration_carrying_two_pins_is_a_conflict(self, tmp_path):
+        """`commoner-probe==0.15.0,==9.9.9` is one valid PEP 508 declaration and
+        it cannot be satisfied. Reading only the first specifier reported a
+        clean pin."""
+        path = tmp_path / "requirements.txt"
+        path.write_text("commoner-probe==0.15.0,==9.9.9\n", encoding="utf-8")
+        assert declared_pins(path) == {str(path): "conflict: 0.15.0, 9.9.9"}
+
+    def test_a_marker_after_the_pin_is_not_a_second_version(self, tmp_path):
+        path = tmp_path / "requirements.txt"
+        path.write_text('commoner-probe==0.15.0; python_version >= "3.11"\n', encoding="utf-8")
+        assert declared_pins(path) == {str(path): "0.15.0"}
+
+    def test_extras_and_one_pin_stay_one_pin(self, tmp_path):
+        path = tmp_path / "requirements.txt"
+        path.write_text("commoner-probe[http,pdf]==0.15.0\n", encoding="utf-8")
+        assert declared_pins(path) == {str(path): "0.15.0"}
