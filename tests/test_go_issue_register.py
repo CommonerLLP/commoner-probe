@@ -455,3 +455,33 @@ class TestTheControlBelongsToTheDeployment:
              "--to-date", "31-01-2022"])
         assert args.base_url is None
         assert args.control_department is None
+
+
+class TestACustomControlMustBeAWholeRecord:
+    """`GoQuery` treats an empty `go_no` as a broad date-range search, so a
+    control missing its order number can be satisfied by ANY order that
+    department issued that day — and it then licenses a false empty result."""
+
+    def _parse(self, *extra):
+        from commoner_probe.cli import build_parser
+
+        return build_parser().parse_args(
+            ["go-register", "--department", "SE", "--from-date", "01-12-2021",
+             "--to-date", "31-01-2022", "--base-url", "https://goir.telangana.gov.in/",
+             *extra])
+
+    def test_a_control_without_a_go_number_is_refused(self):
+        from commoner_probe.cli import go_register_cmd
+
+        args = self._parse("--control-department", "SE", "--control-date", "13-05-2025")
+        with pytest.raises(SystemExit) as excinfo:
+            go_register_cmd(args)
+        assert "control-go-no" in str(excinfo.value)
+
+    def test_a_control_without_a_date_is_refused(self):
+        from commoner_probe.cli import go_register_cmd
+
+        args = self._parse("--control-department", "SE", "--control-go-no", "19")
+        with pytest.raises(SystemExit) as excinfo:
+            go_register_cmd(args)
+        assert "control-date" in str(excinfo.value)

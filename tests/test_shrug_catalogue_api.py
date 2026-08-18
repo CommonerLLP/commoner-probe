@@ -245,7 +245,7 @@ def test_fetch_preset_writes_the_file_and_a_sha256_manifest_row(tmp_path):
     rows = shrug.fetch_preset("caste", tmp_path, session=session, log=lambda _m: None, min_rows=1)
     assert len(rows) == 2
     written = sorted(p.name for p in tmp_path.glob("*.zip"))
-    assert written == ["SECC_Rural-secc_rural.zip", "SECC_Urban-secc_urban.zip"]
+    assert written == ["SECC_Rural-123fe54f-secc_rural.zip", "SECC_Urban-5d9d86e8-secc_urban.zip"]
     manifest = [json.loads(a) for a in (tmp_path / "manifest.jsonl").read_text().splitlines()]
     assert {r["sha256"] for r in manifest} == {hashlib.sha256(b"shrug bytes").hexdigest()}
     assert {r["bytes"] for r in manifest} == {len(b"shrug bytes")}
@@ -375,7 +375,7 @@ def test_a_short_file_on_disk_is_replaced_not_reported_as_held(tmp_path):
     manifest at all: one reader saw an empty archive, another a complete preset.
     A file that is not the table is re-fetched, because reporting it held leaves
     a wrong file in place under a right name."""
-    for name in ("SECC_Rural-secc_rural.zip", "SECC_Urban-secc_urban.zip"):
+    for name in ("SECC_Rural-123fe54f-secc_rural.zip", "SECC_Urban-5d9d86e8-secc_urban.zip"):
         (tmp_path / name).write_bytes(b"")
     rows = shrug.fetch_preset("caste", tmp_path, session=_fetch_session(),
                               log=lambda _m: None, min_rows=1)
@@ -409,8 +409,8 @@ def test_the_dedupe_branch_is_actually_exercised():
 def test_the_manifest_records_the_recovery_not_only_the_failure(tmp_path):
     """A changed outcome must reach the durable manifest. Suppressing it on the
     key alone left the file reported as it was before the recovery."""
-    (tmp_path / "SECC_Rural-secc_rural.zip").write_bytes(b"")
-    (tmp_path / "SECC_Urban-secc_urban.zip").write_bytes(b"")
+    (tmp_path / "SECC_Rural-123fe54f-secc_rural.zip").write_bytes(b"")
+    (tmp_path / "SECC_Urban-5d9d86e8-secc_urban.zip").write_bytes(b"")
     shrug.fetch_preset("caste", tmp_path, session=_fetch_session(),
                        log=lambda _m: None, min_rows=1)
     rows = [json.loads(x) for x in (tmp_path / "manifest.jsonl").read_text().splitlines()]
@@ -449,7 +449,7 @@ def test_a_corrupted_file_of_the_same_size_is_not_reported_as_held(tmp_path):
 
     shrug.fetch_preset("caste", tmp_path, session=_fetch_session(),
                        log=lambda _m: None, min_rows=1)
-    target = tmp_path / "SECC_Rural-secc_rural.zip"
+    target = tmp_path / "SECC_Rural-123fe54f-secc_rural.zip"
     good = hashlib.sha256(target.read_bytes()).hexdigest()
     target.write_bytes(b"CORRUPTEDxx"[: len(b"shrug bytes")])
     assert len(target.read_bytes()) == len(b"shrug bytes"), "same size, different bytes"
@@ -459,3 +459,67 @@ def test_a_corrupted_file_of_the_same_size_is_not_reported_as_held(tmp_path):
     row = next(r for r in rows if r["key"] == "SHRUG|SECC Rural")
     assert row["status"] == "downloaded", "a file that no longer hashes must be refetched"
     assert hashlib.sha256(target.read_bytes()).hexdigest() == good
+
+
+class TestTheHeldFileMustBeProven:
+    """Three ways a file on disk was accepted as the table without proof."""
+
+    def test_a_same_sized_file_with_no_recorded_digest_is_refetched(self, tmp_path):
+        """With no digest there is nothing to check against, and the old code
+        returned True — so an unrelated file of the right length was accepted
+        indefinitely and recorded with a null digest."""
+        (tmp_path / "SECC_Rural-123fe54f-secc_rural.zip").write_bytes(b"NOT the table")
+        (tmp_path / "SECC_Urban-5d9d86e8-secc_urban.zip").write_bytes(b"NOT the table")
+        rows = shrug.fetch_preset("caste", tmp_path, session=_fetch_session(b"NOT the table"),
+                                  log=lambda _m: None, min_rows=1)
+        assert {r["status"] for r in rows} == {"downloaded"}
+        assert all(r["sha256"] for r in rows)
+
+    def test_a_replacement_reaches_the_manifest_even_though_the_outcome_is_held(self, tmp_path):
+        """Comparing only the abstract outcome suppressed the new row, so the
+        manifest kept the old digest and every later run refetched the file."""
+        import hashlib
+
+        shrug.fetch_preset("caste", tmp_path, session=_fetch_session(),
+                           log=lambda _m: None, min_rows=1)
+        shrug.fetch_preset("caste", tmp_path, session=_fetch_session(b"a longer payload"),
+                           log=lambda _m: None, min_rows=1)
+        rows = [json.loads(x) for x in (tmp_path / "manifest.jsonl").read_text().splitlines()]
+        last = {r["key"]: r for r in rows}
+        expected = hashlib.sha256(b"a longer payload").hexdigest()
+        assert {r["sha256"] for r in last.values()} == {expected}
+        assert {r["bytes"] for r in last.values()} == {len(b"a longer payload")}
+
+    def test_two_labels_that_sanitise_alike_get_separate_destinations(self, tmp_path):
+        """`A/B` and `A B` both became `A_B-download.zip`. At equal sizes the
+        second table was reported held without ever being fetched."""
+        rows = [
+            _row("Census", "A/B", S3 + "download.zip?X-Amz-Signature=1"),
+            _row("Census", "A B", S3 + "download.zip?X-Amz-Signature=2"),
+        ]
+        tables = shrug.resolve_preset(
+            "keys", shrug.catalogue(session=_catalogue_session(rows=rows), min_rows=1)
+        ) if False else list(shrug.catalogue(
+            session=_catalogue_session(rows=rows), min_rows=1).values())
+        assert len({shrug._filename_for(t) for t in tables}) == 2
+
+
+def test_a_changed_destination_reaches_the_manifest(tmp_path):
+    """The fingerprinted naming scheme changes every `dest`. A download whose
+    bytes match the prior digest was suppressed, so the manifest kept the legacy
+    path while the verified file sat at the new one — and a downstream reader
+    following `dest` finds nothing."""
+    manifest = tmp_path / "manifest.jsonl"
+    legacy = {"key": "SHRUG|SECC Rural", "kind": "shrug_table", "status": "downloaded",
+              "dest": "SECC_Rural-secc_rural.zip",
+              "sha256": __import__("hashlib").sha256(b"shrug bytes").hexdigest(),
+              "bytes": len(b"shrug bytes")}
+    manifest.write_text(json.dumps(legacy) + "\n", encoding="utf-8")
+
+    rows = shrug.fetch_preset("caste", tmp_path, session=_fetch_session(),
+                              log=lambda _m: None, min_rows=1)
+    written = {r["key"]: r["dest"] for r in rows}
+    recorded = [json.loads(x) for x in manifest.read_text().splitlines()]
+    last = {r["key"]: r["dest"] for r in recorded}
+    assert last["SHRUG|SECC Rural"] == written["SHRUG|SECC Rural"], (
+        "the manifest must name the file that exists")
