@@ -78,10 +78,20 @@ _UNPINNED_PATTERNS = (
 #: declares nothing. Only these keys carry requirements: `dependencies` and
 #: `requires` by name, and every key of an optional-dependency or
 #: dependency-group table.
+#: And a key counts only in the table that gives it meaning. `[tool.example]`
+#: may hold its own `dependencies` array; that is the tool's configuration and
+#: it installs nothing, so a version in it is not a pin on this package.
 _DEP_KEYS = frozenset({"dependencies", "requires", "requires-dist"})
+#: The empty string is the root table: a bare `dependencies = [...]` with no
+#: header above it is still a declaration, and only a NAMED foreign table is
+#: someone else's configuration.
+_DEP_KEY_TABLES = frozenset({"", "project", "build-system"})
 _DEP_TABLES = ("optional-dependencies", "dependency-groups")
 _TABLE_HEADER = re.compile(r"^\s*\[([^\]]+)\]\s*$", re.MULTILINE)
-_ARRAY_KEY = re.compile(r"^\s*([A-Za-z_][\w.-]*)\s*=\s*\[", re.MULTILINE)
+#: A TOML key may be bare or quoted, and quoting does not change its value:
+#: `"test" = [...]` names the same optional-dependency group as `test = [...]`.
+_ARRAY_KEY = re.compile(
+    r"^\s*(?:([A-Za-z_][\w.-]*)|\"([^\"]+)\"|'([^']+)')\s*=\s*\[", re.MULTILINE)
 
 
 def _dependency_arrays(text: str) -> list[str]:
@@ -100,8 +110,10 @@ def _dependency_arrays(text: str) -> list[str]:
                 table = name
             else:
                 break
-        declares = (match.group(1) in _DEP_KEYS
-                    or any(table.endswith(t) for t in _DEP_TABLES))
+        key = next(g for g in match.groups() if g is not None)
+        declares = (
+            (key in _DEP_KEYS and table.strip('"\'') in _DEP_KEY_TABLES)
+            or any(table.endswith(t) for t in _DEP_TABLES))
         if not declares:
             continue
         depth, i, quote = 0, match.end() - 1, ""
@@ -112,6 +124,14 @@ def _dependency_arrays(text: str) -> list[str]:
             # counting it ended the array early, so every later dependency fell
             # outside the search and an unpinned one was reported as absent.
             if quote:
+                # A basic TOML string processes escapes, so `\\"` is a quote
+                # character and not the end of the string. Reading it as the end
+                # put the scanner back into structure mode inside a marker, and
+                # the marker's `]` then closed the array. A literal string
+                # (single quotes) has no escapes, which is why this is scoped.
+                if char == "\\" and quote == '"':
+                    i += 2
+                    continue
                 if char == quote:
                     quote = ""
             elif char in "\"'":

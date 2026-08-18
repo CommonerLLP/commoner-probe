@@ -319,3 +319,35 @@ class TestAViolationIsNotHiddenByAPin:
         path = tmp_path / "pyproject.toml"
         path.write_text('dependencies = ["commoner-probe[http,pdf]==0.15.0"]\n', encoding="utf-8")
         assert declared_pins(path) == {str(path): "0.15.0"}
+
+
+class TestTheTomlScannerIsNotFooled:
+    """From Codex on `2e63b1f`. Three ways a valid `pyproject.toml` defeated the
+    array scanner. Two hid a violation; one invented a pin."""
+
+    def test_an_escaped_quote_does_not_end_the_string(self, tmp_path):
+        path = tmp_path / "pyproject.toml"
+        path.write_text('dependencies = [\n    "other; platform_version == \\"]\\"",\n'
+                        '    "commoner-probe>=0.14",\n]\n', encoding="utf-8")
+        assert declared_pins(path) == {str(path): "unpinned"}
+
+    def test_a_quoted_group_key_is_still_a_group(self, tmp_path):
+        path = tmp_path / "pyproject.toml"
+        path.write_text('[project.optional-dependencies]\n"test" = ["commoner-probe>=0.14"]\n',
+                        encoding="utf-8")
+        assert declared_pins(path) == {str(path): "unpinned"}
+
+    def test_a_tool_table_does_not_declare_project_dependencies(self, tmp_path):
+        """`[tool.example] dependencies = [...]` is that tool's own config. It
+        installs nothing, so a version in it is not a pin on this package."""
+        path = tmp_path / "pyproject.toml"
+        path.write_text('[project]\ndependencies = ["requests==2.32.3"]\n'
+                        '[tool.example]\ndependencies = ["commoner-probe==9.9.9"]\n',
+                        encoding="utf-8")
+        assert declared_pins(path) == {}
+
+    def test_the_project_and_build_tables_still_declare(self, tmp_path):
+        path = tmp_path / "pyproject.toml"
+        path.write_text('[build-system]\nrequires = ["commoner-probe==0.15.0"]\n'
+                        '[project]\ndependencies = ["requests==2.32.3"]\n', encoding="utf-8")
+        assert declared_pins(path) == {str(path): "0.15.0"}
