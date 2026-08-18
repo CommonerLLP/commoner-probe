@@ -8,6 +8,69 @@ and an answer can be a different question's document.
 
 ### Fixed
 
+- **`assent_date` was not ISO, and a two-year count of bills that became law
+  returned 0 instead of 53.** RE-RUN THE BILLS PROBE: rows already on disk carry
+  the raw value, and no published figure computed from `assent_date` can be
+  trusted until they are re-fetched. The bills endpoint serves TWO date formats
+  in one record — five fields as `YYYY-MM-DD HH:MM:SS.0` and `billAssentedDate`
+  alone as `DD/MM/YYYY` — and the reader kept the first ten characters, so the
+  second shape travelled through under a field name that implies ISO. Measured
+  over the live catalogue on 2026-08-17: 3,576 records carry an assent date and
+  all 3,576 parse as `%d/%m/%Y`, so this is the source's convention rather than
+  corruption. Nothing raised, no field was empty, and the run looked clean; an
+  independent `actYear` count in the same record caught it. Every date field is
+  now parsed and emitted as ISO, and a value matching no known format raises
+  `UnreadableDate` rather than entering the record truncated. A non-string value
+  under a date field raises too: an epoch number read as an absent date reports
+  "never assented" for a bill that was.
+
+- **The re-run above now repairs the rows already on disk.** Resume compared keys
+  alone, so a second run over the same directory found every bill already held
+  and wrote nothing — the instruction to re-fetch would have left every wrong
+  date exactly where it was. `load_seen()` now maps each key to a digest of what
+  that record asserts, and a record whose content changed is written again. The
+  row it replaces is then dropped from the manifest, because every reader of
+  that file — `Corpus.manifest_bills()` included — streams every line: a
+  corrected record appended beside the wrong one would serve both, and double
+  the catalogue. An unchanged record still costs nothing. `BillsProbe.compact()`
+  scans for duplicate keys rather than trusting what one run rewrote, so a
+  repair killed part-way is finished by the next run instead of leaving a pair
+  no later run could see.
+
+- **Two unreadable bills in one house were one row.** Every `parse_error` was
+  keyed `BILL|<house>|_parse_error`, so a key-indexed consumer collapsed
+  distinct failures into one. A parse failure now carries the failing bill's own
+  key, and clears when that bill later reads.
+
+- **One unreadable date no longer discards a whole house, or the bill.** The
+  crawl caught exceptions per house, so a single bad record would abort the walk
+  and leave one `fetch_error` where thousands of good records belonged. The bad
+  unit is one FIELD: that date is now null, `fetch_status` is `parse_error`,
+  `error` names the field, and the bill's name, ministry, status and file URLs
+  are all still there. `unreadable_fields` names every date that failed, because
+  the case this exists for is a source-wide shape change where all six fail at
+  once. Read `fetch_status` before treating a null date as a real absence.
+  `--max-records` counts these rows too, so a smoke run against a changed date
+  shape stops at the brake instead of walking the whole catalogue.
+
+- **A date read the same on every Python this package supports.** The ISO-8601
+  rung used `datetime.fromisoformat`, which accepts a different set of strings
+  on 3.10, 3.11 and later. Two machines walking one source wrote different
+  records for the same bill. The accepted shapes are now pinned by pattern, and
+  the time half is range-checked rather than counted: `2025-12-20T99:99:99Z`
+  passed a digit-shape test and shipped the record as `ok`. A leap second is
+  still a real timestamp and still reads.
+
+- **`--dry-run` no longer edits the manifest.** Compaction ran after every
+  probe, dry runs included, and the state it rewrites — duplicate keys — is
+  exactly what a repair killed part-way leaves behind. A run whose purpose is to
+  say what WOULD happen could drop rows from the corpus it was describing.
+
+- **`load_seen()` on `BillsProbe` returns `dict[str, str]`, not `set[str]`** —
+  key to a content digest, the same shape `statute_dspace` and
+  `drupal_publication_index` already use. Membership tests are unaffected; a
+  caller doing set arithmetic on the return value is not.
+
 - **Session enumeration now uses the degrading paginator.** `sansad --all
   --house ls` ran its own page loop, so the degrade, the floor retry, the skip
   and the climb-back reached nothing a user could invoke. `LS_PORTAL_PAGE_SIZE`

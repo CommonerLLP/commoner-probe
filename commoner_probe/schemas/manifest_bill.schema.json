@@ -39,15 +39,16 @@
     "report_file": { "type": ["string", "null"] },
     "act_no": { "type": ["string", "integer", "null"] },
     "act_year": { "type": ["integer", "string", "null"] },
-    "assent_date": { "type": ["string", "null"] },
+    "assent_date": { "type": ["string", "null"], "description": "ISO YYYY-MM-DD. The source serves THIS field as DD/MM/YYYY while the other five date fields arrive as YYYY-MM-DD HH:MM:SS.0, and the reader used to pass the raw value through — so a row written before 2026-08-17 may carry DD/MM/YYYY here. No pattern is pinned for that reason: rejecting those rows would fail corpora already on disk. Re-run the bills probe to normalise them." },
     "gazetted_file": { "type": ["string", "null"] },
     "synopsis_file": { "type": ["string", "null"] },
     "errata_file": { "type": ["string", "null"] },
     "status": { "type": ["string", "null"] },
-    "fetch_status": { "type": "string", "enum": ["ok", "dry_run", "fetch_error"] },
+    "fetch_status": { "type": "string", "enum": ["ok", "dry_run", "fetch_error", "parse_error"], "description": "`parse_error` means at least one DATE FIELD of this record was unreadable. That field is null and `error` names it; every other field the reader could read is present. A null date on such a row is 'unreadable', not 'absent' — read `fetch_status` before treating a null as a real absence." },
     "api_url": { "type": "string" },
     "fetched_at": { "type": "string" },
     "probed_at": { "type": "string" },
+    "unreadable_fields": { "type": "array", "items": { "type": "string" }, "description": "The date fields of THIS record the reader could not parse. Each is null above. Present only where `fetch_status` is `parse_error`." },
     "error": { "type": "string" }
   }
 }
