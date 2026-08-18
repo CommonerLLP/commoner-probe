@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.15.2 — 2026-08-18
+
+**Take this if you fetch answers before 2000. 0.15.1 flags every one of them as
+a mismatch.**
+
+### Fixed
+
+- **The answer-number guard read the sitting date as the question number.** A
+  consumer ran 25 Rajya Sabha records from session 176 with downloads on
+  0.15.1. All 25 returned `mismatch`, and the two values across the whole run
+  were the day components of the two sitting dates. The pre-2000 Rajya Sabha
+  answer prints its labels and values out of order, and gives the anchor no
+  separator: `QUESTION NO04.09.1996`, then `ANSWERED ON`, then the subject,
+  then the real number. The guard now refuses a date tail after the anchor.
+  That layout is unsupported rather than misread, so the record returns
+  `unreadable`.
+- **A cited question read as the document's own number.** Three records
+  survived the first fix and all three were citations: `to the answer to
+  Unstarred Question 233 given in the Rajya Sabha on the 1st August, 1995`.
+  The citation list gains that phrase. The preposition before `answer` keeps a
+  document's own header out, because a header opens `ANSWER TO LOK SABHA
+  UNSTARRED QUESTION NO. 2549` with nothing in front of it.
+
+Measured over the same 25 documents: **25 mismatches before, 0 after.** 24 read
+as `unreadable` and 1 as `verified`, and that one prints its own number. No
+stored data changes. `document_qno_status` changes for pre-2000 records, so
+re-run the guard rather than trusting a status written by 0.15.1.
+
 ## 0.15.1 — 2026-08-18
 
 **Take this if you read bills. 0.15.0 can abandon a whole house on one bad date.**
