@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.15.1 — 2026-08-18
+
+**Take this if you read bills. 0.15.0 can abandon a whole house on one bad date.**
 
 ### Fixed
 
