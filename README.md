@@ -45,7 +45,7 @@ provenance-rich, schema-validated JSONL and source files.
 
 ## Install
 
-Requires Python 3.10+. Released on [PyPI](https://pypi.org/project/commoner-probe/).
+Requires Python 3.11+. Released on [PyPI](https://pypi.org/project/commoner-probe/).
 
 ```bash
 pip install "commoner-probe[all]"          # everything needed for acquisition + extraction

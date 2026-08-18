@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from typing import Any
 
 __all__ = ["VersionReport", "declared_pins", "installed_version", "source_version",
            "version_report"]
@@ -73,101 +74,57 @@ _UNPINNED_PATTERNS = (
     re.compile(rf"[\[,]\s*[\"']\s*{_NAME}\s*(?:;[^\"']*)?[\"']", re.I | re.MULTILINE),
 )
 
-#: A `pyproject.toml` holds arrays that are not dependency lists — `keywords`,
-#: `classifiers`, `packages` — and a requirement-shaped string in one of them
-#: declares nothing. Only these keys carry requirements: `dependencies` and
-#: `requires` by name, and every key of an optional-dependency or
-#: dependency-group table.
-#: And a key counts only in the table that gives it meaning. `[tool.example]`
-#: may hold its own `dependencies` array; that is the tool's configuration and
-#: it installs nothing, so a version in it is not a pin on this package.
-_DEP_KEYS = frozenset({"dependencies", "requires", "requires-dist"})
-#: The empty string is the root table: a bare `dependencies = [...]` with no
-#: header above it is still a declaration, and only a NAMED foreign table is
-#: someone else's configuration.
-_DEP_KEY_TABLES = frozenset({"", "project", "build-system"})
-_DEP_TABLES = ("optional-dependencies", "dependency-groups")
-_TABLE_HEADER = re.compile(r"^\s*\[([^\]]+)\]\s*$", re.MULTILINE)
-#: A TOML key may be bare or quoted, and quoting does not change its value:
-#: `"test" = [...]` names the same optional-dependency group as `test = [...]`.
-_ARRAY_KEY = re.compile(
-    r"^\s*(?:([A-Za-z_][\w.-]*)|\"([^\"]+)\"|'([^']+)')\s*=\s*\[", re.MULTILINE)
+#: The tables a `pyproject.toml` declares installable requirements in. A tool's
+#: own `[tool.x]` table may hold a `dependencies` array; that configures the
+#: tool and installs nothing, so a version in it is not a pin on this package.
+#: The root entries are not PEP 621, but a file that writes `dependencies` with
+#: no table above it is still declaring one, and reading it costs nothing.
+_DEP_PATHS = (
+    ("project", "dependencies"),
+    ("build-system", "requires"),
+    ("dependencies",),
+    ("requires",),
+)
+_DEP_GROUP_PATHS = (
+    ("project", "optional-dependencies"),
+    ("dependency-groups",),
+    ("optional-dependencies",),
+)
 
 
-def _dependency_arrays(text: str) -> list[str]:
-    """Every dependency array in a TOML text, brackets included.
+def _toml_requirements(text: str) -> list[str]:
+    """Every requirement string a `pyproject.toml` declares, or [] if unreadable.
 
-    Bracket counting rather than a TOML parser: `tomllib` arrived in 3.11 and
-    this package supports 3.10, and an extras marker (`commoner-probe[http]`)
-    nests one balanced pair inside a string.
+    Parsed by `tomllib`, not scanned. The scan this replaced grew a rule per
+    round of review — escaped quotes, quoted keys, dotted keys, brackets inside
+    markers, comments after punctuation — because each was another thing real
+    TOML does. Reading a format needs a reader for that format.
+
+    A file that does not parse yields nothing rather than raising. `doctor`
+    reports what it can read and calls the rest unknown; a broken consumer file
+    is not this repo's version question.
     """
-    tables = [(m.start(), m.group(1).strip()) for m in _TABLE_HEADER.finditer(text)]
+    import tomllib
+
+    try:
+        data = tomllib.loads(text)
+    except (tomllib.TOMLDecodeError, ValueError):
+        return []
     out: list[str] = []
-    for match in _ARRAY_KEY.finditer(text):
-        table = ""
-        for start, name in tables:
-            if start < match.start():
-                table = name
-            else:
-                break
-        key = next(g for g in match.groups() if g is not None)
-        declares = (
-            (key in _DEP_KEYS and table.strip('"\'') in _DEP_KEY_TABLES)
-            or any(table.endswith(t) for t in _DEP_TABLES))
-        if not declares:
-            continue
-        depth, i, quote = 0, match.end() - 1, ""
-        while i < len(text):
-            char = text[i]
-            # A bracket inside a string is data, not structure. A marker may
-            # legally hold one — `"other; platform_version == \']\'"` — and
-            # counting it ended the array early, so every later dependency fell
-            # outside the search and an unpinned one was reported as absent.
-            if quote:
-                # A basic TOML string processes escapes, so `\\"` is a quote
-                # character and not the end of the string. Reading it as the end
-                # put the scanner back into structure mode inside a marker, and
-                # the marker's `]` then closed the array. A literal string
-                # (single quotes) has no escapes, which is why this is scoped.
-                if char == "\\" and quote == '"':
-                    i += 2
-                    continue
-                if char == quote:
-                    quote = ""
-            elif char in "\"'":
-                quote = char
-            elif char == "[":
-                depth += 1
-            elif char == "]":
-                depth -= 1
-                if depth == 0:
-                    out.append(text[match.end() - 1:i + 1])
-                    break
-            i += 1
-    return out
-
-
-_TOML_STRING = re.compile(r"\"([^\"]*)\"|'([^']*)'")
-
-
-def _declarations(text: str, *, toml: bool) -> list[str]:
-    """The requirement declarations in a file, one string each.
-
-    A requirements file declares one per line. A `pyproject.toml` declares one
-    per quoted element of a dependency array, and the rest of the file is
-    metadata that must not be read as a requirement.
-
-    One declaration at a time is what keeps the two pattern sets apart: a git
-    pin holds both an unpinned shape and an exact one, so classifying a whole
-    file at once cannot tell "pinned here, unpinned there" from "both in the
-    same requirement".
-    """
-    if not toml:
-        return text.splitlines()
-    out: list[str] = []
-    for array in _dependency_arrays(text):
-        for double, single in _TOML_STRING.findall(array):
-            out.append(double or single)
+    for path in _DEP_PATHS:
+        node: Any = data
+        for key in path:
+            node = node.get(key) if isinstance(node, dict) else None
+        if isinstance(node, list):
+            out.extend(x for x in node if isinstance(x, str))
+    for path in _DEP_GROUP_PATHS:
+        node: Any = data
+        for key in path:
+            node = node.get(key) if isinstance(node, dict) else None
+        if isinstance(node, dict):
+            for group in node.values():
+                if isinstance(group, list):
+                    out.extend(x for x in group if isinstance(x, str))
     return out
 
 
@@ -245,16 +202,22 @@ class VersionReport:
 def source_version(pyproject: Path | str) -> str | None:
     """The version in a ``pyproject.toml``, or None when it cannot be read.
 
-    Read with a regex rather than a TOML parser on purpose: ``tomllib`` arrived in
-    Python 3.11 and this package supports 3.10, so a parser import would make the
-    check unavailable on the oldest version it claims to run on.
+    Read by ``tomllib``. The regex this replaced took the first ``version = "…"``
+    in the file, which is the project's version only while no other table
+    declares one above it.
     """
+    import tomllib
+
     try:
         text = Path(pyproject).read_text(encoding="utf-8")
     except OSError:
         return None
-    match = re.search(r'^version\s*=\s*"([^"]+)"', text, re.MULTILINE)
-    return match.group(1) if match else None
+    try:
+        data = tomllib.loads(text)
+    except (tomllib.TOMLDecodeError, ValueError):
+        return None
+    version = data.get("project", {}).get("version")
+    return version if isinstance(version, str) else None
 
 
 def installed_version(package: str = "commoner-probe") -> str | None:
@@ -282,8 +245,12 @@ def declared_pins(*paths: Path | str) -> dict[str, str]:
             text = p.read_text(encoding="utf-8")
         except OSError:
             continue
-        text = _uncommented(text)
-        haystacks = _declarations(text, toml=p.suffix == ".toml")
+        if p.suffix == ".toml":
+            # `tomllib` handles TOML comments itself; stripping them first would
+            # corrupt a `#` that sits inside a string.
+            declarations = _toml_requirements(text)
+        else:
+            declarations = _uncommented(text).splitlines()
         # Every declaration is classified, not just the first. One file can name
         # the package twice — an exact pin in `dependencies` and a range in an
         # optional group — and stopping at the first pin reported a compliant
@@ -297,7 +264,7 @@ def declared_pins(*paths: Path | str) -> dict[str, str]:
         # wins" rule therefore called every git tag pin unpinned.
         pin: str | None = None
         unpinned = False
-        for declaration in haystacks:
+        for declaration in declarations:
             match = next(
                 (m for m in (pat.search(declaration) for pat in _PIN_PATTERNS) if m), None)
             if match:

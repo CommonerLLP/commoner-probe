@@ -351,3 +351,29 @@ class TestTheTomlScannerIsNotFooled:
         path.write_text('[build-system]\nrequires = ["commoner-probe==0.15.0"]\n'
                         '[project]\ndependencies = ["requests==2.32.3"]\n', encoding="utf-8")
         assert declared_pins(path) == {str(path): "0.15.0"}
+
+
+class TestTheParserReadsWhatTheScannerCouldNot:
+    """Round 7 from Codex, and the reason the hand-written scanner went away.
+    Each of these is valid TOML that the scanner read wrongly. A real parser
+    answers all three without a rule per case."""
+
+    def test_a_tool_s_own_optional_dependencies_are_not_ours(self, tmp_path):
+        path = tmp_path / "pyproject.toml"
+        path.write_text('[project]\ndependencies = ["requests==2.32.3"]\n'
+                        '[tool.example.optional-dependencies]\nx = ["commoner-probe==9.9.9"]\n',
+                        encoding="utf-8")
+        assert declared_pins(path) == {}
+
+    def test_a_dotted_key_declares_a_dependency(self, tmp_path):
+        path = tmp_path / "pyproject.toml"
+        path.write_text('project.dependencies = ["commoner-probe>=0.14"]\n', encoding="utf-8")
+        assert declared_pins(path) == {str(path): "unpinned"}
+
+    def test_a_comment_after_punctuation_is_a_comment(self, tmp_path):
+        """TOML starts a comment at `#` outside a string, with or without a
+        space before it. The old remover required whitespace."""
+        path = tmp_path / "pyproject.toml"
+        path.write_text('[project]\ndependencies = [#"commoner-probe==9.9.9"\n'
+                        '    "requests==2.32.3",\n]\n', encoding="utf-8")
+        assert declared_pins(path) == {}
