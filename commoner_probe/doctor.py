@@ -141,6 +141,19 @@ def _uncommented(text: str) -> str:
     return re.sub(r"(?m)(?:^|(?<=\s))#.*$", "", text)
 
 
+#: Every `==` version in one requirement's specifier set. PEP 508 allows a list
+#: — `commoner-probe==0.15.0,==9.9.9` is one declaration and cannot be
+#: satisfied — and reading only the first specifier reported it as a clean pin.
+#: The marker after `;` is not a specifier and is cut before the scan.
+_EXACT = re.compile(r"==\s*([0-9][^\s,;#\"']*)")
+
+
+def _exact_versions(declaration: str, start: int) -> list[str]:
+    """The versions the specifier set after *start* pins, in order."""
+    specifiers = declaration[start:].split(";", 1)[0]
+    return _EXACT.findall(specifiers)
+
+
 #: Marks a file that pins this package at two versions at once.
 _CONFLICT = "conflict"
 
@@ -280,8 +293,8 @@ def declared_pins(*paths: Path | str) -> dict[str, str]:
             match = next(
                 (m for m in (pat.search(declaration) for pat in _PIN_PATTERNS) if m), None)
             if match:
-                if match.group(1) not in pins:
-                    pins.append(match.group(1))
+                found_here = _exact_versions(declaration, match.start()) or [match.group(1)]
+                pins.extend(v for v in found_here if v not in pins)
             elif any(pat.search(declaration) for pat in _UNPINNED_PATTERNS):
                 unpinned = True
         if unpinned:

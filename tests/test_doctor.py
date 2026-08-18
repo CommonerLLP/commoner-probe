@@ -417,3 +417,21 @@ class TestTwoMoreWaysAPolicyBreachHid:
                         '[project.optional-dependencies]\nx = ["commoner-probe==0.15.0"]\n',
                         encoding="utf-8")
         assert declared_pins(path) == {str(path): "0.15.0"}
+
+    def test_one_declaration_carrying_two_pins_is_a_conflict(self, tmp_path):
+        """`commoner-probe==0.15.0,==9.9.9` is one valid PEP 508 declaration and
+        it cannot be satisfied. Reading only the first specifier reported a
+        clean pin."""
+        path = tmp_path / "requirements.txt"
+        path.write_text("commoner-probe==0.15.0,==9.9.9\n", encoding="utf-8")
+        assert declared_pins(path) == {str(path): "conflict: 0.15.0, 9.9.9"}
+
+    def test_a_marker_after_the_pin_is_not_a_second_version(self, tmp_path):
+        path = tmp_path / "requirements.txt"
+        path.write_text('commoner-probe==0.15.0; python_version >= "3.11"\n', encoding="utf-8")
+        assert declared_pins(path) == {str(path): "0.15.0"}
+
+    def test_extras_and_one_pin_stay_one_pin(self, tmp_path):
+        path = tmp_path / "requirements.txt"
+        path.write_text("commoner-probe[http,pdf]==0.15.0\n", encoding="utf-8")
+        assert declared_pins(path) == {str(path): "0.15.0"}
