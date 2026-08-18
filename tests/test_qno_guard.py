@@ -121,3 +121,61 @@ class TestTheInlineCase:
         in 15.0%. The other 85% must pass through silently."""
         inline = "<p>(a) and (b): The Government has taken several steps in this regard.</p>"
         assert check_question_number("1982", inline) == (None, UNREADABLE)
+
+
+def test_a_pre_2000_rs_header_does_not_read_the_date_as_the_number():
+    """Reported by a consumer repo, 2026-08-18. The pre-2000 Rajya Sabha answer prints its
+    labels and values out of order: `QUESTION NO` runs straight into the
+    ANSWERED-ON date with no separator, and the real number sits below the
+    subject. A run of 25 records on 0.15.1 returned 25 mismatches, every one
+    the day component of the sitting date.
+
+    The layout is unsupported, so `unreadable` is the honest answer. A
+    mismatch on every row buries the swap the guard exists to catch.
+    """
+    from commoner_probe.qno_guard import UNREADABLE, check_question_number
+
+    text = (
+        "GOVERNMENT OF INDIA\nMINISTRY OFTEXTILES\nRAJYA SABHA\n"
+        "QUESTION NO04.09.1996\nANSWERED ON\nSLUMP IN THE TEXTILE INDUSTRY\n"
+        "3082\n\nSHRI\n\nWill the Minister of TEXTILES be pleased to state :-\n")
+    assert check_question_number("3082", text) == (None, UNREADABLE)
+
+
+def test_a_slash_dated_header_is_also_not_a_number():
+    from commoner_probe.qno_guard import UNREADABLE, check_question_number
+
+    assert check_question_number(
+        "165", "RAJYA SABHA\nQUESTION NO 12/03/1996\nANSWERED ON\n165\n"
+    ) == (None, UNREADABLE)
+
+
+def test_a_real_number_followed_by_a_date_still_reads():
+    """The date must not swallow a genuine header. "QUESTION NO. 2549 TO BE
+    ANSWERED ON 04.08.2026" states its number and then its date."""
+    from commoner_probe.qno_guard import VERIFIED, check_question_number
+
+    assert check_question_number(
+        "2549", "LOK SABHA UNSTARRED QUESTION NO. 2549 TO BE ANSWERED ON 04.08.2026"
+    ) == ("2549", VERIFIED)
+
+
+def test_a_reply_citing_the_question_it_follows_up_keeps_its_own_number():
+    """A 1996 Rajya Sabha reply opens by citing an earlier question: "... to
+    the answer to Unstarred Question 233 given in the Rajya Sabha on the 1st
+    August, 1995". Reading 233 as this document's own number manufactured a
+    mismatch on a correctly-filed record.
+
+    A document's own header is unaffected. It opens "ANSWER TO LOK SABHA
+    UNSTARRED QUESTION NO. 2549" with no preposition in front.
+    """
+    from commoner_probe.qno_guard import (UNREADABLE, VERIFIED,
+                                          check_question_number)
+
+    cited = ("Will the Minister of POWER be pleased to state :to the answer to "
+             "Unstarred Question 233 given in the Rajya Sabha on the 1st "
+             "August, 1995 and state:\n(a) Whether there is any scheme")
+    assert check_question_number("1175", cited) == (None, UNREADABLE)
+
+    own = "ANSWER TO LOK SABHA UNSTARRED QUESTION NO. 2549"
+    assert check_question_number("2549", own) == ("2549", VERIFIED)
