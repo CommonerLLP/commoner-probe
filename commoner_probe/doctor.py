@@ -104,16 +104,50 @@ def _dependency_arrays(text: str) -> list[str]:
                     or any(table.endswith(t) for t in _DEP_TABLES))
         if not declares:
             continue
-        depth, i = 0, match.end() - 1
+        depth, i, quote = 0, match.end() - 1, ""
         while i < len(text):
-            if text[i] == "[":
+            char = text[i]
+            # A bracket inside a string is data, not structure. A marker may
+            # legally hold one — `"other; platform_version == \']\'"` — and
+            # counting it ended the array early, so every later dependency fell
+            # outside the search and an unpinned one was reported as absent.
+            if quote:
+                if char == quote:
+                    quote = ""
+            elif char in "\"'":
+                quote = char
+            elif char == "[":
                 depth += 1
-            elif text[i] == "]":
+            elif char == "]":
                 depth -= 1
                 if depth == 0:
                     out.append(text[match.end() - 1:i + 1])
                     break
             i += 1
+    return out
+
+
+_TOML_STRING = re.compile(r"\"([^\"]*)\"|'([^']*)'")
+
+
+def _declarations(text: str, *, toml: bool) -> list[str]:
+    """The requirement declarations in a file, one string each.
+
+    A requirements file declares one per line. A `pyproject.toml` declares one
+    per quoted element of a dependency array, and the rest of the file is
+    metadata that must not be read as a requirement.
+
+    One declaration at a time is what keeps the two pattern sets apart: a git
+    pin holds both an unpinned shape and an exact one, so classifying a whole
+    file at once cannot tell "pinned here, unpinned there" from "both in the
+    same requirement".
+    """
+    if not toml:
+        return text.splitlines()
+    out: list[str] = []
+    for array in _dependency_arrays(text):
+        for double, single in _TOML_STRING.findall(array):
+            out.append(double or single)
     return out
 
 
@@ -229,17 +263,31 @@ def declared_pins(*paths: Path | str) -> dict[str, str]:
         except OSError:
             continue
         text = _uncommented(text)
-        # A requirements file is a list of requirements, so all of it counts. A
-        # `pyproject.toml` is mostly metadata, so only its dependency arrays do.
-        haystacks = _dependency_arrays(text) if p.suffix == ".toml" else [text]
-        for pattern in _PIN_PATTERNS:
-            match = next((m for m in map(pattern.search, haystacks) if m), None)
+        haystacks = _declarations(text, toml=p.suffix == ".toml")
+        # Every declaration is classified, not just the first. One file can name
+        # the package twice — an exact pin in `dependencies` and a range in an
+        # optional group — and stopping at the first pin reported a compliant
+        # file; if that pin matched the environment, `doctor` exited 0 over a
+        # file that breaks the policy this check exists to enforce.
+        #
+        # Classification is per declaration, because the two pattern sets
+        # overlap inside one requirement. A git pin reads as `commoner-probe @
+        # git+...@v0.15.0`: the `@` opens an unpinned URL requirement and the
+        # tag closes an exact one, in the same string. A file-wide "unpinned
+        # wins" rule therefore called every git tag pin unpinned.
+        pin: str | None = None
+        unpinned = False
+        for declaration in haystacks:
+            match = next(
+                (m for m in (pat.search(declaration) for pat in _PIN_PATTERNS) if m), None)
             if match:
-                found[str(p)] = match.group(1)
-                break
-        else:
-            if any(pat.search(h) for h in haystacks for pat in _UNPINNED_PATTERNS):
-                found[str(p)] = "unpinned"
+                pin = pin if pin is not None else match.group(1)
+            elif any(pat.search(declaration) for pat in _UNPINNED_PATTERNS):
+                unpinned = True
+        if unpinned:
+            found[str(p)] = "unpinned"
+        elif pin is not None:
+            found[str(p)] = pin
     return found
 
 

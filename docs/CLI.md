@@ -953,6 +953,11 @@ across worktrees reports whichever tree was installed last.
 Exits 1 when two KNOWN numbers disagree. A number that cannot be read is reported
 as unknown, never as agreement.
 
+It also exits 1 when a `--requirements` file declares this package without an
+exact pin. The org requires `==` or `@vX.Y.Z`, so a range, a bare name, or a
+marker with no version is a finding rather than an absence. Reporting nothing
+filed such a file beside the ones that never mention the package at all.
+
 ### `commoner-probe stats` — corpus health
 
 ```bash

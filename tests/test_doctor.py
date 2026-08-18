@@ -291,3 +291,31 @@ class TestOnlyADependencyArrayDeclaresADependency:
         path = tmp_path / "requirements.txt"
         path.write_text('commoner-probe==0.15.0; python_version < "3.12"\n', encoding="utf-8")
         assert declared_pins(path) == {str(path): "0.15.0"}
+
+
+class TestAViolationIsNotHiddenByAPin:
+    """From Codex on `17a6854`. Two of these let a file that breaks the exact-pin
+    policy pass the check that exists to enforce it."""
+
+    def test_an_unpinned_group_is_reported_even_beside_an_exact_pin(self, tmp_path):
+        """`search()` stopped at the first exact pin, so a range in another
+        group was never looked for. If that pin matched the environment,
+        `doctor` exited 0 over a file that violates the policy."""
+        path = tmp_path / "pyproject.toml"
+        path.write_text('[project]\ndependencies = ["commoner-probe==0.15.0"]\n'
+                        '[project.optional-dependencies]\nprobe = ["commoner-probe>=0.14"]\n',
+                        encoding="utf-8")
+        assert declared_pins(path) == {str(path): "unpinned"}
+
+    def test_a_bracket_inside_a_marker_does_not_end_the_array(self, tmp_path):
+        """Bracket counting read a `]` inside a quoted marker as the end of the
+        dependency list, so every later entry fell outside the search."""
+        path = tmp_path / "pyproject.toml"
+        path.write_text('dependencies = [\n    "other; platform_version == \']\'",\n'
+                        '    "commoner-probe>=0.14",\n]\n', encoding="utf-8")
+        assert declared_pins(path) == {str(path): "unpinned"}
+
+    def test_an_extras_bracket_inside_a_string_is_still_read(self, tmp_path):
+        path = tmp_path / "pyproject.toml"
+        path.write_text('dependencies = ["commoner-probe[http,pdf]==0.15.0"]\n', encoding="utf-8")
+        assert declared_pins(path) == {str(path): "0.15.0"}
