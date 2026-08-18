@@ -136,7 +136,16 @@ def _date(value: object, field: str = "date") -> str | None:
     # read differently on two machines walking the same source.
     stamped = _ISO_STAMP.match(text)
     if stamped and _in_range(stamped):
-        return datetime.strptime(stamped.group(1), "%Y-%m-%d").strftime("%Y-%m-%d")
+        try:
+            return datetime.strptime(stamped.group(1), "%Y-%m-%d").strftime("%Y-%m-%d")
+        except ValueError as exc:
+            # `2025-02-30` has the shape of a date and is not one. A bare
+            # ValueError here escaped `_record()`, which catches UnreadableDate
+            # alone, reached the house handler, and abandoned every later bill
+            # in that house over one field.
+            raise UnreadableDate(
+                f"{field}: {text!r} has the shape of an ISO timestamp and names a day "
+                f"that does not exist ({exc}).") from exc
     raise UnreadableDate(
         f"{field}: {text!r} matches no date format this endpoint is known to serve "
         f"({', '.join(_DATE_FORMATS)}, or ISO 8601). It is not being truncated into "

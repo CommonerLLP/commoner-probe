@@ -374,3 +374,30 @@ class TestCompactionTouchesOnlyItsOwnRows:
         tracked = [r["bill_status"] for r in rows if r.get("kind") == "prs_bill_track"]
         assert tracked == ["Pending", "Passed"], tracked
         assert [r["assent_date"] for r in rows if r.get("kind") == "bill_record"] == ["2025-12-20"]
+
+
+class TestAnImpossibleCalendarDateStaysOneField:
+    """A P1 from Codex that merged unfixed on #142. The dispatcher read one
+    comment of a two-comment review."""
+
+    def test_an_impossible_day_raises_unreadable_not_value_error(self):
+        with pytest.raises(UnreadableDate):
+            _date("2025-02-30T00:00:00Z", "assent_date")
+
+    def test_the_house_survives_an_impossible_day(self, tmp_path):
+        """`_record()` catches `UnreadableDate` alone, so a bare `ValueError`
+        reached the house handler, wrote one `fetch_error`, and abandoned every
+        later bill in that house."""
+        from commoner_probe.bill_catalog_api import BillsProbe
+
+        good = {"billNumber": "1", "billYear": "2025", "billName": "Good Bill",
+                "billIntroducedDate": "2025-01-02 00:00:00.0"}
+        bad = {"billNumber": "2", "billYear": "2025", "billName": "Bad Bill",
+               "billIntroducedDate": "2025-02-30T00:00:00Z"}
+        probe = BillsProbe(tmp_path / "out", sleep=0, houses=["ls"])
+        probe.bills_all = lambda house: iter([bad, good])
+
+        rows = probe.probe()
+        assert [r["fetch_status"] for r in rows] == ["parse_error", "ok"], rows
+        assert rows[0]["bill_name"] == "Bad Bill"
+        assert rows[0]["introduced_date"] is None
