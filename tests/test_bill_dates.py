@@ -271,3 +271,72 @@ class TestTheFixReachesTheRecordsAlreadyOnDisk:
         self._probe(tmp_path, [raw]).probe()
         again = self._probe(tmp_path, [raw]).probe()
         assert again == [], "a second run must not re-append what it already holds"
+
+
+class TestAPlanningRunChangesNothing:
+    """From Codex on `d1896ca`. `compact()` ran after every probe, dry runs
+    included, and the state it rewrites is exactly the one an interrupted
+    repair leaves. A run whose purpose is to say what WOULD happen must not
+    edit the corpus it is reporting on."""
+
+    def _probe(self, tmp_path, records):
+        from commoner_probe.bill_catalog_api import BillsProbe
+
+        probe = BillsProbe(tmp_path / "out", sleep=0, houses=["ls"])
+        probe.bills_all = lambda house: iter(records)
+        return probe
+
+    def test_a_dry_run_leaves_an_interrupted_repair_alone(self, tmp_path):
+        raw = {"billNumber": "9", "billYear": "2025", "billName": "A Bill",
+               "billAssentedDate": "20/12/2025"}
+        probe = self._probe(tmp_path, [raw])
+        legacy = probe._record(raw, "ls")
+        legacy["assent_date"] = "20/12/2025"
+        probe.append_manifest(legacy)
+        probe.append_manifest(probe._record(raw, "ls"))
+        before = probe.manifest.read_text(encoding="utf-8")
+
+        self._probe(tmp_path, [raw]).probe(dry_run=True)
+        assert probe.manifest.read_text(encoding="utf-8") == before
+
+    def test_a_real_run_still_compacts(self, tmp_path):
+        """The guard must not lose the case compaction exists for."""
+        from commoner_probe import Corpus
+
+        raw = {"billNumber": "9", "billYear": "2025", "billName": "A Bill",
+               "billAssentedDate": "20/12/2025"}
+        probe = self._probe(tmp_path, [raw])
+        legacy = probe._record(raw, "ls")
+        legacy["assent_date"] = "20/12/2025"
+        probe.append_manifest(legacy)
+        probe.append_manifest(probe._record(raw, "ls"))
+
+        self._probe(tmp_path, [raw]).probe()
+        assert [r.assent_date for r in Corpus(tmp_path / "out").manifest_bills()] == ["2025-12-20"]
+
+
+class TestTheWholeTimestampIsChecked:
+    """From Codex on `d1896ca`. The pattern checked that the time half had the
+    SHAPE of a time and never that it was one, so `2025-12-20T99:99:99Z` passed
+    and the record shipped `ok`. A reader that exists to expose unreadable
+    source shapes cannot accept an impossible one."""
+
+    @pytest.mark.parametrize("text", [
+        "2025-12-20T99:99:99Z",
+        "2025-12-20T24:00:00Z",
+        "2025-12-20T00:60:00Z",
+        "2025-12-20T00:00:00+05:99",
+        "2025-12-20T00:00:00+99:00",
+    ])
+    def test_an_impossible_time_raises(self, text):
+        with pytest.raises(UnreadableDate):
+            _date(text)
+
+    @pytest.mark.parametrize("text", [
+        "2025-12-20T00:00:00Z",
+        "2025-12-20T23:59:59.123+05:30",
+        "2025-12-20T05:30",
+        "2025-12-20T23:59:60Z",
+    ])
+    def test_a_real_time_still_reads(self, text):
+        assert _date(text) == "2025-12-20"

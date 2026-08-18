@@ -80,11 +80,23 @@ class UnreadableDate(ValueError):
 _DATE_FORMATS = ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d", "%d/%m/%Y")
 
 #: An ISO 8601 date carrying a time: `2025-12-20T00:00:00Z`, `2025-12-20T05:30`,
-#: with or without an offset. The date half is taken; the time half is checked
-#: for shape and discarded, because these fields carry midnight.
+#: with or without an offset. The date half is taken and the time half is
+#: discarded, because these fields carry midnight — but it is RANGE-checked
+#: first, not merely counted. A shape test alone accepted `2025-12-20T99:99:99Z`
+#: and shipped the record as `ok`, which is the silent pass this reader exists
+#: to remove. 60 seconds is legal: a leap second is a real timestamp.
 _ISO_STAMP = re.compile(
-    r"^(\d{4}-\d{2}-\d{2})[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?"
-    r"(?:Z|[+-]\d{2}:?\d{2})?$")
+    r"^(\d{4}-\d{2}-\d{2})[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?"
+    r"(?:Z|[+-](\d{2}):?(\d{2}))?$")
+
+
+def _in_range(stamped: re.Match) -> bool:
+    """Whether every time component of a matched stamp is a possible one."""
+    hour, minute, second, off_hour, off_minute = stamped.groups()[1:]
+    return (int(hour) < 24 and int(minute) < 60
+            and (second is None or int(second) <= 60)
+            and (off_hour is None or int(off_hour) < 24)
+            and (off_minute is None or int(off_minute) < 60))
 
 
 def _date(value: object, field: str = "date") -> str | None:
@@ -117,7 +129,7 @@ def _date(value: object, field: str = "date") -> str | None:
     # `isoformat()` output, 3.11 took basic form as well. A date field must not
     # read differently on two machines walking the same source.
     stamped = _ISO_STAMP.match(text)
-    if stamped:
+    if stamped and _in_range(stamped):
         return datetime.strptime(stamped.group(1), "%Y-%m-%d").strftime("%Y-%m-%d")
     raise UnreadableDate(
         f"{field}: {text!r} matches no date format this endpoint is known to serve "
@@ -361,7 +373,12 @@ class BillsProbe:
                 out.append(rec)
             if self.sleep:
                 time.sleep(self.sleep)
-        self.compact()
+        if not dry_run:
+            # A planning run reports what a real one would do. Compaction rewrites
+            # the file, and the state it rewrites — duplicate keys — is exactly what
+            # an interrupted repair leaves, so an unguarded call let `--dry-run`
+            # drop rows from a corpus it was only supposed to describe.
+            self.compact()
         return out
 
     def compact(self) -> int:
