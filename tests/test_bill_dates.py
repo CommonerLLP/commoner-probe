@@ -340,3 +340,37 @@ class TestTheWholeTimestampIsChecked:
     ])
     def test_a_real_time_still_reads(self, text):
         assert _date(text) == "2025-12-20"
+
+
+class TestCompactionTouchesOnlyItsOwnRows:
+    """From Codex on `dcfa881`. Compaction indexed every keyed object in the
+    file. `prs_bill_track` appends a row per status change under one key on
+    purpose — Pending then Passed is the history it exists to hold — so a bills
+    probe pointed at a shared corpus would delete it and report success."""
+
+    def _probe(self, tmp_path, records):
+        from commoner_probe.bill_catalog_api import BillsProbe
+
+        probe = BillsProbe(tmp_path / "out", sleep=0, houses=["ls"])
+        probe.bills_all = lambda house: iter(records)
+        return probe
+
+    def test_another_adapter_s_history_survives(self, tmp_path):
+        import json
+
+        raw = {"billNumber": "9", "billYear": "2025", "billName": "A Bill",
+               "billAssentedDate": "20/12/2025"}
+        probe = self._probe(tmp_path, [raw])
+        for status in ("Pending", "Passed"):
+            probe.append_manifest({"key": "PRS|forest-bill", "kind": "prs_bill_track",
+                                   "source": "prsindia.org", "bill_status": status})
+        legacy = probe._record(raw, "ls")
+        legacy["assent_date"] = "20/12/2025"
+        probe.append_manifest(legacy)
+
+        self._probe(tmp_path, [raw]).probe()
+        rows = [json.loads(x) for x in
+                (tmp_path / "out" / "manifest.jsonl").read_text().splitlines()]
+        tracked = [r["bill_status"] for r in rows if r.get("kind") == "prs_bill_track"]
+        assert tracked == ["Pending", "Passed"], tracked
+        assert [r["assent_date"] for r in rows if r.get("kind") == "bill_record"] == ["2025-12-20"]

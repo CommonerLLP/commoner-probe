@@ -58,6 +58,12 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
+#: The one manifest kind this probe writes. Resume and compaction are scoped to
+#: it, because a corpus can be shared and another adapter's rows are not this
+#: probe's to index or to drop.
+MANIFEST_KIND = "bill_record"
+
+
 class UnreadableDate(ValueError):
     """A date field carried a shape this reader does not know.
 
@@ -197,7 +203,7 @@ class BillsProbe:
         if not self.manifest.exists():
             return seen
         for rec in self._rows():
-            if rec.get("key"):
+            if rec.get("key") and rec.get("kind") == MANIFEST_KIND:
                 seen[rec["key"]] = _fingerprint(rec)
         return seen
 
@@ -398,10 +404,10 @@ class BillsProbe:
         served forever.
 
         The write is a temp file and a rename, which is atomic for readers.
-        Rows this class did not write are copied through untouched. One
-        directory holds one corpus, so a second writer appending to the same
-        `manifest.jsonl` DURING this rewrite would still lose those rows; run
-        one probe per output directory.
+        Rows this class did not write are copied through untouched, and they are
+        not indexed either: duplicate keys are this probe's problem alone. A
+        second writer appending to the same `manifest.jsonl` DURING this rewrite
+        would still lose those rows, so run one probe per output directory.
         """
         if not self.manifest.exists():
             return 0
@@ -413,7 +419,13 @@ class BillsProbe:
                 rec = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            if isinstance(rec, dict) and rec.get("key"):
+            # Only this probe's own rows. Another adapter sharing the corpus may
+            # keep several rows under one key deliberately — `prs_bill_track`
+            # records Pending then Passed, and that pair IS the history it
+            # exists to hold. Indexing every keyed object deleted it and
+            # reported success.
+            if (isinstance(rec, dict) and rec.get("key")
+                    and rec.get("kind") == MANIFEST_KIND):
                 rows.setdefault(rec["key"], []).append(i)
         drop = {i for indexes in rows.values() if len(indexes) > 1
                 for i in indexes[:-1]}
