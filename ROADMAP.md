@@ -55,11 +55,12 @@ so no working caller changes behaviour.
 
 ## Queued (requested source adapters, not started)
 
-- BPRD *Data on Police Organisations* acquisition + extraction. **Blocked at
-  source, not at egress** (verified 2026-07-28): `bprd.nic.in` resolves but
-  every connection times out from US *and* India egress, and `bprd.gov.in` does
-  not resolve. Needs a new host or a mirror before any adapter work; the shared
-  OCR decision is not the binding constraint.
+- BPRD *Data on Police Organisations* acquisition + extraction. **The host is
+  unreachable, and a proxy does not fix it** (verified 2026-07-28):
+  `bprd.nic.in` resolves but every connection times out, and `bprd.gov.in` does
+  not resolve. Two egress points were tried, so the timeout is a fact about the
+  host rather than about one network. Needs a new host or a mirror before any
+  adapter work; the shared OCR decision is not the binding constraint.
 - MPLADS fund-release / works / utilisation-certificate records — source
   recon from an India vantage point first.
 - Finance document-disclosure adapters beyond the current budget set.
