@@ -56,7 +56,15 @@ and an answer can be a different question's document.
 - **A date read the same on every Python this package supports.** The ISO-8601
   rung used `datetime.fromisoformat`, which accepts a different set of strings
   on 3.10, 3.11 and later. Two machines walking one source wrote different
-  records for the same bill. The accepted shapes are now pinned by pattern.
+  records for the same bill. The accepted shapes are now pinned by pattern, and
+  the time half is range-checked rather than counted: `2025-12-20T99:99:99Z`
+  passed a digit-shape test and shipped the record as `ok`. A leap second is
+  still a real timestamp and still reads.
+
+- **`--dry-run` no longer edits the manifest.** Compaction ran after every
+  probe, dry runs included, and the state it rewrites — duplicate keys — is
+  exactly what a repair killed part-way leaves behind. A run whose purpose is to
+  say what WOULD happen could drop rows from the corpus it was describing.
 
 - **`load_seen()` on `BillsProbe` returns `dict[str, str]`, not `set[str]`** —
   key to a content digest, the same shape `statute_dspace` and
