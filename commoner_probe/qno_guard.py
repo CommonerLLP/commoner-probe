@@ -61,6 +61,12 @@ _CITATION_CONTEXT = re.compile(
     r"repl(?:y|ied)\s+dated[^.]{0,40}?to|answers?\s+to\s+which|given\s+against|"
     r"reference\s+has\s+been\s+made|as\s+stated\s+in|as\s+informed\s+in|"
     r"similar|vide|raised\s+in|"
+    # "with reference to THE ANSWER TO Unstarred Question 233 given in the
+    # Rajya Sabha on the 1st August, 1995" — a 1996 RS reply opens by citing
+    # the question it follows up. The preposition before `answer` is what
+    # keeps a document's own header out: a header opens "ANSWER TO LOK SABHA
+    # UNSTARRED QUESTION NO. 2549" and never has `to` in front of it.
+    r"to\s+(?:the\s+)?answers?\s+to|"
     r"already\s+(?:been\s+)?(?:given|answered|replied)|part\s+of\s+the\s+reply)"
     # 200 characters, because a reply cites two questions in one sentence and
     # the phrase sits 96 characters before the second number. A period is
@@ -92,6 +98,28 @@ _SELF_NAMING = re.compile(
     re.IGNORECASE | re.MULTILINE,
 )
 
+#: The digits after `QUESTION NO` are a DATE component when a date tail
+#: follows them. The pre-2000 Rajya Sabha answer prints its labels and values
+#: out of order and gives the anchor no separator at all:
+#:
+#:     RAJYA SABHA
+#:     QUESTION NO04.09.1996
+#:     ANSWERED ON
+#:     SLUMP IN THE TEXTILE INDUSTRY
+#:     3082
+#:
+#: The number is 3082 and it sits two lines below, after the subject. Reading
+#: `04` returned MISMATCH on 25 of 25 records in a zero-hour run on 0.15.1
+#: on 2026-08-18, and the only two values across the run were the day components
+#: of the two sitting dates. That layout is UNSUPPORTED rather than
+#: misread: this pattern refuses the date, no other reading fires, and the
+#: record returns `unreadable`. A mismatch on every row buries the swap the
+#: guard exists to catch.
+#:
+#: "QUESTION NO. 2549 TO BE ANSWERED ON 04.08.2026" is unaffected. The date
+#: there follows the words, not the captured digits.
+_DATE_TAIL = re.compile(r"\s*[./-]\s*\d{1,2}\s*[./-]\s*\d{2,4}")
+
 #: `document_qno_status` values. `unreadable` is NOT a finding: 14 of 300
 #: probe-fetched LS answer PDFs (4.7%) print no readable number, and a check
 #: that flags those gets switched off within a week.
@@ -121,6 +149,8 @@ def printed_question_number(text: str) -> str | None:
     number.
     """
     for match in _QUESTION_NUMBER.finditer(text or ""):
+        if _DATE_TAIL.match(text, match.end()):
+            continue
         if _points_away(text[:match.start()]):
             continue
         return match.group(1)
