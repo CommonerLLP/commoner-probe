@@ -377,3 +377,43 @@ class TestTheParserReadsWhatTheScannerCouldNot:
         path.write_text('[project]\ndependencies = [#"commoner-probe==9.9.9"\n'
                         '    "requests==2.32.3",\n]\n', encoding="utf-8")
         assert declared_pins(path) == {}
+
+
+class TestTwoMoreWaysAPolicyBreachHid:
+    """Round 8 from Codex, on the `tomllib` rewrite. Both let a file that
+    breaks the exact-pin policy exit 0."""
+
+    def test_a_dot_spelled_name_is_this_package(self, tmp_path):
+        """PEP 503 normalises `.`, `-` and `_` to one name, so
+        `commoner.probe` names this package and the reader must see it."""
+        path = tmp_path / "pyproject.toml"
+        path.write_text('project.dependencies = ["commoner.probe>=0.14"]\n', encoding="utf-8")
+        assert declared_pins(path) == {str(path): "unpinned"}
+
+    def test_a_dot_spelled_exact_pin_reads(self, tmp_path):
+        path = tmp_path / "requirements.txt"
+        path.write_text("commoner.probe==0.15.0\n", encoding="utf-8")
+        assert declared_pins(path) == {str(path): "0.15.0"}
+
+    def test_two_exact_pins_that_disagree_are_a_conflict(self, tmp_path):
+        """Keeping the first hid the second. If the first matched the
+        environment, `doctor` exited 0 over a file pinning two versions."""
+        path = tmp_path / "pyproject.toml"
+        path.write_text('[project]\ndependencies = ["commoner-probe==0.15.0"]\n'
+                        '[project.optional-dependencies]\nx = ["commoner-probe==9.9.9"]\n',
+                        encoding="utf-8")
+        assert declared_pins(path) == {str(path): "conflict: 0.15.0, 9.9.9"}
+
+    def test_a_conflict_is_a_mismatch_even_when_one_pin_matches(self):
+        from commoner_probe.doctor import VersionReport
+
+        report = VersionReport("0.15.0", "0.15.0", {"req.txt": "conflict: 0.15.0, 9.9.9"})
+        assert not report.agrees
+        assert "two different versions" in report.report
+
+    def test_one_version_repeated_is_not_a_conflict(self, tmp_path):
+        path = tmp_path / "pyproject.toml"
+        path.write_text('[project]\ndependencies = ["commoner-probe==0.15.0"]\n'
+                        '[project.optional-dependencies]\nx = ["commoner-probe==0.15.0"]\n',
+                        encoding="utf-8")
+        assert declared_pins(path) == {str(path): "0.15.0"}

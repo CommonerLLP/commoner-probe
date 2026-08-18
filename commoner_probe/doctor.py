@@ -41,7 +41,9 @@ __all__ = ["VersionReport", "declared_pins", "installed_version", "source_versio
 #: prose; each was read as this package's pin, and `doctor` then failed a
 #: consumer that never depended on it.
 _EXTRAS = r"(?:\[[^\]]*\])?"
-_NAME = rf"commoner[-_]probe{_EXTRAS}"
+#: PEP 503 normalises `-`, `_` and `.` to one name, so `commoner.probe` is
+#: this package and pip installs it as such.
+_NAME = rf"commoner[-_.]probe{_EXTRAS}"
 #: A requirement token opens a line, or opens a quoted element of an array.
 #: Prose names the package mid-sentence, and TOML names it on both sides of a
 #: scalar assignment — `name = "commoner-probe"` and the console-script key —
@@ -139,6 +141,10 @@ def _uncommented(text: str) -> str:
     return re.sub(r"(?m)(?:^|(?<=\s))#.*$", "", text)
 
 
+#: Marks a file that pins this package at two versions at once.
+_CONFLICT = "conflict"
+
+
 class VersionReport:
     """The three versions, and whether they agree.
 
@@ -164,6 +170,12 @@ class VersionReport:
                 "this tree; one venv shared across worktrees reports whichever was "
                 "installed last.")
         for where, pin in self.pins.items():
+            if pin.startswith(_CONFLICT):
+                out.append(
+                    f"{where} pins this package at two different versions "
+                    f"({pin.split(': ', 1)[-1]}). Which one installs depends on the "
+                    "resolver, so the file does not state what the consumer runs.")
+                continue
             if pin == "unpinned":
                 out.append(
                     f"{where} names this package with no exact version. The org pins "
@@ -262,19 +274,25 @@ def declared_pins(*paths: Path | str) -> dict[str, str]:
         # git+...@v0.15.0`: the `@` opens an unpinned URL requirement and the
         # tag closes an exact one, in the same string. A file-wide "unpinned
         # wins" rule therefore called every git tag pin unpinned.
-        pin: str | None = None
+        pins: list[str] = []
         unpinned = False
         for declaration in declarations:
             match = next(
                 (m for m in (pat.search(declaration) for pat in _PIN_PATTERNS) if m), None)
             if match:
-                pin = pin if pin is not None else match.group(1)
+                if match.group(1) not in pins:
+                    pins.append(match.group(1))
             elif any(pat.search(declaration) for pat in _UNPINNED_PATTERNS):
                 unpinned = True
         if unpinned:
             found[str(p)] = "unpinned"
-        elif pin is not None:
-            found[str(p)] = pin
+        elif len(pins) > 1:
+            # Keeping the first hid the second. One file pinning two versions
+            # installs whichever resolver wins, and if the first matched the
+            # environment `doctor` exited 0 over it.
+            found[str(p)] = f"{_CONFLICT}: {', '.join(pins)}"
+        elif pins:
+            found[str(p)] = pins[0]
     return found
 
 
