@@ -1,5 +1,42 @@
 # Changelog
 
+## 0.15.3 — 2026-08-19
+
+**The bills probe can fetch the documents it catalogues.**
+
+### Added
+
+- **`bills --download`.** A bill record carries up to eight document URLs —
+  as-introduced text, the passed versions, the gazette, the synopsis, a
+  committee report and errata — and nothing fetched them. A full pull returns
+  9,929 bills and 10,506 URLs, so a consumer held a list of names and dates
+  with no way to read what any bill says. The flag is **OFF by default**: the
+  whole set is about 5 GB and 3.4 hours serial.
+
+  Each field carries its own outcome under a new `documents` key:
+  `{"introduced_file": {"url": ..., "path": ..., "status": "ok"}}`. A URL that
+  404s and a URL nobody attempted are different facts, and a path alone cannot
+  tell them apart. `ManifestBillRecord` carries the field too, so the typed
+  iterator sees what the raw manifest holds.
+
+  **A failed document never fails the bill.** The record keeps its name, its
+  ministry, its dates and its other seven documents, and `fetch_status` stays
+  `ok`. Document acquisition runs independently of catalogue dedup, so
+  enabling the flag over a catalogue pulled by an earlier release fetches its
+  documents, and a failed document is retried on the next run.
+
+### Changed
+
+- `BaseProbe.write_pdf` moves its body to `base.download_file`, a module-level
+  function, so a probe that does not extend `BaseProbe` gets the same
+  temp-file-then-rename guarantee. The method delegates and behaves as before.
+- The bills fingerprint ignores `documents`. The digest is taken before the
+  fetch and the row is written after, so a digest over `documents` never
+  matched the row it produced.
+
+Live against sansad.in: three bills, eight documents, 2.7 MB, and
+`AS INTRODUCED IN LOK SABHA / Bill No. 153 of 2026` reads back from the first.
+
 ## 0.15.2 — 2026-08-18
 
 **Take this if you fetch answers before 2000. 0.15.1 flags every one of them as
