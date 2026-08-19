@@ -374,3 +374,79 @@ def test_a_downloaded_bill_is_not_re_emitted_next_run(tmp_path):
     again = _bills_probe(tmp_path, session)
     again.bills_all = lambda house: iter([_RAW_WITH_FILES])  # noqa: ARG005
     assert again.probe(download=True) == [], "an unchanged bill is already held"
+
+
+def test_enabling_download_reaches_a_catalogue_already_on_disk(tmp_path):
+    """Codex, P1. The normal upgrade path: a corpus pulled before `--download`
+    existed. The fingerprint matches, so the dedup `continue` ran before any
+    document was fetched and enabling the flag made no requests at all."""
+    import json
+
+    session = _FakeSession({})
+    catalogue = _bills_probe(tmp_path, session)
+    catalogue.bills_all = lambda house: iter([_RAW_WITH_FILES])  # noqa: ARG005
+    catalogue.probe()
+    assert session.calls == []
+
+    later = _bills_probe(tmp_path, session)
+    later.bills_all = lambda house: iter([_RAW_WITH_FILES])  # noqa: ARG005
+    later.probe(download=True)
+
+    assert session.calls, "the documents were never requested"
+    rows = [json.loads(line) for line in (tmp_path / "manifest.jsonl").open()]
+    row = [r for r in rows if r.get("kind") == "bill_record"][-1]
+    assert row["documents"]["introduced_file"]["status"] == "ok"
+
+
+def test_a_failed_document_is_retried_next_run(tmp_path):
+    """Codex, P1. A failure is not terminal, and the catalogue fingerprint
+    cannot know that. A bill whose gazette 404'd must ask again."""
+    session = _FakeSession({"gazette.pdf": None})
+    first = _bills_probe(tmp_path, session)
+    first.bills_all = lambda house: iter([_RAW_WITH_FILES])  # noqa: ARG005
+    first.probe(download=True)
+
+    working = _FakeSession({})
+    second = _bills_probe(tmp_path, working)
+    second.bills_all = lambda house: iter([_RAW_WITH_FILES])  # noqa: ARG005
+    second.probe(download=True)
+
+    assert any("gazette" in url for url in working.calls), "the failure was not retried"
+    path = tmp_path / "documents" / "ls" / "2026" / "153_gazetted.pdf"
+    assert path.exists()
+
+
+def test_a_bill_with_no_number_does_not_share_another_bill_s_file(tmp_path):
+    """Codex, P1. `bill_key` falls back to a raw-record hash when the number is
+    absent, but the document path did not, so every numberless bill in one
+    house and year wrote `unknown_introduced.pdf`. The second bill then found
+    the first one's bytes already present and claimed them."""
+    session = _FakeSession({})
+    probe = _bills_probe(tmp_path, session)
+
+    one = probe._record({**_RAW_WITH_FILES, "billNumber": None}, "ls")
+    two = probe._record({**_RAW_WITH_FILES, "billNumber": None,
+                         "billName": "A DIFFERENT BILL"}, "ls")
+    probe.download_documents(one)
+    probe.download_documents(two)
+
+    assert (one["documents"]["introduced_file"]["path"]
+            != two["documents"]["introduced_file"]["path"])
+
+
+def test_the_typed_bill_record_carries_its_documents(tmp_path):
+    """Codex, P2. `manifest_bills()` builds a typed record whose `from_dict`
+    drops unknown keys, so a consumer using the package's own iterator could
+    not see a downloaded file that sits in the raw manifest."""
+    import json
+
+    from commoner_probe.corpus import Corpus
+
+    session = _FakeSession({})
+    probe = _bills_probe(tmp_path, session)
+    probe.bills_all = lambda house: iter([_RAW_WITH_FILES])  # noqa: ARG005
+    probe.probe(download=True)
+
+    record = next(iter(Corpus(tmp_path).manifest_bills()))
+    assert record.documents["introduced_file"]["status"] == "ok"
+    assert json.dumps(record.documents)  # plain data, not a custom type

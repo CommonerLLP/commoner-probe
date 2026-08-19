@@ -664,6 +664,11 @@ class ManifestBillRecord:
     fetched_at: str | None = None
     unreadable_fields: list[str] | None = None
     error: str | None = None
+    #: Where each fetched document landed, keyed by the URL field it came from:
+    #: `{"introduced_file": {"url": ..., "path": ..., "status": "ok"}}`. Absent
+    #: when the run did not pass `--download`. Plain data rather than a nested
+    #: dataclass, because a consumer joins it to a bill and writes it back out.
+    documents: dict[str, dict] | None = None
 
     @classmethod
     def from_dict(cls, d: dict) -> "ManifestBillRecord":

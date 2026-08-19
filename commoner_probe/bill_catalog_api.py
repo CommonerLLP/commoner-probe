@@ -218,6 +218,24 @@ class BillsProbe:
         self.manifest = out_dir / "manifest.jsonl"
         self.session = make_session()
 
+    def load_documents(self) -> dict[str, dict]:
+        """The document outcomes each stored key already carries.
+
+        Document acquisition cannot ride on the catalogue fingerprint. A corpus
+        pulled before `--download` existed carries rows whose fingerprint
+        matches perfectly, so a dedup `continue` skipped every fetch and
+        enabling the flag made no requests at all. A failed document is the
+        same shape of problem: the catalogue has not changed, and the file
+        still is not there.
+        """
+        stored: dict[str, dict] = {}
+        if not self.manifest.exists():
+            return stored
+        for rec in self._rows():
+            if rec.get("key") and rec.get("kind") == MANIFEST_KIND:
+                stored[rec["key"]] = rec.get("documents") or {}
+        return stored
+
     def load_seen(self) -> dict[str, str]:
         """Every key already on disk, mapped to the content it was written with.
 
@@ -391,7 +409,14 @@ class BillsProbe:
         filename, and stays put when the source renames its file.
         """
         stem = field[:-5] if field.endswith("_file") else field
-        number = safe_filename_segment(record.get("bill_no") or "unknown")
+        # `bill_key` falls back to a raw-record hash when the number is absent,
+        # and the path has to fall back with it. Writing `unknown_intro.pdf`
+        # for every numberless bill in one house and year meant the second such
+        # bill found the first one's bytes already present, and its manifest
+        # then claimed a different URL had produced them.
+        number = record.get("bill_no")
+        number = (safe_filename_segment(number) if number
+                  else safe_filename_segment(record["key"].rsplit("|", 1)[-1]))
         year = safe_filename_segment(record.get("bill_year") or "unknown")
         return (self.out_dir / "documents" / record["house"] / str(year)
                 / f"{number}_{stem}.pdf")
@@ -435,6 +460,7 @@ class BillsProbe:
     def probe(self, *, max_records: int | None = None, dry_run: bool = False,
               download: bool = False) -> list[dict]:
         seen = self.load_seen()
+        held = self.load_documents() if download else {}
         out: list[dict] = []
         for house in self.houses:
             if dry_run:
@@ -445,11 +471,18 @@ class BillsProbe:
                 for raw in self.bills_all(house):
                     rec = self._record(raw, house)
                     digest = _fingerprint(rec)
-                    if seen.get(rec["key"]) == digest:
+                    unchanged = seen.get(rec["key"]) == digest
+                    if unchanged and not download:
                         continue
-                    seen[rec["key"]] = digest
                     if download:
                         self.download_documents(rec)
+                        # The row is rewritten only when the documents moved.
+                        # An unchanged catalogue row with the same outcomes has
+                        # nothing new to record, and re-appending 9,929 of them
+                        # every run would double the manifest before `compact`.
+                        if unchanged and rec.get("documents", {}) == held.get(rec["key"], {}):
+                            continue
+                    seen[rec["key"]] = digest
                     self.append_manifest(rec)
                     out.append(rec)
                     added += 1
