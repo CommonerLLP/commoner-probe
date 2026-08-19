@@ -1227,7 +1227,8 @@ def bills_cmd(args: argparse.Namespace) -> None:
         bill_type=args.bill_type,
         api_url=args.api_url,
     )
-    records = probe.probe(max_records=args.max_records, dry_run=args.dry_run)
+    records = probe.probe(max_records=args.max_records, dry_run=args.dry_run,
+                          download=args.download)
     for record in records:
         print(json.dumps(record, ensure_ascii=False))
 
@@ -2356,6 +2357,13 @@ def build_parser() -> argparse.ArgumentParser:
         "--dry-run",
         action="store_true",
         help="Emit one planning record per house without fetching.",
+    )
+    bills.add_argument(
+        "--download",
+        action="store_true",
+        help="Also fetch each bill's documents (as-introduced text, passed "
+             "versions, gazette, synopsis, committee report, errata). OFF by "
+             "default: a full catalogue carries about 10,500 files.",
     )
     bills.set_defaults(func=bills_cmd)
 
