@@ -39,6 +39,7 @@ from pathlib import Path
 from typing import Iterator
 from urllib.parse import urlencode
 
+from .base import download_file, safe_filename_segment
 from .http_client import make_session
 
 BILLS_API = "https://sansad.in/api_rs/legislation/getBills"
@@ -48,6 +49,17 @@ HEADERS = {
     "User-Agent": "commoner-probe/0.5.0 (github.com/CommonerLLP/commoner-probe; public-interest research; rate-limited)",
     "Referer": "https://sansad.in/ls/legislation/bills",
 }
+
+#: The eight document fields a bill record can carry. A full pull on 0.15.1
+#: returned 10,506 URLs across 9,929 bills, and only 7,480 of them were the
+#: as-introduced text — so a downloader that reads one field misses 29% of the
+#: documents. Order is the bill's own lifecycle, which is also the order a
+#: reader wants them in.
+DOCUMENT_FIELDS = (
+    "introduced_file", "passed_ls_file", "passed_rs_file",
+    "passed_both_houses_file", "report_file", "gazetted_file",
+    "synopsis_file", "errata_file",
+)
 
 # Internal house code -> sansad ``house`` query value.
 _HOUSE_PARAM = {"ls": "Lok Sabha", "rs": "Rajya Sabha"}
@@ -155,7 +167,14 @@ def _date(value: object, field: str = "date") -> str | None:
 
 #: Fields that differ between two runs of an unchanged record, and so cannot
 #: take part in "have I already got this?".
-_VOLATILE = ("fetched_at", "probed_at")
+#:
+#: `documents` is here for a second reason. The digest is taken BEFORE the
+#: documents are fetched, and the manifest row is written AFTER, so a digest
+#: over `documents` never matches the row it produced: every run then re-emitted
+#: every bill it had already downloaded. What the source asserts about a bill
+#: is the catalogue record, and where its files landed locally is not part of
+#: that assertion.
+_VOLATILE = ("fetched_at", "probed_at", "documents")
 
 
 def _fingerprint(record: dict) -> str:
@@ -362,7 +381,59 @@ class BillsProbe:
             rec["error"] = error[:500]
         return rec
 
-    def probe(self, *, max_records: int | None = None, dry_run: bool = False) -> list[dict]:
+    def _document_path(self, record: dict, field: str) -> Path:
+        """Where one document lands, derived from the bill rather than the URL.
+
+        The source's filenames are not stable and not unique: they carry the
+        upload timestamp and a human's spacing, as in
+        ``As intro Tribunal8102026124202PM.pdf``. A path built from the bill's
+        own house, year and number joins back to the record without parsing a
+        filename, and stays put when the source renames its file.
+        """
+        stem = field[:-5] if field.endswith("_file") else field
+        number = safe_filename_segment(record.get("bill_no") or "unknown")
+        year = safe_filename_segment(record.get("bill_year") or "unknown")
+        return (self.out_dir / "documents" / record["house"] / str(year)
+                / f"{number}_{stem}.pdf")
+
+    def download_documents(self, record: dict) -> dict:
+        """Fetch every document URL this bill carries. Returns the counts.
+
+        Each field gets its own outcome under ``record["documents"]``, because
+        a URL that 404s and a URL nobody attempted are different facts and a
+        path alone cannot tell them apart.
+
+        **A failed document never fails the bill.** 0.15.0 abandoned a whole
+        house over one unreadable date, and 0.15.1 fixed that; the same rule
+        holds here. The record keeps its name, its ministry, its dates and its
+        other seven documents, and ``fetch_status`` stays ``ok``.
+        """
+        stats = {"fetched": 0, "failed": 0, "present": 0}
+        documents: dict[str, dict] = {}
+        for field in DOCUMENT_FIELDS:
+            url = (record.get(field) or "").strip()
+            if not url:
+                continue
+            dest = self._document_path(record, field)
+            already = dest.exists() and dest.stat().st_size > 1000
+            ok = download_file(self.session, url, dest, HEADERS)
+            if ok:
+                stats["present" if already else "fetched"] += 1
+            else:
+                stats["failed"] += 1
+            documents[field] = {
+                "url": url,
+                "path": str(dest.relative_to(self.out_dir)) if ok else None,
+                "status": "ok" if ok else "failed",
+            }
+            if self.sleep and not already:
+                time.sleep(self.sleep)
+        if documents:
+            record["documents"] = documents
+        return stats
+
+    def probe(self, *, max_records: int | None = None, dry_run: bool = False,
+              download: bool = False) -> list[dict]:
         seen = self.load_seen()
         out: list[dict] = []
         for house in self.houses:
@@ -377,6 +448,8 @@ class BillsProbe:
                     if seen.get(rec["key"]) == digest:
                         continue
                     seen[rec["key"]] = digest
+                    if download:
+                        self.download_documents(rec)
                     self.append_manifest(rec)
                     out.append(rec)
                     added += 1

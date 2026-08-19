@@ -120,6 +120,49 @@ def note_text_layer(record: dict, dest: Path, body: bytes, *, min_chars: int) ->
     record["text_layer"] = len(text.strip()) >= min_chars
 
 
+def download_file(session, url: str, dest_path: Path, headers: dict,
+                  *, log=None, timeout: int = 60) -> bool:
+    """Download to a temp file, then rename into place.
+
+    The rename is what makes the size check below trustworthy. Writing
+    straight to ``dest_path`` meant a Ctrl-C or a dropped connection left a
+    truncated PDF there, and the next run's ``st_size > 1000`` accepted it as
+    complete — permanently. Extraction then produced partial text
+    indistinguishable from a genuinely short answer.
+
+    ``os.replace`` is atomic within a filesystem, so a reader sees either no
+    file or the whole file, never a half-written one.
+
+    A function rather than a method, because a probe that does not extend
+    :class:`BaseProbe` needs the same guarantee. ``BillsProbe`` is one: it
+    holds its own session and carries eight document URLs per bill.
+    """
+    if dest_path.exists() and dest_path.stat().st_size > 1000:
+        return True
+    dest_path.parent.mkdir(parents=True, exist_ok=True)
+    encoded_url = _encode_url_path(url)
+    tmp_path = _private_tmp_path(dest_path)
+    try:
+        # stream=True or requests buffers the whole body before iter_capped
+        # sees a chunk, and the ceiling fires after the allocation it exists
+        # to prevent.
+        r = session.get(encoded_url, headers=headers, timeout=timeout, stream=True)
+        r.raise_for_status()
+        with tmp_path.open("wb") as f:
+            for chunk in iter_capped(r):
+                f.write(chunk)
+        if tmp_path.stat().st_size <= 1000:
+            return False
+        os.replace(tmp_path, dest_path)
+        return True
+    except Exception as e:
+        if log is not None:
+            log(f"Warning: Failed to download PDF {url}: {e}")
+        return False
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+
 class BaseProbe:
     """Shared I/O logic for Sansad crawlers."""
 
@@ -216,37 +259,5 @@ class BaseProbe:
             f.write(json.dumps(rec, ensure_ascii=False) + "\n")
 
     def write_pdf(self, url: str, dest_path: Path, headers: dict) -> bool:
-        """Download to a temp file, then rename into place.
-
-        The rename is what makes the size check below trustworthy. Writing
-        straight to ``dest_path`` meant a Ctrl-C or a dropped connection left
-        a truncated PDF there, and the next run's ``st_size > 1000`` accepted
-        it as complete — permanently. Extraction then produced partial text
-        indistinguishable from a genuinely short answer.
-
-        ``os.replace`` is atomic within a filesystem, so a reader sees either
-        no file or the whole file, never a half-written one.
-        """
-        if dest_path.exists() and dest_path.stat().st_size > 1000:
-            return True
-        dest_path.parent.mkdir(parents=True, exist_ok=True)
-        encoded_url = _encode_url_path(url)
-        tmp_path = _private_tmp_path(dest_path)
-        try:
-            # stream=True or requests buffers the whole body before iter_capped
-            # sees a chunk, and the ceiling fires after the allocation it
-            # exists to prevent.
-            r = self.session.get(encoded_url, headers=headers, timeout=60, stream=True)
-            r.raise_for_status()
-            with tmp_path.open("wb") as f:
-                for chunk in iter_capped(r):
-                    f.write(chunk)
-            if tmp_path.stat().st_size <= 1000:
-                return False
-            os.replace(tmp_path, dest_path)
-            return True
-        except Exception as e:
-            self.log(f"Warning: Failed to download PDF {url}: {e}")
-            return False
-        finally:
-            tmp_path.unlink(missing_ok=True)
+        """As :func:`download_file`, using this probe's session and log."""
+        return download_file(self.session, url, dest_path, headers, log=self.log)
