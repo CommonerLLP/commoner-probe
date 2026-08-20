@@ -209,3 +209,35 @@ Two cautions for the next person who automates this:
    certificate chain. For an acquisition adapter the listing is the easy half.
    Run `download_document()` against at least one real document before adding
    a registry entry.
+
+## BPRD — Data on Police Organisations (dead host, live archive)
+
+`bprd.nic.in` resolves to 164.100.252.214 and answers on no port. `bprd.gov.in`
+does not resolve. Checked from two continents on 2026-07-28 and from one on
+2026-08-20.
+
+The yearly DOPO editions survive in the Internet Archive. No new fetcher is
+needed:
+
+```bash
+commoner-probe wayback-recover --out data/dopo \
+    --host bprd.nic.in/uploads/dopo --verify pdf
+```
+
+**Scope `--host` to a path.** Bare `--host bprd.nic.in` walks the whole capture
+history of a large government domain and did not finish in seven minutes. The
+path-scoped form returned in about a second.
+
+Three traps, all in `commoner_probe.dopo_catalogue`:
+
+1. **The URL pattern is a lie.** Most editions are `dopo<year>.pdf`; 2014 is
+   `dopoFile2014.pdf` and 2017 is `databook2017.pdf`. The archive's directory
+   holds eleven files and the archived index page names thirteen.
+2. **The 2016 fonts drop the `ti` ligature.** Its tables say `Sanc oned`. Over
+   the first 90 pages, case-insensitively: 2011 has 162 `Sanctioned` and 0
+   `Sanc oned`; 2016 has 20 and 172. It is per edition, so an extractor that
+   works on one year proves nothing about the next, and the failure is a quiet
+   "no data" rather than an error.
+3. **They are not scans.** `dopo2011` yields 329,702 characters over 90 pages
+   and `dopo2016` 364,706, tables included. Reach for OCR only after measuring
+   a specific edition and finding it empty.
