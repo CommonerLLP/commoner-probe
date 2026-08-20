@@ -1,5 +1,101 @@
 # Changelog
 
+## 0.16.0 — 2026-08-20
+
+**Re-run any `bills --download` corpus and any Rajya Sabha answer corpus fetched
+before this release.** Two acquisition-time checks changed what they record.
+`bills --download` no longer re-requests a URL whose outcome the manifest holds,
+so a resume that previously spent hours on dead hosts now finishes — but rows
+written before 0.16.0 carry no `_runs.jsonl` and cannot say how many URLs they
+skipped. And the answer-number guard now reads two document shapes it used to
+report as `unreadable`; a corpus keeps its old verdicts until it is re-parsed.
+
+**A note on 0.15.3.** It shipped `bills --download`, a new acquisition surface,
+as a patch. `ROADMAP.md` reserves patches for backwards-compatible fixes and
+makes a new surface a minor. `v0.15.3` is published and a published tag never
+moves, so this entry records the deviation rather than correcting it.
+
+### Added
+
+- **`commoner-probe mirror`.** Walk one host, save every page and document it
+  serves, and write three artefacts that stay current as the walk runs:
+  `manifest.jsonl` with a sha256 per file, `MANIFEST.txt` in the org's
+  staging-manifest format, and `INDEX.md` naming every page. The crawler this
+  generalises wrote the last two only after the walk finished, so a run killed
+  at its deadline left 540 saved pages with neither. A resume costs no request
+  for a file the manifest vouches for, and it still reaches what the first run
+  never got to, because a held page is re-read from disk for its links.
+  `--verify` re-hashes every file the manifest names. New manifest kind:
+  `mirrored_file`.
+
+- **`commoner-probe udise-docs`.** The 86 documents the UDISE+ portal serves
+  without an account: the Data Capture Format for each year from DISE 2009-10
+  to UDISE+ 2026-27, the annual report booklets, the metadata dictionaries and
+  the departmental letters. Two traps handled — the endpoint answers a `.pdf`
+  request with a JSON envelope holding base64 under
+  `Content-Type: application/json`, and a name that has left the portal's
+  Angular bundle answers 200 with a body that is not a PDF. The second has its
+  own outcome, `not_pdf`, because a status code cannot detect it. New manifest
+  kind: `udise_document`.
+
+- **`commoner_probe.supervisor`.** For acquisitions that outlive one process:
+  threads inside one process, SQLite task leases under a unique owner,
+  streaming `.part` files, and publish only after a fenced lease check plus one
+  atomic rename. Progress reads from the ledger and the finalized files —
+  an active file is never completion evidence. Portal-agnostic; a `Fetcher`
+  reports its own throttle counters, because a worker exit is not a throttle
+  signal.
+
+- **`commoner_probe.dopo_catalogue`.** BPRD's Data on Police Organisations: the
+  host is dead, the editions are in the Internet Archive, and
+  `wayback-recover` already fetches them. This carries the pinned 13-edition
+  catalogue (the URL pattern misses four of them, including both a consumer
+  actually used) and `term_pattern()`, which survives the `ti` ligature the
+  2016 fonts drop — its tables say `Sanc oned`, so a search for the correct
+  spelling returns a plausible, quiet nothing.
+
+- **`bills --retry-failed`.** Re-requests the documents the manifest records as
+  failed, and nothing else.
+
+- **`StdlibResponse.headers`.** A case-insensitive header map, so a caller
+  reading `Content-Type` behaves the same with and without the `http` extra.
+  That difference is what the zero-dependency fallback exists to remove.
+
+### Fixed
+
+- **A `bills --download` resume never reached new work.** It re-requested every
+  URL, including the ones already recorded as failed. On one live corpus 29
+  URLs name a host that answers on no port, each costing about three minutes of
+  retry budget, and 134 minutes of resume across two runs wrote 14 documents.
+  A stored `ok` or `failed` outcome now answers without a request. **This
+  reverses a fix released in 0.15.3**, which made every failure retry
+  automatically; the automatic retry is what stopped a resume finishing. The
+  other half of that fix stands: a catalogue with no stored outcome still
+  fetches.
+
+- **An aborted `bills` walk exited 0.** One run stopped 16 pages into a 200-row
+  walk, left 5,411 of 9,929 bills unenumerated, printed a clean summary and
+  returned success. `bills` now writes `_runs.jsonl` with one bucket per House,
+  and a House whose walk raises makes the command exit non-zero. A resume that
+  legitimately finds nothing new still exits 0.
+
+- **The answer-number guard discarded a number run into a full date.** OCR eats
+  the space, as in `QUESTION NO. 2549/04/08/2026`, and the date-tail guard
+  consumed only part of the date.
+
+- **The answer-number guard lost a header to a citation above it.** The
+  citation window runs 200 characters back and stops only at a period, and
+  extracted PDF text prints its boilerplate on periodless lines.
+
+### Changed
+
+- **Every Q/A run-log bucket carries `qno_status`** — `verified`, `mismatch`
+  and `unreadable`, zeros included. A mismatch count of zero describes a clean
+  slice and a slice the guard could not read at all identically; one consumer
+  run returned 25 of 25 unreadable and the count said nothing.
+
+- `runs.schema.json` accepts the `bills` kind.
+
 ## 0.15.3 — 2026-08-19
 
 **The bills probe can fetch the documents it catalogues.**
