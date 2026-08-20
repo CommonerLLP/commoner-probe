@@ -213,6 +213,12 @@ commoner-probe bills \
   --bill-type "Private Member"
 ```
 
+`--download` also fetches each bill's documents: the as-introduced text, the
+passed versions, the gazette, the synopsis, the committee report and the
+errata. It is off by default, because a full catalogue carries about 10,500
+files and 5 GB. A resume makes no request for a URL whose outcome the manifest
+already records. Use `--retry-failed` to ask again for the failed set.
+
 ### State assembly records (NeVA portals)
 
 From 2020, sub-national governments have been adopting NIC's NeVA (National
