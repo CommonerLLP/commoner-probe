@@ -334,12 +334,17 @@ def sansad_cmd(args: argparse.Namespace) -> None:
     _exit_on_failed_runs(probe)
 
 
-def _exit_on_failed_runs(probe: SansadProbe) -> None:
+def _exit_on_failed_runs(probe: SansadProbe | BillsProbe) -> None:
     """Exit non-zero when a crawl's every bucket errored.
 
     Without this a run that reached nothing exits 0 with ``added: 0``,
     which a consumer reads as a finding about the member rather than a
     broken crawl. ``partial`` stays a success: some buckets did return.
+
+    ``bills`` logs one bucket per House, so a House whose walk raises makes
+    that run ``failed`` on its own. One live run aborted BOTH Houses 16 pages
+    into a 200-row walk, left 5,411 of 9,929 bills unenumerated, printed a
+    clean summary and returned 0.
     """
     failed = probe.runlog.statuses.count("failed")
     if failed:
@@ -1228,9 +1233,10 @@ def bills_cmd(args: argparse.Namespace) -> None:
         api_url=args.api_url,
     )
     records = probe.probe(max_records=args.max_records, dry_run=args.dry_run,
-                          download=args.download)
+                          download=args.download, retry_failed=args.retry_failed)
     for record in records:
         print(json.dumps(record, ensure_ascii=False))
+    _exit_on_failed_runs(probe)
 
 
 def _add_indiacode_crawl_args(parser: argparse.ArgumentParser) -> None:
@@ -2364,6 +2370,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Also fetch each bill's documents (as-introduced text, passed "
              "versions, gazette, synopsis, committee report, errata). OFF by "
              "default: a full catalogue carries about 10,500 files.",
+    )
+    bills.add_argument(
+        "--retry-failed",
+        action="store_true",
+        help="Re-request the documents the manifest records as failed. Without "
+             "it a resume skips every URL whose outcome is already stored, "
+             "which is what makes a resume finish: 29 dead URLs in one live "
+             "corpus cost about 3 minutes each on every run.",
     )
     bills.set_defaults(func=bills_cmd)
 

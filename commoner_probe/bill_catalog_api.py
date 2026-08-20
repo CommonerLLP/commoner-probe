@@ -41,6 +41,7 @@ from urllib.parse import urlencode
 
 from .base import download_file, safe_filename_segment
 from .http_client import make_session
+from .runlog import RunLog
 
 BILLS_API = "https://sansad.in/api_rs/legislation/getBills"
 
@@ -217,6 +218,7 @@ class BillsProbe:
         self.api_url = api_url
         self.manifest = out_dir / "manifest.jsonl"
         self.session = make_session()
+        self.runlog = RunLog(out_dir)
 
     def load_documents(self) -> dict[str, dict]:
         """The document outcomes each stored key already carries.
@@ -421,8 +423,17 @@ class BillsProbe:
         return (self.out_dir / "documents" / record["house"] / str(year)
                 / f"{number}_{stem}.pdf")
 
-    def download_documents(self, record: dict) -> dict:
-        """Fetch every document URL this bill carries. Returns the counts.
+    def _settled(self, prior: dict, *, retry_failed: bool) -> bool:
+        """Whether a stored outcome answers for this URL without a request."""
+        status = prior.get("status")
+        if status == "ok":
+            path = prior.get("path")
+            return bool(path) and (self.out_dir / path).exists()
+        return status == "failed" and not retry_failed
+
+    def download_documents(self, record: dict, held: dict | None = None, *,
+                           retry_failed: bool = False) -> dict:
+        """Fetch the document URLs this bill carries. Returns the counts.
 
         Each field gets its own outcome under ``record["documents"]``, because
         a URL that 404s and a URL nobody attempted are different facts and a
@@ -432,12 +443,31 @@ class BillsProbe:
         house over one unreadable date, and 0.15.1 fixed that; the same rule
         holds here. The record keeps its name, its ministry, its dates and its
         other seven documents, and ``fetch_status`` stays ``ok``.
+
+        **A recorded outcome is not re-requested.** ``held`` is this key's
+        stored ``documents`` dict. A URL already marked ``failed`` costs the
+        full retry budget on every later run and produces the same failure:
+        29 URLs on one live corpus name a host that answers on no port, and
+        the three connect attempts take 135 seconds each. 134 minutes of
+        resume across two runs wrote 14 documents. Pass ``retry_failed`` to
+        re-request exactly the failed set.
+
+        A recorded ``ok`` whose file is gone IS re-requested. The stored
+        outcome describes a file, so it stops being evidence when the file
+        stops existing, and no flag should be needed to repair a corpus
+        somebody pruned.
         """
-        stats = {"fetched": 0, "failed": 0, "present": 0}
+        held = held or {}
+        stats = {"fetched": 0, "failed": 0, "present": 0, "skipped": 0}
         documents: dict[str, dict] = {}
         for field in DOCUMENT_FIELDS:
             url = (record.get(field) or "").strip()
             if not url:
+                continue
+            prior = held.get(field) or {}
+            if prior.get("url") == url and self._settled(prior, retry_failed=retry_failed):
+                documents[field] = prior
+                stats["skipped"] += 1
                 continue
             dest = self._document_path(record, field)
             already = dest.exists() and dest.stat().st_size > 1000
@@ -458,7 +488,7 @@ class BillsProbe:
         return stats
 
     def probe(self, *, max_records: int | None = None, dry_run: bool = False,
-              download: bool = False) -> list[dict]:
+              download: bool = False, retry_failed: bool = False) -> list[dict]:
         seen = self.load_seen()
         held = self.load_documents() if download else {}
         out: list[dict] = []
@@ -467,6 +497,16 @@ class BillsProbe:
                 out.append(self._status_record(house, fetch_status="dry_run"))
                 continue
             added = 0
+            docs = {"fetched": 0, "failed": 0, "present": 0, "skipped": 0}
+            self.runlog.start(
+                kind="bills",
+                scope={"house": house, "bill_type": self.bill_type,
+                       "download": download, "retry_failed": retry_failed,
+                       "max_records": max_records},
+                topic_name=f"bills/{house}",
+                topic_path=None,
+            )
+            error: Exception | None = None
             try:
                 for raw in self.bills_all(house):
                     rec = self._record(raw, house)
@@ -475,7 +515,10 @@ class BillsProbe:
                     if unchanged and not download:
                         continue
                     if download:
-                        self.download_documents(rec)
+                        stats = self.download_documents(
+                            rec, held.get(rec["key"], {}), retry_failed=retry_failed)
+                        for field, count in stats.items():
+                            docs[field] += count
                         # The row is rewritten only when the documents moved.
                         # An unchanged catalogue row with the same outcomes has
                         # nothing new to record, and re-appending 9,929 of them
@@ -489,9 +532,26 @@ class BillsProbe:
                     if max_records is not None and added >= max_records:
                         break
             except Exception as exc:  # noqa: BLE001
+                error = exc
                 rec = self._status_record(house, fetch_status="fetch_error", error=str(exc))
                 self.append_manifest(rec)
                 out.append(rec)
+                self.runlog.record_error(where=house, exc=exc)
+            # One bucket per house, so `_derive_status` reads a raised walk as
+            # `failed` and the command exits non-zero. The document counts ride
+            # on it because a resume that skips every URL and a resume that
+            # fetched nothing look identical from outside: no file appears and
+            # the manifest does not grow either way. One live run spent 95
+            # minutes in that state before anybody could tell which it was.
+            self.runlog.record_bucket(
+                house=house, added=added,
+                documents_fetched=docs["fetched"],
+                documents_present=docs["present"],
+                documents_failed=docs["failed"],
+                documents_skipped=docs["skipped"],
+                error=f"{type(error).__name__}: {error}" if error else None,
+            )
+            self.runlog.finish(added=added)
             if self.sleep:
                 time.sleep(self.sleep)
         if not dry_run:
