@@ -60,7 +60,7 @@ import urllib.error
 import urllib.request
 import urllib.robotparser
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 from urllib.parse import urlencode, urlparse
 
 from .url_safety import is_safe_url
@@ -201,6 +201,28 @@ except ModuleNotFoundError:
     requests = None  # type: ignore[assignment]
 
 
+class _CaseInsensitiveHeaders(dict):
+    """A header map that reads by any casing, as ``requests`` does.
+
+    HTTP header names are case-insensitive and servers differ, so a caller
+    that reads ``Content-Type`` must not depend on the server having sent that
+    exact spelling.
+    """
+
+    def __init__(self, source: Mapping[str, str]) -> None:
+        super().__init__(source)
+        self._lower = {k.lower(): v for k, v in source.items()}
+
+    def get(self, key, default=None):  # type: ignore[override]
+        return self._lower.get(key.lower(), default)
+
+    def __getitem__(self, key):
+        return self._lower[key.lower()]
+
+    def __contains__(self, key) -> bool:
+        return isinstance(key, str) and key.lower() in self._lower
+
+
 class StdlibResponse:
     """Zero-dependency stand-in for ``requests.Response``.
 
@@ -210,13 +232,23 @@ class StdlibResponse:
     PDF adapters (ddg, doe, dspace, debates) read ``r.content`` for binary
     downloads — without it the stdlib fallback crashed with AttributeError
     on every document fetch (Codex review, PR #41).
+
+    ``headers`` is part of it for the same reason. A portal announces what it
+    is actually serving in ``Content-Type``, and one endpoint answers a
+    request for a PDF with JSON. A caller reading that header worked with the
+    extra installed and raised ``AttributeError`` without it, which is the
+    difference the fallback exists to remove. The map is case-insensitive,
+    because ``requests`` reads ``Content-Type`` and a server may send
+    ``content-type``.
     """
 
-    def __init__(self, url: str, status_code: int, body: bytes) -> None:
+    def __init__(self, url: str, status_code: int, body: bytes,
+                 headers: Mapping[str, str] | None = None) -> None:
         self.url = url
         self.status_code = status_code
         self._body = body
         self.text = body.decode("utf-8", errors="replace")
+        self.headers = _CaseInsensitiveHeaders(headers or {})
 
     @property
     def content(self) -> bytes:
@@ -429,9 +461,14 @@ class StdlibSession:
                     raise ResponseTooLarge(
                         f"{url} exceeds the {MAX_RESPONSE_BYTES} byte ceiling"
                     )
-                return StdlibResponse(url, resp.status, body)
+                # `getattr`, because the header map is the one part of the
+                # urlopen contract a stand-in commonly omits, and a missing
+                # header map must not turn a good response into a crash.
+                return StdlibResponse(url, resp.status, body,
+                                      dict(getattr(resp, "headers", None) or {}))
         except urllib.error.HTTPError as exc:
-            return StdlibResponse(url, exc.code, exc.read())
+            return StdlibResponse(url, exc.code, exc.read(),
+                                  dict(getattr(exc, "headers", None) or {}))
 
     @staticmethod
     def _redirect_handler() -> urllib.request.HTTPRedirectHandler:

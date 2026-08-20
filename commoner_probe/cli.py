@@ -39,6 +39,7 @@ from .pay_report_index import DoePayAllowancesProbe
 from .question_list_api import QuestionsListProbe
 from .rest_dataset_api import MospiClient, MospiProbe
 from .site_mirror import SiteMirror, verify_manifest
+from .spa_jwt_api import UdiseDocumentProbe
 from .stats import compute_stats, print_stats
 from .statute_dspace import STATE_HANDLES, IndiaCodeProbe
 from .topics import load_topic
@@ -1223,6 +1224,22 @@ def budget_cmd(args: argparse.Namespace) -> None:
         print(json.dumps(record, ensure_ascii=False))
 
 
+def udise_docs_cmd(args: argparse.Namespace) -> None:
+    out = Path(args.out)
+    probe = UdiseDocumentProbe(out, sleep=args.sleep, log=print)
+    records = probe.probe(
+        folders=_split_csv(args.folders),
+        dry_run=args.dry_run,
+        max_records=args.max_records,
+    )
+    for record in records:
+        print(json.dumps(record, ensure_ascii=False))
+    failed = [r for r in records if r["fetch_status"] in ("error", "not_pdf")]
+    if failed:
+        raise SystemExit(
+            f"{len(failed)} of {len(records)} document(s) did not return a PDF — "
+            f"see fetch_status in {probe.manifest}"
+        )
 def mirror_cmd(args: argparse.Namespace) -> None:
     out = Path(args.out)
     if args.verify:
@@ -2369,6 +2386,49 @@ def build_parser() -> argparse.ArgumentParser:
     )
     budget.set_defaults(func=budget_cmd)
 
+    udise_docs = sub.add_parser(
+        "udise-docs",
+        help="UDISE+ public documents: Data Capture Formats, annual reports, metadata.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=(
+            "Acquire the documents the UDISE+ portal serves without an account:\n"
+            "the Data Capture Format for each year from DISE 2009-10 to UDISE+\n"
+            "2026-27, the annual report booklets, the metadata dictionaries and\n"
+            "the departmental letters. 86 documents.\n\n"
+            "These say what the microdata MEANS. A figure from the Data Sharing\n"
+            "Portal is uninterpretable without the form its enumerator filled in."
+        ),
+        epilog=(
+            "Examples:\n"
+            "  # 1. Everything\n"
+            "  commoner-probe udise-docs --out data/udise-docs\n\n"
+            "  # 2. Only the annual reports and letters\n"
+            "  commoner-probe udise-docs --out data/udise-docs --folders dcf2021\n\n"
+            "  # 3. What a run would fetch, without fetching\n"
+            "  commoner-probe udise-docs --out data/udise-docs --dry-run\n\n"
+            "Two traps this handles, both verified live:\n"
+            "  - the endpoint answers a .pdf request with a JSON envelope\n"
+            "    holding base64, under Content-Type: application/json\n"
+            "  - a name that has left the Angular bundle answers 200 with a body\n"
+            "    that is not a PDF, so the status code alone cannot detect it\n"
+        ),
+    )
+    udise_docs.add_argument("--out", required=True, help="Output corpus directory")
+    udise_docs.add_argument(
+        "--folders",
+        help="Comma-separated endpoint folders: UploadedFiles, dcf2021, pdfFiles. "
+             "Default: all three.",
+    )
+    udise_docs.add_argument(
+        "--max-records", type=int,
+        help="Stop after N documents (smoke-test brake).",
+    )
+    udise_docs.add_argument("--sleep", type=float, default=1.0)
+    udise_docs.add_argument(
+        "--dry-run", action="store_true",
+        help="Emit one planning record per document without fetching.",
+    )
+    udise_docs.set_defaults(func=udise_docs_cmd)
     mirror = sub.add_parser(
         "mirror",
         help="Mirror one host to disk with a sha256 manifest and a page index.",
