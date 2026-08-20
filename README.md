@@ -213,6 +213,12 @@ commoner-probe bills \
   --bill-type "Private Member"
 ```
 
+`--download` also fetches each bill's documents: the as-introduced text, the
+passed versions, the gazette, the synopsis, the committee report and the
+errata. It is off by default, because a full catalogue carries about 10,500
+files and 5 GB. A resume makes no request for a URL whose outcome the manifest
+already records. Use `--retry-failed` to ask again for the failed set.
+
 ### State assembly records (NeVA portals)
 
 From 2020, sub-national governments have been adopting NIC's NeVA (National
@@ -322,11 +328,43 @@ commoner-probe academic-jobs \
   --institutions iit-kharagpur,iit-bombay
 ```
 
+### UDISE+ school-census documents
+
+`udise-docs` acquires the 86 documents the UDISE+ portal serves without an
+account: the Data Capture Format for each year from DISE 2009-10 to UDISE+
+2026-27, the annual report booklets, the metadata dictionaries and the
+departmental letters.
+
+```bash
+commoner-probe udise-docs --out data/udise-docs
+```
+
+The endpoint answers a request for a `.pdf` with a JSON envelope holding
+base64, and a name that has left the portal's bundle answers 200 with a body
+that is not a PDF. The probe unwraps the first and records the second as
+`not_pdf` rather than saving it.
+### Mirroring one site
+
+`mirror` walks one host and saves every page and document it serves. Use it
+when the source is one author's body of work rather than an API.
+
+```bash
+commoner-probe mirror https://example.gov.in \
+  --out data/example \
+  --deadline 1800
+```
+
+It writes three artefacts and keeps all three current as the walk runs:
+`manifest.jsonl` with a sha256 per file, `MANIFEST.txt` in the staging-manifest
+format, and `INDEX.md` naming every page. A killed run therefore leaves a
+mirror somebody can read. A resume costs no request for a file the manifest
+vouches for, and `--verify` re-hashes every file the manifest names.
+
 ---
 
 ## Commands
 
-40 subcommands across parliament, courts, budgets, census, state registers and archives.
+42 subcommands across parliament, courts, budgets, census, state registers and archives.
 `commoner-probe --help` lists them; **[docs/CLI.md](docs/CLI.md)** documents
 each one with a worked example.
 

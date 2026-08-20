@@ -113,6 +113,38 @@ The library's HTTP client addresses each of these: per-domain rate limiting, exp
 
 ---
 
+## Acquisitions that outlive one process
+
+Some acquisitions do not finish in one run. A payroll harvest measured here
+needed 231,038 requests per financial year — 115,519 centres times two roles —
+and nine years needed 2,079,342.
+
+Those runs meet three problems that have nothing to do with the portal. The
+registry is too big to hold once per process: the runner loaded all 115,519
+records in every process, two workers each held about 211 MiB RSS, and a
+four-process probe was killed by the kernel at 190,328 KiB. **The probe
+recorded zero throttle errors — the portal was not the constraint.** The run
+gets interrupted. And a half-written output file looks exactly like a
+finished one.
+
+`commoner_probe.supervisor` answers all three. It loads the registry once and
+runs several stateful sessions as threads in one process. It leases each task
+in SQLite under a unique owner, so an interrupted task is resumable and a retry
+produces no duplicate final rows. It streams each task into a `.part` file and
+publishes it only after a fenced lease check and one atomic rename.
+
+**Progress comes from the ledger and the finalized files, never from listing
+the output directory.** An active file is not completion evidence.
+
+The supervisor knows nothing about any portal. An adapter receives one task and
+one paced session and yields records; it owns its field mapping and aborts when
+the source header changes. It also reports its own request, retry,
+response-time and throttle counters, because a worker exit is not a throttle
+signal — a worker exits for many reasons, and backing off on an exit means
+backing off against a bug.
+
+---
+
 ## What the library is not
 
 `commoner-probe` is Layer 0: acquisition. It does not:

@@ -307,8 +307,15 @@ Produced by `commoner_probe/runlog.py`.
 | `after_date_filter` | integer | Records after date-range filter |
 | `kept` | integer | Records written to manifest |
 | `skipped_seen` | integer | Records skipped as already in manifest |
+| `qno_status` | object | This bucket's answer-number verdicts: `{"verified": n, "mismatch": n, "unreadable": n}`. Every status appears, including the zeros |
+| `qno_mismatches` | integer | The mismatch count. The older spelling, kept for the consumers reading it |
 | `elapsed_ms` | number | Bucket wall-clock ms |
 | `error` | string\|null | Exception string if bucket failed |
+
+`qno_status` answers a question `qno_mismatches` cannot. A mismatch count of
+zero describes a clean slice. It also describes a slice the guard could not
+read at all. One run returned 25 of 25 `unreadable` on a layout the guard does
+not support, and the mismatch count was 0 throughout.
 
 **Conventional keys in `bucket_attempts[]` for committee crawls**:
 

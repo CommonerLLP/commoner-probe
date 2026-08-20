@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CommonerLLP/commoner-probe/schemas/v1/manifest_udise_document.json",
+  "title": "manifest.jsonl — UDISE+ public document record",
+  "description": "One document from the UDISE+ public file endpoint: a Data Capture Format, an annual report booklet, a metadata dictionary or a departmental letter.",
+  "type": "object",
+  "required": [
+    "key",
+    "kind",
+    "record_type",
+    "source",
+    "folder",
+    "name",
+    "url",
+    "fetch_status",
+    "probed_at"
+  ],
+  "properties": {
+    "key": { "type": "string", "pattern": "^UDISEDOC\\|[^|]+\\|.+$" },
+    "kind": { "type": "string", "const": "udise_document" },
+    "record_type": { "type": "string", "const": "udise_document" },
+    "source": { "type": "string" },
+    "folder": { "type": "string", "description": "The endpoint folder segment, from the Angular bundle" },
+    "name": { "type": "string", "description": "The document stem, from the Angular bundle" },
+    "url": { "type": "string" },
+    "fetch_status": {
+      "type": "string",
+      "enum": ["ok", "not_pdf", "error", "dry_run"],
+      "description": "'not_pdf' is its own outcome because a name that has left the bundle answers 200 with a body that is not a PDF. A status code alone cannot tell that from a success."
+    },
+    "http_status": { "type": ["integer", "null"] },
+    "path": { "type": ["string", "null"], "description": "Relative to the output directory; null unless fetch_status is ok" },
+    "bytes": { "type": ["integer", "null"], "minimum": 0 },
+    "sha256": { "type": ["string", "null"], "pattern": "^[0-9a-f]{64}$" },
+    "error": { "type": ["string", "null"] },
+    "probed_at": { "type": "string" }
+  }
+}
