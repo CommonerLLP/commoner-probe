@@ -817,6 +817,24 @@ commoner-probe bills \
 | `--bill-type` | all types | Filter by bill type, e.g. `Government` or `Private Member` |
 | `--max-records` | — | Stop after N new records per house (smoke-test brake) |
 | `--dry-run` | off | Emit one planning record per house without fetching |
+| `--download` | off | Also fetch each bill's documents |
+| `--retry-failed` | off | Re-request the documents the manifest records as failed |
+
+**`--download` is off by default.** A full catalogue carries about 10,500 files
+and 5 GB. Each of a bill's eight document fields gets its own outcome under a
+`documents` key, because a URL that 404s and a URL nobody attempted are
+different facts. A failed document never fails the bill.
+
+**A resume makes no request for a URL whose outcome the manifest already
+holds.** Without that rule a resume never reaches new work: 29 URLs in one live
+corpus name a host that answers on no port, each costs about three minutes of
+retry budget, and 134 minutes of resume across two runs wrote 14 documents.
+`--retry-failed` re-requests the failed set and nothing else.
+
+`bills` writes `_runs.jsonl` with one bucket per House. A House whose walk
+raises makes the command exit non-zero. Each bucket records how many URLs it
+fetched, held, failed and skipped, so a quiet run and a stalled one are
+distinguishable.
 
 ### `commoner-probe debates` — Lok Sabha floor-debate transcripts
 
