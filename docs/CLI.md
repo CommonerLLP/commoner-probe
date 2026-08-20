@@ -556,6 +556,42 @@ content. So the check counts visible text after script/style removal, and
 `--require-text` — a string you know the real page contains — is the strong
 form of it.
 
+### `commoner-probe mirror` — mirror one host to disk
+
+```bash
+commoner-probe mirror https://example.gov.in \
+  --out data/example \
+  --deadline 1800
+```
+
+| Flag | Default | What it does |
+|---|---|---|
+| `url` | required unless `--verify` | Any URL on the host to mirror |
+| `--out` | required | Output directory |
+| `--deadline` | — | Stop after N seconds |
+| `--max-pages` | — | Stop after N fetches (smoke-test brake) |
+| `--sleep` | `2.0` | Seconds between requests to the host |
+| `--verify` | off | Re-hash every file the manifest names; exits non-zero on any disagreement |
+
+Use it when the source is one author's body of work rather than an API. It
+reads server-rendered HTML. A site that needs a browser is `render`.
+
+**Three artefacts, and all three are current at every moment.**
+`manifest.jsonl` carries one `mirrored_file` row per file with its sha256 and
+its source URL. `MANIFEST.txt` carries the same facts as
+`sha256  path  bytes  url`. `INDEX.md` names each page with its title and its
+first 120 characters. The crawler this replaces wrote the last two after the
+walk finished, so a run killed at its deadline left 540 saved pages with
+neither.
+
+**A resume costs no request for a file the manifest vouches for**, and it
+still reaches what the first run never got to: a held page is re-read from
+disk for the links it names, so the frontier rebuilds. A row stops vouching
+when its file is gone.
+
+`UNFETCHED.txt` lists what was still queued. `FAILURES.txt` lists every URL
+that did not save, with its status.
+
 ### `commoner-probe doe-pay-allowances` — DoE Pay & Allowances annual reports
 
 ```bash
