@@ -98,6 +98,7 @@ class CliCommandSyncTests(unittest.TestCase):
                 "academic-jobs",
                 "debates",
                 "bills",
+                "udise-docs",
                 "indiacode",
                 "atr-linkage",
                 "evidence",

@@ -322,11 +322,27 @@ commoner-probe academic-jobs \
   --institutions iit-kharagpur,iit-bombay
 ```
 
+### UDISE+ school-census documents
+
+`udise-docs` acquires the 86 documents the UDISE+ portal serves without an
+account: the Data Capture Format for each year from DISE 2009-10 to UDISE+
+2026-27, the annual report booklets, the metadata dictionaries and the
+departmental letters.
+
+```bash
+commoner-probe udise-docs --out data/udise-docs
+```
+
+The endpoint answers a request for a `.pdf` with a JSON envelope holding
+base64, and a name that has left the portal's bundle answers 200 with a body
+that is not a PDF. The probe unwraps the first and records the second as
+`not_pdf` rather than saving it.
+
 ---
 
 ## Commands
 
-40 subcommands across parliament, courts, budgets, census, state registers and archives.
+41 subcommands across parliament, courts, budgets, census, state registers and archives.
 `commoner-probe --help` lists them; **[docs/CLI.md](docs/CLI.md)** documents
 each one with a worked example.
 

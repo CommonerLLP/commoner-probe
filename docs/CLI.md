@@ -556,6 +556,43 @@ content. So the check counts visible text after script/style removal, and
 `--require-text` — a string you know the real page contains — is the strong
 form of it.
 
+### `commoner-probe udise-docs` — UDISE+ public documents
+
+```bash
+commoner-probe udise-docs --out data/udise-docs
+```
+
+| Flag | Default | What it does |
+|---|---|---|
+| `--out` | required | Output corpus directory |
+| `--folders` | all three | Comma-separated: `UploadedFiles`, `dcf2021`, `pdfFiles` |
+| `--max-records` | — | Stop after N documents (smoke-test brake) |
+| `--sleep` | `1.0` | Seconds between requests |
+| `--dry-run` | off | Emit one planning record per document without fetching |
+
+86 documents, no account needed: the Data Capture Format for each year from
+DISE 2009-10 to UDISE+ 2026-27, the annual report booklets, the metadata
+dictionaries and the departmental letters. These say what the microdata
+MEANS — a figure from the Data Sharing Portal is uninterpretable without the
+form its enumerator filled in.
+
+**Two traps, both verified live on 2026-08-20.**
+
+The endpoint answers a request for a `.pdf` with JSON. The body is
+`{"pdf": "<base64>"}`, the Content-Type is `application/json`, and the
+Content-Disposition claims `filename=f.txt`. A caller that writes the response
+straight to disk writes a JSON file under a `.pdf` name.
+
+A name that has left the Angular bundle answers 200 with a body that is not a
+PDF. The status code cannot detect it, so the check is on the magic bytes and
+the outcome has its own value, `not_pdf`. The command exits non-zero when any
+document returns one.
+
+**The catalogue is pinned, not discovered.** There is no listing endpoint. The
+names are `dcfDownload(folder, name)` calls inside the compiled bundle.
+`spa_jwt_api.extract_document_pairs()` re-derives them from a bundle you
+fetched, for when the build hash changes.
+
 ### `commoner-probe doe-pay-allowances` — DoE Pay & Allowances annual reports
 
 ```bash
