@@ -178,3 +178,47 @@ def test_a_reply_citing_the_question_it_follows_up_keeps_its_own_number():
 
     own = "ANSWER TO LOK SABHA UNSTARRED QUESTION NO. 2549"
     assert check_question_number("2549", own) == ("2549", VERIFIED)
+
+
+def test_a_number_run_into_a_full_date_still_reads():
+    """Review finding, PR #147. OCR eats the space between the number and the
+    date: `QUESTION NO. 2549/04/08/2026`. The date-tail guard consumed only
+    `/04/08` of the three components, so it discarded a genuine number and the
+    record returned `unreadable`.
+
+    The distinction is arithmetic. A date component followed by the REST of a
+    date is two separators. A number followed by a WHOLE date is three.
+    """
+    from commoner_probe.qno_guard import VERIFIED, check_question_number
+
+    assert check_question_number(
+        "2549", "LOK SABHA UNSTARRED QUESTION NO. 2549/04/08/2026"
+    ) == ("2549", VERIFIED)
+
+
+def test_a_header_after_a_citation_on_the_earlier_line_keeps_its_number():
+    """Review finding, PR #147. The citation window runs 200 characters back
+    and stops only at a period. Extracted PDF text prints its boilerplate on
+    its own lines with no period, so a reply that cites another question and
+    then prints its own header had the header suppressed by the citation.
+
+    A header OPENS its line. That is the same test the annexure exception
+    already uses.
+    """
+    from commoner_probe.qno_guard import VERIFIED, check_question_number
+
+    text = ("with reference to the answer to Unstarred Question 233\n"
+            "ANSWER TO LOK SABHA UNSTARRED QUESTION NO. 2549")
+    assert check_question_number("2549", text) == ("2549", VERIFIED)
+
+
+def test_a_citation_that_merely_starts_with_answer_to_still_points_away():
+    """The guard against the fix above. A line may open with `Answer to` and
+    still cite somebody else. Only the header shape — `answer to`, then the
+    house and type words, then the number — names the document itself.
+    """
+    from commoner_probe.qno_guard import UNREADABLE, check_question_number
+
+    text = ("Answer to the above matter was given in reply to Unstarred "
+            "Question No. 3038")
+    assert check_question_number("1175", text) == (None, UNREADABLE)

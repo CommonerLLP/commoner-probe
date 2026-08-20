@@ -18,6 +18,7 @@ import os
 import re
 import socket
 import time
+from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -29,7 +30,7 @@ from urllib.parse import urlencode
 
 from .base import BaseProbe, _private_tmp_path, now, safe_filename_segment
 from .http_client import iter_capped
-from .qno_guard import MISMATCH, UNREADABLE, check_question_number
+from .qno_guard import MISMATCH, UNREADABLE, VERIFIED, check_question_number
 from .textparse import PdfTextUnavailable, extract_pdf_text
 from .topics import TopicProfile
 
@@ -267,6 +268,14 @@ class SansadProbe(BaseProbe):
         #: one requested. Reported in the run log so a consumer reads the rate
         #: off the run rather than inferring it.
         self.qno_mismatches = 0
+        #: Every guard verdict, by status. The mismatch count alone cannot say
+        #: whether a slice was READ at all: one consumer run returned 25 of 25
+        #: `unreadable` on a layout the guard does not support, and zero
+        #: mismatches described that run exactly as it describes a clean one.
+        self.qno_status_counts: Counter[str] = Counter()
+        #: The counts as of the last bucket recorded, so each bucket reports
+        #: its own verdicts rather than the run's running total.
+        self._qno_status_mark: Counter[str] = Counter()
         if self.member_name:
             self.log(
                 "WARNING: --member uses name-prefix matching, which is identity-UNSAFE "
@@ -481,11 +490,13 @@ class SansadProbe(BaseProbe):
                 # about the document's number, so neither may read as a
                 # verdict on it.
                 rec["document_qno"], rec["document_qno_status"] = None, UNREADABLE
+                self.qno_status_counts[UNREADABLE] += 1
                 return
         else:
             text = rec.get("answer_text") or ""
         printed, status = check_question_number(rec.get("qno"), text)
         rec["document_qno"], rec["document_qno_status"] = printed, status
+        self.qno_status_counts[status] += 1
         if status == MISMATCH:
             self.qno_mismatches += 1
             self.log(
@@ -493,6 +504,22 @@ class SansadProbe(BaseProbe):
                 f"and its answer prints QUESTION NO. {printed}. The document is KEPT "
                 "and flagged; re-fetching cannot repair a source-side swap."
             )
+
+    def _record_bucket(self, **fields) -> None:
+        """`RunLog.record_bucket` plus this bucket's guard verdicts by status.
+
+        Every QA bucket goes through here, so no crawl path can ship without
+        the counts. Adding the delta at each call site instead put it on one
+        path of five, and the reported case ran on a different one.
+
+        `qno_status` is one field holding three numbers rather than three
+        fields. `qno_mismatches` already means the mismatch count and keeps
+        that meaning for the consumers reading it.
+        """
+        delta = {status: self.qno_status_counts[status] - self._qno_status_mark[status]
+                 for status in (VERIFIED, MISMATCH, UNREADABLE)}
+        self._qno_status_mark = Counter(self.qno_status_counts)
+        self.runlog.record_bucket(qno_status=delta, **fields)
 
     def _ls_attach_pdf(self, rec: dict) -> None:
         pdf_url = self.ls_pdf_url(rec["uuid"])
@@ -646,7 +673,7 @@ class SansadProbe(BaseProbe):
                         added += 1
                         bkt_kept += 1
                         if max_records is not None and added >= max_records:
-                            self.runlog.record_bucket(
+                            self._record_bucket(
                                 kind="ls_qa", group=group, query=query, ministry=ministry,
                                 raw_returned=bkt_raw, after_date_filter=bkt_after_date,
                                 no_match=bkt_no_match, kept=bkt_kept, skipped_seen=bkt_skipped_seen,
@@ -661,7 +688,7 @@ class SansadProbe(BaseProbe):
                     self.log(f"LS failed query={query!r} ministry={ministry}: {exc}")
                     self.runlog.record_error(where=f"ls/{ministry}/{query}", exc=exc)
                 finally:
-                    self.runlog.record_bucket(
+                    self._record_bucket(
                         kind="ls_qa", group=group, query=query, ministry=ministry,
                         raw_returned=bkt_raw, after_date_filter=bkt_after_date,
                         no_match=bkt_no_match, kept=bkt_kept, skipped_seen=bkt_skipped_seen,
@@ -750,7 +777,7 @@ class SansadProbe(BaseProbe):
                     bkt_error = f"{type(exc).__name__}: {exc}"
                     self.log(f"RS failed session={ses_no} ministry={ministry}: {exc}")
                     self.runlog.record_error(where=f"rs/{ses_no}/{ministry}", exc=exc)
-                    self.runlog.record_bucket(
+                    self._record_bucket(
                         kind="rs_qa", session=ses_no, ministry=ministry,
                         raw_returned=0, after_date_filter=0, no_match=0,
                         kept=0, skipped_seen=0,  # exception path: counters not yet populated
@@ -801,7 +828,7 @@ class SansadProbe(BaseProbe):
                     kept_for_bucket += 1
                     bkt_kept += 1
                     if max_records is not None and added >= max_records:
-                        self.runlog.record_bucket(
+                        self._record_bucket(
                             kind="rs_qa", session=ses_no, ministry=ministry,
                             raw_returned=bkt_raw, after_date_filter=bkt_after_date,
                             no_match=bkt_no_match, kept=bkt_kept,
@@ -814,7 +841,7 @@ class SansadProbe(BaseProbe):
                     if limit is not None and kept_for_bucket >= limit:
                         break
                     time.sleep(self.sleep)
-                self.runlog.record_bucket(
+                self._record_bucket(
                     kind="rs_qa", session=ses_no, ministry=ministry,
                     raw_returned=bkt_raw, after_date_filter=bkt_after_date,
                     no_match=bkt_no_match, kept=bkt_kept,
@@ -1473,7 +1500,7 @@ class SansadProbe(BaseProbe):
                     added += 1
                     bkt_kept += 1
                     if max_records is not None and added >= max_records:
-                        self.runlog.record_bucket(
+                        self._record_bucket(
                             kind="ls_qa_all", window=window_id, from_date=w_from, to_date=w_to,
                             raw_returned=bkt_raw, after_date_filter=bkt_after_date,
                             kept=bkt_kept, skipped_seen=bkt_skipped_seen,
@@ -1487,7 +1514,7 @@ class SansadProbe(BaseProbe):
                 bkt_error = f"{type(exc).__name__}: {exc}"
                 self.log(f"LS window {window_id} failed: {exc}")
                 self.runlog.record_error(where=f"ls/{window_id}", exc=exc)
-            self.runlog.record_bucket(
+            self._record_bucket(
                 kind="ls_qa_all", window=window_id, from_date=w_from, to_date=w_to,
                 raw_returned=bkt_raw, after_date_filter=bkt_after_date,
                 kept=bkt_kept, skipped_seen=bkt_skipped_seen,
@@ -1583,7 +1610,7 @@ class SansadProbe(BaseProbe):
                     added += 1
                     bkt_kept += 1
                     if max_records is not None and added >= max_records:
-                        self.runlog.record_bucket(
+                        self._record_bucket(
                             kind="rs_qa_all", window=window_id, session=ses_no,
                             raw_returned=bkt_raw, after_date_filter=bkt_after_date,
                             kept=bkt_kept, skipped_seen=bkt_skipped_seen,
@@ -1597,7 +1624,7 @@ class SansadProbe(BaseProbe):
                 bkt_error = f"{type(exc).__name__}: {exc}"
                 self.log(f"RS window {window_id} failed: {exc}")
                 self.runlog.record_error(where=f"rs/{window_id}", exc=exc)
-            self.runlog.record_bucket(
+            self._record_bucket(
                 kind="rs_qa_all", window=window_id, session=ses_no,
                 raw_returned=bkt_raw, after_date_filter=bkt_after_date,
                 kept=bkt_kept, skipped_seen=bkt_skipped_seen,
@@ -1754,7 +1781,7 @@ class SansadProbe(BaseProbe):
                     added += 1
                     bkt_kept += 1
                     if max_records is not None and added >= max_records:
-                        self.runlog.record_bucket(
+                        self._record_bucket(
                             kind="ls_qa_sessions", window=window_id, session=ses_no,
                             raw_returned=bkt_raw, after_date_filter=bkt_after_date,
                             kept=bkt_kept, skipped_seen=bkt_skipped_seen,
@@ -1805,7 +1832,7 @@ class SansadProbe(BaseProbe):
                     f"WARNING: LS window {window_id}: {bkt_drifted} row(s) carried a different "
                     "sessionNo — skipped (endpoint session drift; the session may not exist)."
                 )
-            self.runlog.record_bucket(
+            self._record_bucket(
                 kind="ls_qa_sessions", window=window_id, session=ses_no,
                 raw_returned=bkt_raw, after_date_filter=bkt_after_date,
                 kept=bkt_kept, skipped_seen=bkt_skipped_seen,
