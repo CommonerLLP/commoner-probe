@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CommonerLLP/commoner-probe/schemas/v1/manifest_mirrored_file.json",
+  "title": "manifest.jsonl — mirrored file record",
+  "description": "One file saved by a site mirror, with its sha256 and its source URL.",
+  "type": "object",
+  "required": [
+    "key",
+    "kind",
+    "record_type",
+    "source",
+    "url",
+    "path",
+    "bytes",
+    "sha256",
+    "fetched_at"
+  ],
+  "properties": {
+    "key": { "type": "string", "pattern": "^MIRROR\\|[^|]+\\|.+$" },
+    "kind": { "type": "string", "const": "mirrored_file" },
+    "record_type": { "type": "string", "const": "mirrored_file" },
+    "source": { "type": "string", "description": "The host that was mirrored" },
+    "url": { "type": "string" },
+    "path": { "type": "string", "description": "Relative to the output directory" },
+    "bytes": { "type": "integer", "minimum": 0 },
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "content_type": { "type": ["string", "null"] },
+    "title": {
+      "type": ["string", "null"],
+      "description": "HTML pages only. Null on a document, an image or a sitemap, which is how a reader tells a page from a file without reading it"
+    },
+    "excerpt": { "type": ["string", "null"], "description": "First 120 characters of page text" },
+    "fetched_at": { "type": "string" }
+  }
+}

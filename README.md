@@ -328,11 +328,28 @@ commoner-probe academic-jobs \
   --institutions iit-kharagpur,iit-bombay
 ```
 
+### Mirroring one site
+
+`mirror` walks one host and saves every page and document it serves. Use it
+when the source is one author's body of work rather than an API.
+
+```bash
+commoner-probe mirror https://example.gov.in \
+  --out data/example \
+  --deadline 1800
+```
+
+It writes three artefacts and keeps all three current as the walk runs:
+`manifest.jsonl` with a sha256 per file, `MANIFEST.txt` in the staging-manifest
+format, and `INDEX.md` naming every page. A killed run therefore leaves a
+mirror somebody can read. A resume costs no request for a file the manifest
+vouches for, and `--verify` re-hashes every file the manifest names.
+
 ---
 
 ## Commands
 
-40 subcommands across parliament, courts, budgets, census, state registers and archives.
+41 subcommands across parliament, courts, budgets, census, state registers and archives.
 `commoner-probe --help` lists them; **[docs/CLI.md](docs/CLI.md)** documents
 each one with a worked example.
 
