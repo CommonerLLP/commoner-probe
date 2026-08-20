@@ -99,6 +99,7 @@ class CliCommandSyncTests(unittest.TestCase):
                 "debates",
                 "bills",
                 "udise-docs",
+                "mirror",
                 "indiacode",
                 "atr-linkage",
                 "evidence",

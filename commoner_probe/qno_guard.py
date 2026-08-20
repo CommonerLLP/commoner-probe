@@ -93,8 +93,21 @@ _BARE_REPLY_CITATION = re.compile(
 #: its segment, after the text start, a markup tag, a sentence end or a
 #: newline. Extracted PDF text prints its boilerplate on its own lines with no
 #: period before the header.
+#:
+#: An answer header names its own document the same way, and it needs the
+#: exception for the same reason. The citation window runs 200 characters back
+#: and stops only at a period, and extracted PDF text prints its boilerplate on
+#: periodless lines, so "…to the answer to Unstarred Question 233\nANSWER TO
+#: LOK SABHA UNSTARRED QUESTION NO. 2549" let the citation suppress the header
+#: below it.
+#:
+#: The answer branch is TIGHT on purpose: the header word, then only the house
+#: and type words, then the number. A line may open with "Answer to" and still
+#: cite somebody else — "Answer to the above matter was given in reply to
+#: Unstarred Question No. 3038" — and that line must keep pointing away.
 _SELF_NAMING = re.compile(
-    r"(?:^|[>.\n\r]\s*)(?:statement|annexure|annex|appendix)\b[^.]{0,200}$",
+    r"(?:^|[>.\n\r]\s*)(?:statement|annexure|annex|appendix)\b[^.]{0,200}$"
+    rf"|(?:^|[>.\n\r]\s*)answers?\s+to\s+{_TYPE_WORDS}$",
     re.IGNORECASE | re.MULTILINE,
 )
 
@@ -118,7 +131,14 @@ _SELF_NAMING = re.compile(
 #:
 #: "QUESTION NO. 2549 TO BE ANSWERED ON 04.08.2026" is unaffected. The date
 #: there follows the words, not the captured digits.
-_DATE_TAIL = re.compile(r"\s*[./-]\s*\d{1,2}\s*[./-]\s*\d{2,4}")
+#:
+#: The tail must consume the WHOLE date, and the lookahead is what enforces it.
+#: OCR also eats the space between a genuine number and its date, as in
+#: "QUESTION NO. 2549/04/08/2026". Two separators after the captured digits
+#: mean the digits are the day of a date. Three mean the digits are the number
+#: and a whole date follows. Without the lookahead the pattern took "/04/08"
+#: of the three, discarded a real number and returned `unreadable`.
+_DATE_TAIL = re.compile(r"\s*[./-]\s*\d{1,2}\s*[./-]\s*\d{2,4}(?![./-]?\d)")
 
 #: `document_qno_status` values. `unreadable` is NOT a finding: 14 of 300
 #: probe-fetched LS answer PDFs (4.7%) print no readable number, and a check

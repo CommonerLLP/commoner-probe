@@ -502,3 +502,26 @@ def test_the_broken_key_shape_cannot_recur(tmp_path):
     session = FakePortalSession({8: [dict(_row("5669"), date="25. 4.2001")]})
     _run(_probe(tmp_path, session))
     assert _manifest(tmp_path)[0]["key"] == "LS|U|5669|2001-04-25"
+
+
+def test_the_run_log_carries_every_verdict_not_only_the_mismatches(tmp_path):
+    """A mismatch count of zero describes a clean slice and a slice the guard
+    could not read at all. One consumer run returned 25 of 25 unreadable on an
+    unsupported layout, and `qno_mismatches: 0` said nothing about it.
+
+    Every status appears, including the zeros. A key present only when
+    non-zero makes "this bucket read nothing" and "this field is new"
+    indistinguishable to whoever reads the run log later.
+    """
+    unreadable = _row_with_text("1982", ses_no=10)
+    unreadable["answerText"] = "<p>(a) and (b): The Government has taken steps.</p>"
+    unreadable["questionsFilePath"] = None
+    agrees = _row_with_text("1983", ses_no=10)
+    agrees["answerText"] = "<p>LOK SABHA UNSTARRED QUESTION NO.1983</p>"
+    agrees["questionsFilePath"] = None
+
+    session = FakePortalSession({10: [unreadable, agrees]})
+    _run(_probe(tmp_path, session), sessions=[10])
+
+    bucket = _runs(tmp_path)[-1]["bucket_attempts"][-1]
+    assert bucket["qno_status"] == {"verified": 1, "mismatch": 0, "unreadable": 1}

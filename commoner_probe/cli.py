@@ -38,6 +38,7 @@ from .parliament_qa_api import SansadProbe
 from .pay_report_index import DoePayAllowancesProbe
 from .question_list_api import QuestionsListProbe
 from .rest_dataset_api import MospiClient, MospiProbe
+from .site_mirror import SiteMirror, verify_manifest
 from .spa_jwt_api import UdiseDocumentProbe
 from .stats import compute_stats, print_stats
 from .statute_dspace import STATE_HANDLES, IndiaCodeProbe
@@ -335,12 +336,17 @@ def sansad_cmd(args: argparse.Namespace) -> None:
     _exit_on_failed_runs(probe)
 
 
-def _exit_on_failed_runs(probe: SansadProbe) -> None:
+def _exit_on_failed_runs(probe: SansadProbe | BillsProbe) -> None:
     """Exit non-zero when a crawl's every bucket errored.
 
     Without this a run that reached nothing exits 0 with ``added: 0``,
     which a consumer reads as a finding about the member rather than a
     broken crawl. ``partial`` stays a success: some buckets did return.
+
+    ``bills`` logs one bucket per House, so a House whose walk raises makes
+    that run ``failed`` on its own. One live run aborted BOTH Houses 16 pages
+    into a 200-row walk, left 5,411 of 9,929 bills unenumerated, printed a
+    clean summary and returned 0.
     """
     failed = probe.runlog.statuses.count("failed")
     if failed:
@@ -1234,6 +1240,27 @@ def udise_docs_cmd(args: argparse.Namespace) -> None:
             f"{len(failed)} of {len(records)} document(s) did not return a PDF — "
             f"see fetch_status in {probe.manifest}"
         )
+def mirror_cmd(args: argparse.Namespace) -> None:
+    out = Path(args.out)
+    if args.verify:
+        problems = verify_manifest(out)
+        for line in problems:
+            print(line)
+        print(f"{len(problems)} problem(s)")
+        if problems:
+            raise SystemExit(f"{len(problems)} file(s) do not match the manifest")
+        return
+    if not args.url:
+        raise SystemExit("mirror needs a URL (or --verify)")
+    mirror = SiteMirror(
+        args.url,
+        out,
+        rate_limit_sec=args.sleep,
+        deadline_sec=args.deadline,
+        log=print,
+    )
+    stats = mirror.run(max_pages=args.max_pages)
+    print(json.dumps(stats, ensure_ascii=False))
 
 
 def bills_cmd(args: argparse.Namespace) -> None:
@@ -1247,9 +1274,10 @@ def bills_cmd(args: argparse.Namespace) -> None:
         api_url=args.api_url,
     )
     records = probe.probe(max_records=args.max_records, dry_run=args.dry_run,
-                          download=args.download)
+                          download=args.download, retry_failed=args.retry_failed)
     for record in records:
         print(json.dumps(record, ensure_ascii=False))
+    _exit_on_failed_runs(probe)
 
 
 def _add_indiacode_crawl_args(parser: argparse.ArgumentParser) -> None:
@@ -2401,6 +2429,49 @@ def build_parser() -> argparse.ArgumentParser:
         help="Emit one planning record per document without fetching.",
     )
     udise_docs.set_defaults(func=udise_docs_cmd)
+    mirror = sub.add_parser(
+        "mirror",
+        help="Mirror one host to disk with a sha256 manifest and a page index.",
+        description=(
+            "Walk one host, save every page and document it serves, and write\n"
+            "three artefacts as the walk runs: manifest.jsonl (provenance and\n"
+            "resume state), MANIFEST.txt (sha256 path bytes url) and INDEX.md\n"
+            "(one line per page).\n\n"
+            "Use it when the source is one author's body of work rather than an\n"
+            "API. It reads server-rendered HTML; a site that needs a browser is\n"
+            "`commoner-probe render`."
+        ),
+        epilog=(
+            "Examples:\n"
+            "  # 1. Mirror a site, bounded to 30 minutes\n"
+            "  commoner-probe mirror https://example.gov.in --out data/example --deadline 1800\n\n"
+            "  # 2. Resume into the same directory; nothing the manifest vouches for is refetched\n"
+            "  commoner-probe mirror https://example.gov.in --out data/example --deadline 1800\n\n"
+            "  # 3. Re-hash every file the manifest names\n"
+            "  commoner-probe mirror --verify --out data/example\n"
+        ),
+    )
+    mirror.add_argument("url", nargs="?", help="Any URL on the host to mirror; omit with --verify")
+    mirror.add_argument("--out", required=True, help="Output directory")
+    mirror.add_argument(
+        "--deadline", type=float,
+        help="Stop after N seconds. The artefacts are current at every moment, "
+             "so a bounded run is resumable rather than wasted.",
+    )
+    mirror.add_argument(
+        "--max-pages", type=int,
+        help="Stop after N fetches (smoke-test brake). The frontier is left unwalked.",
+    )
+    mirror.add_argument(
+        "--sleep", type=float, default=2.0,
+        help="Seconds between requests to the host (default: 2.0).",
+    )
+    mirror.add_argument(
+        "--verify", action="store_true",
+        help="Re-hash every file the manifest names and exit non-zero on any "
+             "disagreement. Does not fetch.",
+    )
+    mirror.set_defaults(func=mirror_cmd)
 
     bills = sub.add_parser(
         "bills",
@@ -2427,6 +2498,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Also fetch each bill's documents (as-introduced text, passed "
              "versions, gazette, synopsis, committee report, errata). OFF by "
              "default: a full catalogue carries about 10,500 files.",
+    )
+    bills.add_argument(
+        "--retry-failed",
+        action="store_true",
+        help="Re-request the documents the manifest records as failed. Without "
+             "it a resume skips every URL whose outcome is already stored, "
+             "which is what makes a resume finish: 29 dead URLs in one live "
+             "corpus cost about 3 minutes each on every run.",
     )
     bills.set_defaults(func=bills_cmd)
 

@@ -330,7 +330,7 @@ def test_a_record_with_no_urls_downloads_nothing(tmp_path):
     probe = _bills_probe(tmp_path, session)
     record = probe._record({"billNumber": "1", "billYear": 2026}, "ls")
     assert probe.download_documents(record) == {
-        "fetched": 0, "failed": 0, "present": 0}
+        "fetched": 0, "failed": 0, "present": 0, "skipped": 0}
     assert "documents" not in record
 
 
@@ -398,22 +398,129 @@ def test_enabling_download_reaches_a_catalogue_already_on_disk(tmp_path):
     assert row["documents"]["introduced_file"]["status"] == "ok"
 
 
-def test_a_failed_document_is_retried_next_run(tmp_path):
-    """Codex, P1. A failure is not terminal, and the catalogue fingerprint
-    cannot know that. A bill whose gazette 404'd must ask again."""
-    session = _FakeSession({"gazette.pdf": None})
-    first = _bills_probe(tmp_path, session)
+# ── resume: a stored outcome is not re-requested ──────────────────────────
+
+
+def _resume(tmp_path, session, **kwargs):
+    """A second probe over the same corpus, serving `session`."""
+    probe = _bills_probe(tmp_path, session)
+    probe.bills_all = lambda house: iter([_RAW_WITH_FILES])  # noqa: ARG005
+    probe.probe(download=True, **kwargs)
+    return probe
+
+
+def test_a_resume_requests_nothing_for_a_recorded_outcome(tmp_path):
+    """Counted requests, not elapsed time.
+
+    A resume re-requested every URL the manifest already answered for. 29 URLs
+    in one live corpus name a host that answers on no port, each costs about 3
+    minutes of retry budget, and two resumes across 134 minutes wrote 14
+    documents.
+    """
+    first = _bills_probe(tmp_path, _FakeSession({"gazette.pdf": None}))
+    first.bills_all = lambda house: iter([_RAW_WITH_FILES])  # noqa: ARG005
+    first.probe(download=True)
+
+    quiet = _FakeSession({})
+    _resume(tmp_path, quiet)
+
+    assert quiet.calls == [], "a recorded outcome was requested again"
+
+
+def test_retry_failed_re_requests_the_failed_set_and_nothing_else(tmp_path):
+    """This REVERSES a review finding fixed on 2026-08-19,
+    which made every failure retry automatically. Automatic retry is what
+    stopped a resume ever finishing, so the retry moved behind a flag. The
+    upgrade path that P1 also covered — a catalogue with no documents at all —
+    is untouched: no stored outcome still means fetch.
+    """
+    first = _bills_probe(tmp_path, _FakeSession({"gazette.pdf": None}))
     first.bills_all = lambda house: iter([_RAW_WITH_FILES])  # noqa: ARG005
     first.probe(download=True)
 
     working = _FakeSession({})
-    second = _bills_probe(tmp_path, working)
-    second.bills_all = lambda house: iter([_RAW_WITH_FILES])  # noqa: ARG005
-    second.probe(download=True)
+    _resume(tmp_path, working, retry_failed=True)
 
-    assert any("gazette" in url for url in working.calls), "the failure was not retried"
-    path = tmp_path / "documents" / "ls" / "2026" / "153_gazetted.pdf"
-    assert path.exists()
+    assert [u for u in working.calls if "gazette" in u], "the failed set was skipped"
+    assert [u for u in working.calls if "gazette" not in u] == [], \
+        "--retry-failed requested a document that had already succeeded"
+    assert (tmp_path / "documents" / "ls" / "2026" / "153_gazetted.pdf").exists()
+
+
+def test_a_recorded_ok_whose_file_is_gone_is_fetched_again(tmp_path):
+    """A stored outcome describes a file. It stops being evidence when the
+    file stops existing, so repairing a pruned corpus needs no flag."""
+    first = _bills_probe(tmp_path, _FakeSession({}))
+    first.bills_all = lambda house: iter([_RAW_WITH_FILES])  # noqa: ARG005
+    first.probe(download=True)
+    (tmp_path / "documents" / "ls" / "2026" / "153_gazetted.pdf").unlink()
+
+    working = _FakeSession({})
+    _resume(tmp_path, working)
+
+    assert [u for u in working.calls if "gazette" in u], "the missing file was not refetched"
+
+
+def test_a_changed_url_is_fetched_even_when_the_field_is_recorded(tmp_path):
+    """The stored outcome answers for the URL it was taken against. A source
+    that repoints a field is publishing a different document."""
+    first = _bills_probe(tmp_path, _FakeSession({"gazette.pdf": None}))
+    first.bills_all = lambda house: iter([_RAW_WITH_FILES])  # noqa: ARG005
+    first.probe(download=True)
+
+    moved = {**_RAW_WITH_FILES,
+             "billGazettedFile": "https://sansad.in/getFile/gazette-v2.pdf?source=legislation"}
+    working = _FakeSession({})
+    later = _bills_probe(tmp_path, working)
+    later.bills_all = lambda house: iter([moved])  # noqa: ARG005
+    later.probe(download=True)
+
+    assert [u for u in working.calls if "gazette-v2" in u]
+
+
+def test_the_run_log_counts_the_urls_a_house_skipped(tmp_path):
+    """No progress looked exactly like progress: a
+    failed URL writes no file, and an unchanged outcomes dict appends no row,
+    so a run doing nothing and a run working were indistinguishable from
+    outside for 95 minutes."""
+    import json
+
+    first = _bills_probe(tmp_path, _FakeSession({"gazette.pdf": None}))
+    first.bills_all = lambda house: iter([_RAW_WITH_FILES])  # noqa: ARG005
+    first.probe(download=True)
+    _resume(tmp_path, _FakeSession({}))
+
+    runs = [json.loads(line) for line in (tmp_path / "_runs.jsonl").open()]
+    bucket = runs[-1]["bucket_attempts"][0]
+    assert bucket["house"] == "ls"
+    assert bucket["documents_skipped"] == 8
+    assert bucket["documents_fetched"] == 0
+    assert runs[-1]["status"] == "complete", "a quiet resume is a complete run"
+
+
+def test_a_house_whose_walk_raises_makes_the_run_failed(tmp_path):
+    """One live run aborted BOTH Houses 16 pages into
+    a 200-row walk, left 5,411 of 9,929 bills unenumerated, and exited 0."""
+    def boom(house):
+        raise RuntimeError("Connection aborted.")
+        yield  # pragma: no cover - generator marker
+
+    probe = _bills_probe(tmp_path, _FakeSession({}))
+    probe.bills_all = boom
+    probe.probe(download=True)
+
+    assert probe.runlog.statuses == ["failed"]
+
+
+def test_a_resume_that_finds_nothing_new_still_succeeds(tmp_path):
+    """The other half of that rule, and the reason the exit code cannot key
+    on `added`. A quiet corpus and a broken crawl both add nothing."""
+    first = _bills_probe(tmp_path, _FakeSession({}))
+    first.bills_all = lambda house: iter([_RAW_WITH_FILES])  # noqa: ARG005
+    first.probe(download=True)
+
+    again = _resume(tmp_path, _FakeSession({}))
+    assert again.runlog.statuses == ["complete"]
 
 
 def test_a_bill_with_no_number_does_not_share_another_bill_s_file(tmp_path):
@@ -450,3 +557,21 @@ def test_the_typed_bill_record_carries_its_documents(tmp_path):
     record = next(iter(Corpus(tmp_path).manifest_bills()))
     assert record.documents["introduced_file"]["status"] == "ok"
     assert json.dumps(record.documents)  # plain data, not a custom type
+
+
+def test_the_bills_run_log_validates(tmp_path):
+    """The run log is public surface and `validate` enumerates its kinds. A new
+    crawler kind that nobody registers writes a corpus its own validator
+    rejects."""
+    import json
+
+    import jsonschema
+
+    from commoner_probe import schemas
+
+    probe = _bills_probe(tmp_path, _FakeSession({}))
+    probe.bills_all = lambda house: iter([_RAW_WITH_FILES])  # noqa: ARG005
+    probe.probe(download=True)
+
+    row = json.loads((tmp_path / "_runs.jsonl").read_text().splitlines()[0])
+    jsonschema.validate(row, schemas.load("runs"))
