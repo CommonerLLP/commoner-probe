@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.18.0 — 2026-08-23
 
 **This release is a MINOR.** `manifest_academic_job` gains a field, so the
 public output schema grew. Re-run `academic-jobs` for `iit-hyderabad`: every
