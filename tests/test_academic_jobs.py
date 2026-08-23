@@ -723,3 +723,60 @@ def test_parse_deadline_iso_reads_a_day_first_ordinal_date():
     assert parse_deadline_iso("24th August 2026") == "2026-08-24"
     assert parse_deadline_iso("8th July 2026") == "2026-07-08"
     assert parse_deadline_iso("August 24, 2026") == "2026-08-24"
+
+
+def test_a_record_with_a_date_never_reports_that_nobody_looked():
+    """Seven parsers extract a closing date and only one names the status.
+
+    A bare default stamps `not_examined` beside a real date, and a consumer
+    filtering on `read` then drops known deadlines.
+    """
+    from commoner_probe.academia.probe import _closing_status
+
+    assert _closing_status({"closing_date": "2026-04-22"}) == "read"
+    assert _closing_status({"closing_date": "2026-04-22",
+                            "closing_date_status": "not_examined"}) == "read"
+    assert _closing_status({"closing_date": None}) == "not_examined"
+    assert _closing_status({"closing_date": None,
+                            "closing_date_status": "rolling"}) == "rolling"
+
+
+def test_a_rolling_review_does_not_deny_a_printed_deadline():
+    """`rolling basis` describes the review cadence, not the closing date.
+
+    Reading it as rolling asserts that no deadline exists, on a document that
+    prints one. That is worse than reading none.
+    """
+    from commoner_probe.academia.pdf_text import read_deadline
+
+    assert read_deadline(
+        "Applications are reviewed on a rolling basis and accepted until 31 December 2026"
+    ) == ("31 December 2026", "read")
+    assert read_deadline(
+        "Reviewed on a rolling basis. Accepted until December 31, 2026"
+    )[1] == "read"
+    # No date anywhere. `rolling basis` alone must not assert one does not exist.
+    assert read_deadline("Applications are reviewed on a rolling basis.")[1] == "not_found"
+    # An explicitly deadline-free call still reads as rolling.
+    assert read_deadline("This is a rolling advertisement; the PI will shortlist")[1] == "rolling"
+
+
+def test_iit_hyderabad_publishes_no_date_it_cannot_normalise():
+    """The numeric patterns accept a two-digit year and the ISO coercion does not.
+
+    `22/04/26` would otherwise reach the corpus verbatim beside every other
+    parser's ISO value, carrying status `read`.
+    """
+    pytest.importorskip("bs4")
+    from commoner_probe.academia.parsers import iit_hyderabad
+
+    html = '<a href="/ads/x.pdf">Advertisement for Research Associate</a>'
+
+    class FakeFetcher:
+        def pdf_text(self, pdf_url):
+            return ("pdfs/x.pdf", "Application deadline: 22/04/26")
+
+    ads = iit_hyderabad.parse(html, "https://iith.ac.in/careers/", datetime(2026, 6, 1), FakeFetcher())
+
+    assert ads[0]["closing_date"] is None
+    assert ads[0]["closing_date_status"] == "not_found"

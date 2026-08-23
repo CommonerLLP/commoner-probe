@@ -52,6 +52,14 @@ def parse(html: str, url: str, fetched_at: Any, pdf: Callable | None = None) -> 
         if pdf is not None and abs_url.lower().endswith(".pdf"):
             pdf_path, text = pdf.pdf_text(abs_url)
         raw_deadline, deadline_status = read_deadline(text)
+        # A raw date this parser cannot normalise is not published. The numeric
+        # patterns accept a two-digit year and `parse_deadline_iso` reads only
+        # four, so `22/04/26` would otherwise reach the corpus verbatim beside
+        # every other parser's ISO value. `not_found` is the honest status: the
+        # document was read and no usable date came out of it.
+        closing_iso = parse_deadline_iso(raw_deadline)
+        if raw_deadline and not closing_iso:
+            deadline_status = "not_found"
 
         ads.append(make_ad(
             id=stable_id("iith", abs_url, title),
@@ -64,7 +72,7 @@ def parse(html: str, url: str, fetched_at: Any, pdf: Callable | None = None) -> 
             info_url=url,
             parse_confidence=0.55,
             raw_text_excerpt=parent_text[:500],
-            closing_date=parse_deadline_iso(raw_deadline) or raw_deadline,
+            closing_date=closing_iso,
             closing_date_status=deadline_status,
             pdf_path=pdf_path,
             pdf_parsed=bool(text and text.strip()),

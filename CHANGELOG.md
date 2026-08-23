@@ -16,6 +16,11 @@ third of those documents state a date.
   expired or vanished early needs the last two apart. The field is not in
   `required`, so records written before it still validate.
 
+  `rolling` means the document states it has no closing date. It does not mean
+  the document says `rolling basis`, which describes the review cadence and is
+  compatible with a printed deadline. A non-null `closing_date` always reports
+  `read`, whether or not its parser sets the field.
+
 - **`textparse.term_pattern`**, moved from `dopo_catalogue`, which re-exports
   it. It builds a regex that survives the `ti` ligature that PDF extraction
   drops. The trap is not specific to BPRD: IIT Hyderabad's recruitment PDFs

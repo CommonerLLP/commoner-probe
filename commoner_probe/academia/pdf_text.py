@@ -234,6 +234,19 @@ DEADLINE_RES = [
         r"(?P<date>\d{1,2}[./-]\d{1,2}[./-]\d{2,4})",
         re.I,
     ),
+    # "reviewed on a rolling basis and accepted until 31 December 2026". A
+    # rolling REVIEW can still carry a closing date, so the date has to be
+    # readable or the rolling wording wins and denies it.
+    re.compile(
+        r"accepted\s+un(?:ti|\s)?l"
+        r"[^\n]{0,40}?(?P<date>\d{1,2}(?:st|nd|rd|th)?\s+[A-Z][a-z]+,?\s+\d{4})",
+        re.I,
+    ),
+    re.compile(
+        r"accepted\s+un(?:ti|\s)?l"
+        r"[^\n]{0,40}?(?P<date>[A-Z][a-z]+\s+\d{1,2},?\s+\d{4})",
+        re.I,
+    ),
     re.compile(r"last\s+date[^\n]{0,40}?(?P<date>\d{1,2}[./-]\d{1,2}[./-]\d{2,4})", re.I),
     re.compile(r"last\s+date[^\n]{0,40}?(?P<date>[A-Z][a-z]+\s+\d{1,2},?\s+\d{4})", re.I),
 ]
@@ -256,9 +269,13 @@ def find_deadline(text: str) -> str | None:
 #: uses, e.g. "This is a rolling advertisement; the PI will evaluate and
 #: shortlist the applications". Kept narrow on purpose: a false "rolling"
 #: asserts that no deadline exists, which is worse than reading none.
+#:
+#: `rolling basis` is deliberately absent. It describes the review cadence and
+#: says nothing about a closing date. "reviewed on a rolling basis and accepted
+#: until 31 December 2026" states both, and reading it as rolling denies a date
+#: the document prints.
 ROLLING_RES = [
-    re.compile(r"\brolling\s+(?:advertisement|basis|call|recruitment|mode)\b", re.I),
-    re.compile(r"\bon\s+a\s+rolling\s+basis\b", re.I),
+    re.compile(r"\brolling\s+(?:advertisement|call|recruitment|mode)\b", re.I),
     re.compile(r"\b(?:open|accepted)\s+until\s+(?:the\s+)?(?:position|post)s?\s+(?:is|are)\s+filled\b", re.I),
     re.compile(r"\bthere\s+is\s+no\s+(?:last\s+date|closing\s+date|deadline)\b", re.I),
     # "Post-Doctoral Research Fellowship (Rolling)" — IITH marks the whole call
