@@ -449,3 +449,26 @@ def excerpt(text: str, max_len: int = 280) -> str:
     return text[:max_len].rsplit(" ", 1)[0] + "..."
 
 
+
+
+#: The ``ti`` that PDF extraction drops when a font ships the ligature as one
+#: glyph. `Sanctioned` reads as `Sanc oned`, `Applications` as `Applica ons`.
+#: First met in the 2016 BPRD DOPO edition (see `dopo_catalogue`) and live in
+#: IIT Hyderabad's recruitment PDFs on 2026-08-23.
+_LIGATURE = re.compile(r"ti", re.IGNORECASE)
+
+
+def term_pattern(term: str, *, flags: int = re.IGNORECASE) -> re.Pattern[str]:
+    """A regex for ``term`` that survives the dropped ``ti`` ligature.
+
+    ``term_pattern("Sanctioned")`` matches both ``Sanctioned`` and
+    ``Sanc oned``. The document is left exactly as the source wrote it, because
+    repairing extracted text means writing characters into a primary source
+    that nobody can then tell from the original.
+
+    The failure this prevents is silent. A regex anchored on a word carrying
+    the ligature returns no match on a document that states the fact plainly,
+    and a caller reads that as "the document does not say".
+    """
+    parts = [re.escape(piece) for piece in _LIGATURE.split(term)]
+    return re.compile(r"(?:ti|\s)".join(parts), flags)

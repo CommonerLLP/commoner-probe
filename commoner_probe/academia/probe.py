@@ -196,6 +196,7 @@ class AcademicJobsProbe:
             "pay_scale": ad.get("pay_scale"),
             "publication_date": ad.get("publication_date"),
             "closing_date": ad.get("closing_date"),
+            "closing_date_status": ad.get("closing_date_status") or "not_examined",
             "original_url": ad.get("original_url") or "",
             "info_url": ad.get("info_url"),
             "apply_url": ad.get("apply_url"),

@@ -2,7 +2,50 @@
 
 ## Unreleased
 
+**This release is a MINOR.** `manifest_academic_job` gains a field, so the
+public output schema grew. Re-run `academic-jobs` for `iit-hyderabad`: every
+row it wrote before this release carries `closing_date: null`, and about a
+third of those documents state a date.
+
+### Added
+
+- **`closing_date_status` on `academic_job_posting`**.
+  A null `closing_date` meant two opposite things: nobody read the document, or
+  the document has no deadline. The field separates four states — `read`,
+  `rolling`, `not_found` and `not_examined`. A consumer asking whether a post
+  expired or vanished early needs the last two apart. The field is not in
+  `required`, so records written before it still validate.
+
+- **`textparse.term_pattern`**, moved from `dopo_catalogue`, which re-exports
+  it. It builds a regex that survives the `ti` ligature that PDF extraction
+  drops. The trap is not specific to BPRD: IIT Hyderabad's recruitment PDFs
+  render `Applica ons` today.
+
+- **`academia.pdf_text.read_deadline`**, returning `(raw_deadline, status)`
+  for one document's text.
+
 ### Fixed
+
+- **`iit_hyderabad` never opened the advertisement PDF.** It read link titles, which carry no dates, so it reported no deadline
+  for every ad it has ever emitted.
+
+- **Two deadline patterns broke on the dropped `ti` ligature.** They anchored
+  on `application` and on `Application Last Date`. A document rendering
+  `Applica ons` matched neither, and the caller read that as "no deadline
+  stated" — a plausible, quiet nothing rather than an error.
+
+- **`find_deadline` read no numeric date after the word `deadline`.** It
+  reached a month-name date only. `The deadline for applications is 5:00 pm,
+  22/04/2026` returned nothing.
+
+- **`find_deadline` read no day-first ordinal date.** Every month-name pattern
+  wanted `August 24, 2026`. `Application Deadline: 24th August 2026` and `Last
+  Date to Apply 26th July 2026` both returned nothing. Measured on a live IIT
+  Hyderabad corpus, this was the most common missed shape.
+
+- **`find_deadline` read no date after `apply by`.** The pattern is anchored on
+  that whole phrase and never on a bare `by`, which also introduces a start
+  date.
 
 - **`academic-jobs` now carries the 0.17.0 `user_agent` field on the bundled
   registry.** The field shipped with no bundled row using it, so a default CLI
