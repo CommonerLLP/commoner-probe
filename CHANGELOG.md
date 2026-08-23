@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **`academic-jobs` now carries the 0.17.0 `user_agent` field on the bundled
+  registry.** The field shipped with no bundled row using it, so a default CLI
+  run still met the 403 the field exists to clear; only a hand-edited
+  `--registry` reached the behaviour. Re-run `academic-jobs` for
+  `iim-bangalore` and `iim-bodhgaya`: both wrote a `robots_blocked` row and no
+  ads before this change.
+
+  Measured 2026-08-23. Both hosts answer 403 to every `commoner-probe/...`
+  User-Agent and 200 to a browser string. `iimb.ac.in` then serves a stock
+  Drupal `/robots.txt` that allows the career page, so the User-Agent alone is
+  enough. `iimbg.ac.in` refuses `/robots.txt` to every User-Agent with a 403
+  carrying a "404 Not Found" body, so it takes `robots_override` as well — the
+  disallow-all reading is the gateway's artefact, not a policy the origin
+  states. Each row records its reason in the registry.
+
 ## 0.17.0 — 2026-08-23
 
 ### Added

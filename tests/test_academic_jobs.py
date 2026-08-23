@@ -500,3 +500,28 @@ def test_probe_hands_the_fetcher_the_default_session_without_a_user_agent(tmp_pa
 
     assert seen == [probe.session]
     assert probe._sessions == {}
+
+
+def test_bundled_registry_names_a_user_agent_where_a_waf_needs_one():
+    """The `user_agent` field must reach the BUNDLED registry, not only `--registry`.
+
+    The field shipped in 0.17.0 with no bundled row using it, so a default CLI
+    run kept the 403 the field exists to clear. Both institutions below answer
+    403 to every commoner-probe User-Agent, measured 2026-08-23.
+    """
+    from commoner_probe.academia.registry import load_registry
+
+    by_id = {inst["id"]: inst for inst in load_registry()}
+    for inst_id in ("iim-bangalore", "iim-bodhgaya"):
+        assert by_id[inst_id].get("user_agent"), inst_id
+
+
+def test_bundled_registry_states_a_reason_for_every_override():
+    """A `user_agent` or a `robots_override` departs from the default. Say why."""
+    from commoner_probe.academia.registry import load_registry
+
+    for inst in load_registry():
+        if inst.get("user_agent"):
+            assert inst.get("user_agent_reason"), inst["id"]
+        if inst.get("robots_override") is True:
+            assert inst.get("robots_override_reason"), inst["id"]
