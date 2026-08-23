@@ -367,3 +367,136 @@ def test_probe_institution_falls_back_to_pdf_on_fetch_failure(tmp_path, monkeypa
     assert len(records) == 1
     assert records[0]["fetch_status"] == "ok"
     assert records[0]["source_method"] == "fallback PDF"
+
+
+# --------------------------------------------------------------------------- #
+# Per-institution User-Agent                                                 #
+# --------------------------------------------------------------------------- #
+
+_BROWSER_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/126.0.0.0"
+
+
+def test_session_for_returns_the_default_session_without_a_user_agent(tmp_path):
+    """An entry naming no user_agent keeps the shared default session."""
+    from commoner_probe.academia import AcademicJobsProbe
+
+    probe = AcademicJobsProbe(tmp_path, sleep=0, registry_path=_registry(tmp_path, [_INST_GENERIC]))
+    assert probe._session_for(_INST_GENERIC) is probe.session
+    assert probe._sessions == {}
+
+
+def test_session_for_builds_a_session_carrying_the_requested_user_agent(tmp_path):
+    """The registry string reaches the session, and the default is untouched."""
+    from commoner_probe.academia import AcademicJobsProbe
+    from commoner_probe.http_client import USER_AGENT
+
+    inst = dict(_INST_IIM, user_agent=_BROWSER_UA)
+    probe = AcademicJobsProbe(tmp_path, sleep=0, registry_path=_registry(tmp_path, [inst]))
+    session = probe._session_for(inst)
+
+    assert session is not probe.session
+    assert session._user_agent == _BROWSER_UA
+    assert probe.session._user_agent == USER_AGENT
+
+
+def test_session_for_caches_by_user_agent_string(tmp_path):
+    """Two institutions naming one string share one session; a third gets its own."""
+    from commoner_probe.academia import AcademicJobsProbe
+
+    a = dict(_INST_IIM, id="iim-a", user_agent=_BROWSER_UA)
+    b = dict(_INST_IIM, id="iim-b", user_agent=_BROWSER_UA)
+    c = dict(_INST_IIM, id="iim-c", user_agent="curl/8.7.1")
+    probe = AcademicJobsProbe(tmp_path, sleep=0, registry_path=_registry(tmp_path, [a, b, c]))
+
+    assert probe._session_for(a) is probe._session_for(b)
+    assert probe._session_for(c) is not probe._session_for(a)
+    assert len(probe._sessions) == 2
+
+
+def test_probe_institution_fetches_the_listing_with_the_institution_session(tmp_path):
+    """The WAF-blocked listing goes out on the registry User-Agent, not the default."""
+    from commoner_probe.academia import AcademicJobsProbe
+
+    html = "<html><body><a href='/ad.pdf'>Assistant Professor</a></body></html>"
+    inst = dict(_INST_GENERIC, user_agent=_BROWSER_UA)
+    probe = AcademicJobsProbe(tmp_path, sleep=0, registry_path=_registry(tmp_path, [inst]))
+    probe.session = FakeSession({}, forbid_calls=True)
+    ua_session = FakeSession({"demo.example.ac.in/careers": FakeResp(html)})
+    probe._sessions[_BROWSER_UA] = ua_session
+
+    probe.probe_institution(inst, pdf=None, dry_run=False)
+
+    assert ua_session.calls == ["https://demo.example.ac.in/careers"]
+
+
+def test_probe_institution_retries_the_robots_override_on_the_same_session(tmp_path):
+    """The override retry must not fall back to the default User-Agent."""
+    pytest.importorskip("bs4")
+    from commoner_probe.academia import AcademicJobsProbe
+
+    inst = dict(_INST_GENERIC, user_agent=_BROWSER_UA, robots_override=True)
+    probe = AcademicJobsProbe(tmp_path, sleep=0, registry_path=_registry(tmp_path, [inst]))
+    probe.session = FakeSession({}, forbid_calls=True)
+
+    class RobotsSession:
+        def __init__(self) -> None:
+            self.calls: list[bool] = []
+
+        def get(self, url, **kwargs):
+            respect = kwargs.get("respect_robots", True)
+            self.calls.append(respect)
+            if respect:
+                raise PermissionError("robots.txt disallows")
+            return FakeResp(_AD_HTML)
+
+    ua_session = RobotsSession()
+    probe._sessions[_BROWSER_UA] = ua_session
+
+    records = probe.probe_institution(inst, pdf=None, dry_run=False)
+
+    assert ua_session.calls == [True, False]
+    assert records[0]["source_method"] == "public-interest override"
+
+
+def test_probe_hands_the_fetcher_the_institution_session(tmp_path):
+    """A WAF refusing the listing refuses the PDF behind it for the same reason."""
+    from commoner_probe.academia import AcademicJobsProbe
+
+    inst = dict(_INST_GENERIC, user_agent=_BROWSER_UA)
+    probe = AcademicJobsProbe(tmp_path, sleep=0, registry_path=_registry(tmp_path, [inst]))
+    probe.session = FakeSession({}, forbid_calls=True)
+    ua_session = FakeSession({"demo.example.ac.in/careers": FakeResp("<html>no ads</html>")})
+    probe._sessions[_BROWSER_UA] = ua_session
+
+    seen: list[object] = []
+    original = probe._fetcher
+
+    def record_fetcher(enabled, session=None):
+        seen.append(session)
+        return original(enabled, session)
+
+    probe._fetcher = record_fetcher
+    probe.probe(download=True)
+
+    assert seen == [ua_session]
+
+
+def test_probe_hands_the_fetcher_the_default_session_without_a_user_agent(tmp_path):
+    """The default path is unchanged: no user_agent field, no extra session."""
+    from commoner_probe.academia import AcademicJobsProbe
+
+    probe = AcademicJobsProbe(tmp_path, sleep=0, registry_path=_registry(tmp_path, [_INST_GENERIC]))
+    probe.session = FakeSession({"demo.example.ac.in/careers": FakeResp("<html>no ads</html>")})
+
+    seen: list[object] = []
+    original = probe._fetcher
+
+    def record_fetcher(enabled, session=None):
+        seen.append(session)
+        return original(enabled, session)
+
+    probe._fetcher = record_fetcher
+    probe.probe(download=True)
+
+    assert seen == [probe.session]
+    assert probe._sessions == {}

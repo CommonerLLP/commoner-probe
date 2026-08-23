@@ -48,8 +48,60 @@ class AcademicJobsProbe:
         self._institutions_filter = set(institutions or [])
         self.registry = load_registry(registry_path)
         self.session = make_session()
+        #: Extra sessions, keyed by the User-Agent string a registry entry asks
+        #: for. Institutions that name no `user_agent` all share `self.session`,
+        #: so the default path is one session exactly as before. Sharing by UA
+        #: rather than by institution keeps the count at one session per
+        #: distinct string, and the rate limit is unaffected either way:
+        #: `_last_request_by_domain` is module-global and keyed by domain, so
+        #: two sessions to one host still queue behind each other.
+        #:
+        #: One session also means one cookie jar. Every institution shared a
+        #: jar before this field existed, so splitting by User-Agent narrows
+        #: that sharing rather than widening it. Two institutions on one host
+        #: under one User-Agent still share cookies.
+        self._sessions: dict[str, object] = {}
 
     # --- helpers ---
+
+    def _session_for(self, inst: dict) -> object:
+        """The session for one institution, honouring its `user_agent` field.
+
+        Some career pages sit behind a WAF that refuses on the User-Agent
+        string alone. Every `commoner-probe/...` spelling gets 403. A browser
+        string gets 200, and Accept headers change nothing.
+
+        The default User-Agent still identifies the library to portal
+        operators (`http_client.py:35`). This field makes a departure from that
+        default one visible registry row rather than a global change.
+
+        The `user_agent` field also reaches the robots.txt fetch, because
+        `_get_robot_parser` keys its cache on `(domain, user_agent)` and sends
+        that string. A WAF that 403s `/robots.txt` for bots reads as
+        disallow-all. An institution blocked that way may need no
+        `robots_override` once its User-Agent gets a real answer.
+
+        That fixes one of the two shapes and not the other. Measured
+        2026-08-23 on the two institutions that prompted this field:
+
+        - `iimb.ac.in` refuses `/robots.txt` to the probe User-Agent and
+          serves it to a browser string. The real policy is allow-all, so the
+          User-Agent alone clears the block and no override is wanted.
+        - `iimbg.ac.in` refuses `/robots.txt` to EVERY User-Agent, and the 403
+          carries a "404 Not Found" body — a gateway rewriting the origin's
+          404. The origin publishes no policy, no User-Agent can see that, and
+          `robots_override` stays necessary.
+
+        Prefer the User-Agent alone and re-measure. Reach for the override only
+        when the refusal survives it, because the override suppresses a signal
+        that may be real.
+        """
+        ua = inst.get("user_agent")
+        if not ua:
+            return self.session
+        if ua not in self._sessions:
+            self._sessions[ua] = make_session(user_agent=ua)
+        return self._sessions[ua]
 
     def selected_institutions(self) -> list[dict]:
         return select_institutions(self.registry, self._institutions_filter)
@@ -73,7 +125,8 @@ class AcademicJobsProbe:
         with self.manifest.open("a", encoding="utf-8") as f:
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
-    def _fetch_listing(self, url: str, *, robots_override: bool = False) -> tuple[str, str, int | None]:
+    def _fetch_listing(self, url: str, *, session: object | None = None,
+                       robots_override: bool = False) -> tuple[str, str, int | None]:
         """Fetch a listing page. Returns ``(text, status, http_status)``.
 
         ``status`` is one of ``ok`` / ``robots_blocked`` / ``http_error`` /
@@ -82,7 +135,7 @@ class AcademicJobsProbe:
         is treated as usable (``ok``).
         """
         try:
-            r = self.session.get(url, timeout=45, respect_robots=not robots_override)
+            r = (session or self.session).get(url, timeout=45, respect_robots=not robots_override)
         except PermissionError:
             return "", "robots_blocked", None
         except Exception:  # noqa: BLE001 — SSRF reject / network / 5xx-retry-exhausted
@@ -95,12 +148,18 @@ class AcademicJobsProbe:
             return "", "http_error", code
         return text, "ok", code
 
-    def _fetcher(self, enabled: bool) -> Fetcher | None:
+    def _fetcher(self, enabled: bool, session: object | None = None) -> Fetcher | None:
         """A Fetcher (PDF download + per-position HTML sub-page helper), or None
-        when download is disabled (parsers then degrade to listing-page output)."""
+        when download is disabled (parsers then degrade to listing-page output).
+
+        It carries the institution's own session. A WAF that refuses the
+        listing page on its User-Agent refuses the annexure PDF behind it too.
+        A User-Agent that stopped at the listing would fetch the page at 200.
+        It would then 403 on every document in that page.
+        """
         if not enabled:
             return None
-        return Fetcher(self.session, self.pdf_dir, self.out_dir)
+        return Fetcher(session or self.session, self.pdf_dir, self.out_dir)
 
     def _record(
         self, ad: dict, inst: dict, *, status: str = "ok", source_method: str | None = "official scrape"
@@ -196,13 +255,15 @@ class AcademicJobsProbe:
 
         fetched_at = datetime.now(timezone.utc)
         parser = get_parser(inst.get("parser"))
+        session = self._session_for(inst)
 
-        text, status, http_status = self._fetch_listing(url)
+        text, status, http_status = self._fetch_listing(url, session=session)
         source_method = "official scrape"
         # Public-interest robots override: registry-opted-in official sources
         # retry past a blanket robots disallow.
         if status == "robots_blocked" and inst.get("robots_override") is True:
-            text, status, http_status = self._fetch_listing(url, robots_override=True)
+            text, status, http_status = self._fetch_listing(
+                url, session=session, robots_override=True)
             source_method = "public-interest override"
 
         if status == "ok" and text:
@@ -234,9 +295,11 @@ class AcademicJobsProbe:
         import time
 
         seen = self.load_seen()
-        pdf = self._fetcher(download and not dry_run)
         out: list[dict] = []
         for inst in self.selected_institutions():
+            # Built per institution rather than per run, because the Fetcher
+            # carries that institution's session.
+            pdf = self._fetcher(download and not dry_run, self._session_for(inst))
             records = self.probe_institution(inst, pdf=pdf, dry_run=dry_run)
             for rec in records:
                 if rec["key"] in seen:

@@ -1,5 +1,33 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **A registry `user_agent` field for `academic-jobs`.** An institution entry
+  may name the User-Agent its own fetches carry; entries that name none share
+  one default session, exactly as before. Some career pages sit behind a WAF
+  that refuses on the User-Agent string alone — every `commoner-probe/...`
+  spelling gets 403 while a browser string gets 200, and Accept headers change
+  nothing. The default still identifies the library to portal operators, so a
+  departure from it is now one visible registry row rather than a global
+  change. `budget/probe.py`'s hardcoded second User-Agent is the precedent this
+  generalises.
+
+  The string reaches the PDF and sub-page fetches too, not only the listing.
+  A WAF that refuses a listing page refuses the annexure PDF behind it for the
+  same reason, so the `Fetcher` is now built per institution rather than per
+  run. Institutions whose ad bodies are all PDFs behind the listing would
+  otherwise fetch the page at 200 and produce rows with no content.
+
+  It also reaches the robots.txt fetch, which `_get_robot_parser` keys on
+  `(domain, user_agent)`. That clears one false-positive shape and not another:
+  a host that refuses `/robots.txt` to bots and serves it to a browser needs no
+  `robots_override` once its User-Agent gets a real answer, while a gateway
+  that returns 403 carrying a 404 body refuses every User-Agent and still does.
+  Prefer the User-Agent alone, re-measure, and reach for the override only when
+  the refusal survives it.
+
 ## 0.16.0 — 2026-08-20
 
 **Re-run any `bills --download` corpus and any Rajya Sabha answer corpus fetched
