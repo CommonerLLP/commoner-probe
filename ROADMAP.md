@@ -18,9 +18,17 @@ record; this file says what ships next and what is deliberately deferred.
 | 0.10.1 | 2026-07-29 | Fixes only. Two live breakages on shipped code: `mca-csr` dead at the TLS layer since 2026-07-02 (cert SAN vs a hardcoded `www.`), and `prs --surface mp-track --house rs` writing nothing and exiting 0 for its whole life. Plus the `--ocr` acceptance gate (16/60 -> 26/60 recovery, no longer destroys records) and five Codex findings |
 | 0.11.0 | 2026-07-30 | Two new source families: `census` (ORGI/Census of India — PCA, village/town amenities, town directory, via the data.gov.in API instead of ~11.5 GB of DCHB PDFs) and `niti-annual-report` (NITI Annual Reports, the residual). NeVA extraction checkpoints, so an interrupted corpus pass resumes instead of restarting |
 
+| 0.12.x | 2026-07-31 | `nada` (NADA platform, MoSPI + ORGI from one `--base-url`), `dchb-town`; the shared HTTP client had been ignoring 429 entirely |
+| 0.13.0 | 2026-08-01 | Eleven review findings, each demonstrated failing first; public surface cleaned |
+| 0.14.x | 2026-08-04 → 08-16 | The questions-list subject bleed (97.9% of adjacent pairs, now 0); `parse_status` gains `boundary_bleed` |
+| 0.15.x | 2026-08-18 → 08-19 | Every bill date as ISO with the repair reaching rows on disk; a `doctor` pin reader for every form the org uses; the Python floor at 3.11 |
+| 0.16.0 | 2026-08-20 | `mirror`, `udise-docs`, `supervisor`, `dopo_catalogue`; a bills resume that skips recorded outcomes |
+| 0.17.0 | 2026-08-23 | A per-institution `user_agent` for `academic-jobs` |
+| 0.18.0 | 2026-08-23 | `closing_date_status` on `academic_job_posting`; `iit_hyderabad` reads the advertisement PDF; `textparse.term_pattern` |
+
 ## On master, unreleased
 
-Nothing. 0.11.0 was cut from master with no open PRs and no open issues.
+Nothing. 0.18.0 was cut from master with no open PRs and no open issues.
 
 **Next gate: 1.0.0 — deferred deliberately, and gated on Phase 2.** Declaring
 1.0 promises interface stability, and the package rename to `probe`/`compose`
