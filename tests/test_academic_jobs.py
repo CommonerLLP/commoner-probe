@@ -589,3 +589,194 @@ def test_probe_gives_the_fetcher_the_override_only_when_the_registry_asks(tmp_pa
 
     assert plain.robots_override_for is None
     assert opted_in.robots_override_for == _INST_GENERIC["career_page_url_guess"]
+
+
+# --------------------------------------------------------------------------- #
+# Deadline coverage, and what a null closing_date means                        #
+# --------------------------------------------------------------------------- #
+
+
+def test_read_deadline_separates_never_looked_from_found_nothing():
+    """The four states must stay four. A boolean collapses the last two.
+
+    academiaindia cannot tell an expired posting from an unread one while a
+    null `closing_date` carries both meanings.
+    """
+    from commoner_probe.academia.pdf_text import read_deadline
+
+    assert read_deadline(None) == (None, "not_examined")
+    assert read_deadline("   ") == (None, "not_examined")
+    assert read_deadline("Last date: April 30, 2026")[1] == "read"
+    assert read_deadline("This is a rolling advertisement; the PI will shortlist")[1] == "rolling"
+    assert read_deadline("How to Apply: send a CV by email to hr@example.ac.in")[1] == "not_found"
+
+
+def test_find_deadline_reads_a_numeric_date_after_the_word_deadline():
+    """IITH, verbatim. `deadline` reached a month-name date and never a numeric one."""
+    from commoner_probe.academia.pdf_text import find_deadline
+
+    assert find_deadline("The deadline for applications is 5:00 pm, 22/04/2026") == "22/04/2026"
+
+
+def test_find_deadline_survives_the_dropped_ti_ligature():
+    """IITH renders `Applica ons`. A regex anchored on the correct spelling
+    returns a plausible, quiet nothing on a document that states a date."""
+    from commoner_probe.academia.pdf_text import find_deadline
+
+    assert find_deadline("Applica ons must be submitted on or before September 15, 2026")
+    assert find_deadline("Applica on Last Date : 15/09/2026") == "15/09/2026"
+    assert find_deadline("Applications must be submitted on or before September 15, 2026")
+
+
+def test_the_ligature_helper_has_one_home_and_stays_importable_from_dopo():
+    """It is a property of PDF extraction, not of BPRD. Two copies would drift."""
+    from commoner_probe.dopo_catalogue import term_pattern as from_dopo
+    from commoner_probe.textparse import term_pattern as from_textparse
+
+    assert from_dopo is from_textparse
+    assert from_textparse("Sanctioned").search("Sanc oned")
+
+
+def test_iit_hyderabad_reads_the_deadline_out_of_the_advertisement_pdf():
+    """It read link text only and never opened the document behind the link."""
+    pytest.importorskip("bs4")
+    from commoner_probe.academia.parsers import iit_hyderabad
+
+    html = '<a href="/ads/chy_akm_lab.pdf">Advertisement for Research Associate</a>'
+
+    class FakeFetcher:
+        def pdf_text(self, pdf_url):
+            return ("pdfs/chy_akm_lab.pdf", "The deadline for applications is 5:00 pm, 22/04/2026")
+
+    ads = iit_hyderabad.parse(html, "https://iith.ac.in/careers/", datetime(2026, 6, 1), FakeFetcher())
+
+    assert len(ads) == 1
+    assert ads[0]["closing_date"] == "2026-04-22"
+    assert ads[0]["closing_date_status"] == "read"
+    assert ads[0]["pdf_parsed"] is True
+
+
+def test_iit_hyderabad_marks_a_rolling_call_rather_than_leaving_it_null():
+    """A rolling call has no deadline by design. That is not a parser miss."""
+    pytest.importorskip("bs4")
+    from commoner_probe.academia.parsers import iit_hyderabad
+
+    html = '<a href="/ads/mae_ra1.pdf">Advertisement for Research Associate-I</a>'
+
+    class FakeFetcher:
+        def pdf_text(self, pdf_url):
+            return ("pdfs/mae_ra1.pdf",
+                    "This is a rolling advertisement; the PI will evaluate and shortlist")
+
+    ads = iit_hyderabad.parse(html, "https://iith.ac.in/careers/", datetime(2026, 6, 1), FakeFetcher())
+
+    assert ads[0]["closing_date"] is None
+    assert ads[0]["closing_date_status"] == "rolling"
+
+
+def test_iit_hyderabad_says_not_examined_when_no_document_was_opened():
+    """`--no-download` must not look like a failed read."""
+    pytest.importorskip("bs4")
+    from commoner_probe.academia.parsers import iit_hyderabad
+
+    html = '<a href="/ads/x.pdf">Advertisement for Research Associate</a>'
+    ads = iit_hyderabad.parse(html, "https://iith.ac.in/careers/", datetime(2026, 6, 1), None)
+
+    assert ads[0]["closing_date_status"] == "not_examined"
+
+
+def test_a_record_written_before_closing_date_status_still_validates():
+    """The field is new. Rows on disk carry no value and must not start failing."""
+    import json
+    from importlib import resources
+
+    schema = json.loads(
+        resources.files("commoner_probe.schemas")
+        .joinpath("manifest_academic_job.schema.json").read_text(encoding="utf-8")
+    )
+    assert "closing_date_status" not in schema.get("required", [])
+    assert schema["properties"]["closing_date_status"]["enum"] == [
+        "read", "rolling", "not_found", "not_examined"
+    ]
+
+
+def test_find_deadline_reads_apply_by_without_swallowing_a_start_date():
+    """`should apply by email to <address> by 25-08-2026` (IITH, verbatim).
+
+    Anchored on `apply by`, never on a bare `by`. A bare `by` also introduces a
+    start date, and a wrong date sold as a deadline is worse than a null.
+    """
+    from commoner_probe.academia.pdf_text import find_deadline
+
+    assert find_deadline(
+        "candidates should apply by email to a@phy.iith.ac.in by 25-08-2026"
+    ) == "25-08-2026"
+    assert find_deadline("Eligible candidates should apply by 01-09-2026") == "01-09-2026"
+    assert find_deadline("Eligible persons should apply by filling out the form") is None
+    assert find_deadline("The position starts by 01-06-2026. Contact hr@x.ac.in") is None
+
+
+def test_parse_deadline_iso_reads_a_day_first_ordinal_date():
+    """`24th August 2026`. strptime has no directive for the ordinal suffix."""
+    from commoner_probe.academia.pdf_text import parse_deadline_iso
+
+    assert parse_deadline_iso("24th August 2026") == "2026-08-24"
+    assert parse_deadline_iso("8th July 2026") == "2026-07-08"
+    assert parse_deadline_iso("August 24, 2026") == "2026-08-24"
+
+
+def test_a_record_with_a_date_never_reports_that_nobody_looked():
+    """Seven parsers extract a closing date and only one names the status.
+
+    A bare default stamps `not_examined` beside a real date, and a consumer
+    filtering on `read` then drops known deadlines.
+    """
+    from commoner_probe.academia.probe import _closing_status
+
+    assert _closing_status({"closing_date": "2026-04-22"}) == "read"
+    assert _closing_status({"closing_date": "2026-04-22",
+                            "closing_date_status": "not_examined"}) == "read"
+    assert _closing_status({"closing_date": None}) == "not_examined"
+    assert _closing_status({"closing_date": None,
+                            "closing_date_status": "rolling"}) == "rolling"
+
+
+def test_a_rolling_review_does_not_deny_a_printed_deadline():
+    """`rolling basis` describes the review cadence, not the closing date.
+
+    Reading it as rolling asserts that no deadline exists, on a document that
+    prints one. That is worse than reading none.
+    """
+    from commoner_probe.academia.pdf_text import read_deadline
+
+    assert read_deadline(
+        "Applications are reviewed on a rolling basis and accepted until 31 December 2026"
+    ) == ("31 December 2026", "read")
+    assert read_deadline(
+        "Reviewed on a rolling basis. Accepted until December 31, 2026"
+    )[1] == "read"
+    # No date anywhere. `rolling basis` alone must not assert one does not exist.
+    assert read_deadline("Applications are reviewed on a rolling basis.")[1] == "not_found"
+    # An explicitly deadline-free call still reads as rolling.
+    assert read_deadline("This is a rolling advertisement; the PI will shortlist")[1] == "rolling"
+
+
+def test_iit_hyderabad_publishes_no_date_it_cannot_normalise():
+    """The numeric patterns accept a two-digit year and the ISO coercion does not.
+
+    `22/04/26` would otherwise reach the corpus verbatim beside every other
+    parser's ISO value, carrying status `read`.
+    """
+    pytest.importorskip("bs4")
+    from commoner_probe.academia.parsers import iit_hyderabad
+
+    html = '<a href="/ads/x.pdf">Advertisement for Research Associate</a>'
+
+    class FakeFetcher:
+        def pdf_text(self, pdf_url):
+            return ("pdfs/x.pdf", "Application deadline: 22/04/26")
+
+    ads = iit_hyderabad.parse(html, "https://iith.ac.in/careers/", datetime(2026, 6, 1), FakeFetcher())
+
+    assert ads[0]["closing_date"] is None
+    assert ads[0]["closing_date_status"] == "not_found"

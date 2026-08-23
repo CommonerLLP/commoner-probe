@@ -24,7 +24,14 @@ from urllib.parse import urlparse
 
 from ..base import safe_filename_segment
 from ..http_client import read_capped_response
-from ..textparse import extract_pdf_text
+from ..textparse import extract_pdf_text, term_pattern
+
+#: `Applications` with the dropped `ti` ligature allowed. IIT Hyderabad's
+#: recruitment PDFs render "Applica ons Invited for Post-Doctoral Research
+#: Fellowship", so a regex anchored on the correct spelling reads a document
+#: that states a deadline and reports none. `last date` and `deadline` carry no
+#: `ti` and survive it. See `dopo_catalogue` TRAP 2 for the same font failure.
+_APPLICATIONS = term_pattern("applications").pattern
 
 # Lower bound on accepted deadline years (see origin constants.py).
 _HARD_FLOOR_DEADLINE_YEAR = 2020
@@ -192,7 +199,7 @@ def extract_text_flow(pdf_path: Path) -> str | None:
 
 DEADLINE_RES = [
     re.compile(
-        r"(?:application[s]?|complete[d]?\s+application|submitted)"
+        rf"(?:{_APPLICATIONS}?|complete[d]?\s+{_APPLICATIONS}?|submitted)"
         r"[^\n]{0,300}?(?:on\s+or\s+before|deadline[:\s]+|last\s+date[^\n]{0,20}?)"
         r"\s+(?P<date>[A-Z][a-z]+\s+\d{1,2},?\s+\d{4})",
         re.I | re.S,
@@ -202,7 +209,44 @@ DEADLINE_RES = [
         r"\s+(?P<date>[A-Z][a-z]+\s+\d{1,2},?\s+\d{4})",
         re.I | re.S,
     ),
-    re.compile(r"Application\s+Last\s+Date[^\d]{0,40}?(?P<date>\d{1,2}/\d{1,2}/\d{4})", re.I),
+    re.compile(rf"{_APPLICATIONS}?\s+Last\s+Date[^\d]{{0,40}}?(?P<date>\d{{1,2}}/\d{{1,2}}/\d{{4}})", re.I),
+    # "The deadline for applications is 5:00 pm, 22/04/2026" (IITH, verbatim).
+    # `deadline` already reached a month-name date and never a numeric one. A
+    # clock time can sit between the two, and it cannot match a d/m/y shape.
+    re.compile(r"deadline[^\n]{0,40}?(?P<date>\d{1,2}[./-]\d{1,2}[./-]\d{2,4})", re.I),
+    # "Application Deadline: 24th August 2026" and "Last Date to Apply 26th
+    # July 2026" (IITH, verbatim). The ordinal suffix and the day-first order
+    # were both unreadable: every month-name pattern above wants "August 24,
+    # 2026". Measured on the live corpus 2026-08-23, this was the single most
+    # common missed shape.
+    re.compile(
+        r"(?:deadline|last\s+date(?:\s+to\s+apply)?)"
+        r"[^\n]{0,40}?(?P<date>\d{1,2}(?:st|nd|rd|th)?\s+[A-Z][a-z]+,?\s+\d{4})",
+        re.I,
+    ),
+    # "should apply by email to agupta@phy.iith.ac.in by 25-08-2026" (IITH,
+    # verbatim). Anchored on `apply by` and never on a bare `by`, because a
+    # bare `by` also introduces a START date. The optional middle carries the
+    # address in the observed shape and is capped, so a date further down the
+    # page cannot be pulled up into an unrelated sentence.
+    re.compile(
+        r"apply\s+by\s+(?:[^\n]{0,120}?\bby\s+)?"
+        r"(?P<date>\d{1,2}[./-]\d{1,2}[./-]\d{2,4})",
+        re.I,
+    ),
+    # "reviewed on a rolling basis and accepted until 31 December 2026". A
+    # rolling REVIEW can still carry a closing date, so the date has to be
+    # readable or the rolling wording wins and denies it.
+    re.compile(
+        r"accepted\s+un(?:ti|\s)?l"
+        r"[^\n]{0,40}?(?P<date>\d{1,2}(?:st|nd|rd|th)?\s+[A-Z][a-z]+,?\s+\d{4})",
+        re.I,
+    ),
+    re.compile(
+        r"accepted\s+un(?:ti|\s)?l"
+        r"[^\n]{0,40}?(?P<date>[A-Z][a-z]+\s+\d{1,2},?\s+\d{4})",
+        re.I,
+    ),
     re.compile(r"last\s+date[^\n]{0,40}?(?P<date>\d{1,2}[./-]\d{1,2}[./-]\d{2,4})", re.I),
     re.compile(r"last\s+date[^\n]{0,40}?(?P<date>[A-Z][a-z]+\s+\d{1,2},?\s+\d{4})", re.I),
 ]
@@ -221,12 +265,69 @@ def find_deadline(text: str) -> str | None:
     return None
 
 
+#: A call that states it has no closing date. Sourced from the wording IITH
+#: uses, e.g. "This is a rolling advertisement; the PI will evaluate and
+#: shortlist the applications". Kept narrow on purpose: a false "rolling"
+#: asserts that no deadline exists, which is worse than reading none.
+#:
+#: `rolling basis` is deliberately absent. It describes the review cadence and
+#: says nothing about a closing date. "reviewed on a rolling basis and accepted
+#: until 31 December 2026" states both, and reading it as rolling denies a date
+#: the document prints.
+ROLLING_RES = [
+    re.compile(r"\brolling\s+(?:advertisement|call|recruitment|mode)\b", re.I),
+    re.compile(r"\b(?:open|accepted)\s+until\s+(?:the\s+)?(?:position|post)s?\s+(?:is|are)\s+filled\b", re.I),
+    re.compile(r"\bthere\s+is\s+no\s+(?:last\s+date|closing\s+date|deadline)\b", re.I),
+    # "Post-Doctoral Research Fellowship (Rolling)" — IITH marks the whole call
+    # in its title and says nothing else about it.
+    re.compile(r"\(\s*rolling\s*\)", re.I),
+]
+
+#: What the closing_date field means when it is null.
+#:
+#: `read`          a date was extracted from the document
+#: `rolling`       the document states it has no closing date
+#: `not_found`     the document was read and stated neither
+#: `not_examined`  no document was opened
+#:
+#: The last two are the point. A null closing_date used to mean both, so a
+#: consumer could not tell an expired posting from one nobody read. Do not
+#: collapse them into a boolean.
+DEADLINE_STATUSES = ("read", "rolling", "not_found", "not_examined")
+
+
+def find_rolling(text: str) -> bool:
+    """True when the text states the call has no closing date."""
+    text = re.sub(r"[ \t]+", " ", text)
+    return any(r.search(text) for r in ROLLING_RES)
+
+
+def read_deadline(text: str | None) -> tuple[str | None, str]:
+    """Return ``(raw_deadline, status)`` for one document's text.
+
+    ``text`` is None when no document was opened. That is a different fact from
+    a document that carries no date, and this function keeps them apart.
+    """
+    if not text or not text.strip():
+        return None, "not_examined"
+    raw = find_deadline(text)
+    if raw:
+        return raw, "read"
+    if find_rolling(text):
+        return None, "rolling"
+    return None, "not_found"
+
+
 def parse_deadline_iso(raw: str | None) -> str | None:
     """Best-effort coercion of a deadline string to ISO yyyy-mm-dd, or None."""
     if not raw:
         return None
     raw = raw.strip().rstrip(".")
-    for fmt in ("%B %d, %Y", "%b %d, %Y", "%d/%m/%Y", "%d-%m-%Y", "%d.%m.%Y"):
+    # "24th August 2026" -> "24 August 2026". The ordinal suffix is the source's
+    # style and strptime reads no directive for it.
+    raw = re.sub(r"(?<=\d)(?:st|nd|rd|th)\b", "", raw, flags=re.I)
+    for fmt in ("%B %d, %Y", "%b %d, %Y", "%d/%m/%Y", "%d-%m-%Y", "%d.%m.%Y",
+                "%d %B %Y", "%d %b %Y", "%d %B, %Y", "%d %b, %Y"):
         try:
             return datetime.strptime(raw, fmt).date().isoformat()
         except ValueError:

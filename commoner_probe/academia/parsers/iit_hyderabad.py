@@ -19,6 +19,7 @@ from typing import Any, Callable
 
 from .._common import stable_id
 from ..ad_factory import make_ad
+from ..pdf_text import parse_deadline_iso, read_deadline
 from .parser_utils import classify_post_type, extract_department, iter_recruitment_links
 
 # Skip result notifications and cancellations — not job listings. The live
@@ -43,6 +44,23 @@ def parse(html: str, url: str, fetched_at: Any, pdf: Callable | None = None) -> 
         if _SKIP_RE.search(title):
             continue
 
+        # The listing page carries no dates. The advertisement PDF behind each
+        # link carries them, and this parser read only the link text until
+        # 2026-08-23. `pdf` is None when download is disabled, and the status
+        # then stays `not_examined` — which is the honest answer, not a miss.
+        pdf_path = text = None
+        if pdf is not None and abs_url.lower().endswith(".pdf"):
+            pdf_path, text = pdf.pdf_text(abs_url)
+        raw_deadline, deadline_status = read_deadline(text)
+        # A raw date this parser cannot normalise is not published. The numeric
+        # patterns accept a two-digit year and `parse_deadline_iso` reads only
+        # four, so `22/04/26` would otherwise reach the corpus verbatim beside
+        # every other parser's ISO value. `not_found` is the honest status: the
+        # document was read and no usable date came out of it.
+        closing_iso = parse_deadline_iso(raw_deadline)
+        if raw_deadline and not closing_iso:
+            deadline_status = "not_found"
+
         ads.append(make_ad(
             id=stable_id("iith", abs_url, title),
             title=title[:250],
@@ -54,6 +72,10 @@ def parse(html: str, url: str, fetched_at: Any, pdf: Callable | None = None) -> 
             info_url=url,
             parse_confidence=0.55,
             raw_text_excerpt=parent_text[:500],
+            closing_date=closing_iso,
+            closing_date_status=deadline_status,
+            pdf_path=pdf_path,
+            pdf_parsed=bool(text and text.strip()),
         ))
 
     return ads

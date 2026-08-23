@@ -83,6 +83,11 @@
     "closing_date": {
       "type": ["string", "null"]
     },
+    "closing_date_status": {
+      "type": "string",
+      "enum": ["read", "rolling", "not_found", "not_examined"],
+      "description": "What a null closing_date means. read: a date was extracted. rolling: the document states it has no closing date. not_found: the document was read and stated neither. not_examined: no document was opened. Absent on records written before this field existed."
+    },
     "original_url": {
       "type": "string"
     },

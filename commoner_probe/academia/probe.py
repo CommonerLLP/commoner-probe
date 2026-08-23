@@ -26,6 +26,23 @@ from .pdf_text import Fetcher
 from .registry import load_registry, select_institutions
 
 
+def _closing_status(ad: dict) -> str:
+    """The `closing_date_status` for one ad dict.
+
+    A parser that carries a date has read one, whether or not it sets the
+    field. Seven parsers extract a closing date and only `iit_hyderabad` names
+    the status, so a bare default would stamp `not_examined` beside a real
+    date and a consumer filtering on `read` would drop known deadlines.
+
+    The default applies to a null date only, which is the case the field
+    exists to describe.
+    """
+    status = ad.get("closing_date_status")
+    if ad.get("closing_date"):
+        return status if status and status != "not_examined" else "read"
+    return status or "not_examined"
+
+
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 
@@ -196,6 +213,7 @@ class AcademicJobsProbe:
             "pay_scale": ad.get("pay_scale"),
             "publication_date": ad.get("publication_date"),
             "closing_date": ad.get("closing_date"),
+            "closing_date_status": _closing_status(ad),
             "original_url": ad.get("original_url") or "",
             "info_url": ad.get("info_url"),
             "apply_url": ad.get("apply_url"),

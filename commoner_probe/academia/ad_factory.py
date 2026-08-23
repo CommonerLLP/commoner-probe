@@ -32,6 +32,7 @@ def make_ad(
     pay_scale: str | None = None,
     publication_date: str | None = None,
     closing_date: Any = None,
+    closing_date_status: str = "not_examined",
     parse_confidence: float = 0.5,
     raw_text_excerpt: str | None = None,
     apply_url: str | None = None,
@@ -42,7 +43,13 @@ def make_ad(
     pdf_path: str | None = None,
     pdf_parsed: bool = False,
 ) -> dict:
-    """Build an ad dict with a consistent shape across parsers."""
+    """Build an ad dict with a consistent shape across parsers.
+
+    ``closing_date_status`` says what a null ``closing_date`` means. It
+    defaults to ``not_examined``, which is true of any parser that reads only
+    the listing page. A parser that opens the document must set it from
+    ``pdf_text.read_deadline``, or it claims not to have looked when it did.
+    """
     closing_str = closing_date.isoformat() if hasattr(closing_date, "isoformat") else closing_date
     pub_str = publication_date.isoformat() if hasattr(publication_date, "isoformat") else publication_date
     return {
@@ -59,6 +66,7 @@ def make_ad(
         "pay_scale": pay_scale,
         "publication_date": pub_str,
         "closing_date": closing_str,
+        "closing_date_status": closing_date_status,
         "original_url": original_url,
         "snapshot_fetched_at": iso(snapshot_fetched_at),
         "parse_confidence": parse_confidence,

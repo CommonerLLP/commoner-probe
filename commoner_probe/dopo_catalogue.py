@@ -64,8 +64,9 @@ Use OCR only after measuring a specific edition and finding it empty.
 
 from __future__ import annotations
 
-import re
 from typing import NamedTuple
+
+from .textparse import term_pattern
 
 __all__ = [
     "DOPO_BASE", "DOPO_EDITIONS", "RECOVERY_HOST_PREFIX",
@@ -133,18 +134,7 @@ def recovery_urls(*, archived_only: bool = True) -> list[str]:
     return [e.url for e in DOPO_EDITIONS if e.archived or not archived_only]
 
 
-#: The ``ti`` that extraction drops. A term is searched with the ligature
-#: allowed to be either itself or the space it becomes.
-_LIGATURE = re.compile(r"ti", re.IGNORECASE)
-
-
-def term_pattern(term: str, *, flags: int = re.IGNORECASE) -> re.Pattern[str]:
-    """A regex for ``term`` that survives the dropped ligature.
-
-    ``term_pattern("Sanctioned")`` matches both ``Sanctioned`` and
-    ``Sanc oned``. The document is left exactly as the source wrote it, because
-    repairing extracted text means writing characters into a primary source
-    that nobody can then tell from the original.
-    """
-    parts = [re.escape(piece) for piece in _LIGATURE.split(term)]
-    return re.compile(r"(?:ti|\s)".join(parts), flags)
+#: `term_pattern` moved to `textparse` on 2026-08-23, when IIT Hyderabad's
+#: recruitment PDFs turned out to drop the same `ti`. It is a property of PDF
+#: extraction, not of this source. It is imported at the top of this module and
+#: stays importable from here, because TRAP 2 above tells the reader to use it.
