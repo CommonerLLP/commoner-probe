@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from ..base import safe_filename_segment
 from ..http_client import read_capped_response
@@ -29,6 +30,18 @@ from ..textparse import extract_pdf_text
 _HARD_FLOOR_DEADLINE_YEAR = 2020
 
 
+def same_site(url: str, other: str) -> bool:
+    """True when two URLs sit on one site, ignoring a leading ``www.``.
+
+    A career page on ``www.example.ac.in`` links its PDFs from
+    ``example.ac.in``. robots.txt is per host, so the two are separate
+    origins to the parser and one site to the institution.
+    """
+    a = urlparse(url).netloc.lower().removeprefix("www.")
+    b = urlparse(other).netloc.lower().removeprefix("www.")
+    return bool(a) and a == b
+
+
 class Fetcher:
     """Per-run network helper handed to parsers that need to fetch beyond the
     listing page (PDF transcripts, per-position sub-pages). Routes through the
@@ -36,21 +49,39 @@ class Fetcher:
     when download is disabled, and parsers degrade to listing-page-only output.
     """
 
-    def __init__(self, session: Any, pdf_dir: Path, out_dir: Path) -> None:
+    def __init__(self, session: Any, pdf_dir: Path, out_dir: Path,
+                 robots_override_for: str | None = None) -> None:
         self.session = session
         self.pdf_dir = pdf_dir
         self.out_dir = out_dir
+        #: The career-page URL whose site a registry `robots_override` covers,
+        #: or None. A host that refuses /robots.txt to every User-Agent reads
+        #: as disallow-all, and that verdict reaches the annexure PDF as well
+        #: as the listing page. An override that stopped at the listing would
+        #: emit ads with `pdf_path: null` and no error. The scope is the
+        #: institution's own site, so a third-party link off the page still
+        #: obeys robots.
+        self.robots_override_for = robots_override_for
+
+    def _overrides(self, url: str) -> bool:
+        return bool(self.robots_override_for) and same_site(url, self.robots_override_for)
+
+    def _get(self, url: str, **kwargs: Any) -> Any:
+        if self._overrides(url):
+            kwargs["respect_robots"] = False
+        return self.session.get(url, **kwargs)
 
     def get_html(self, url: str, *, timeout: float = 45.0) -> str | None:
         try:
-            r = self.session.get(url, timeout=timeout)
+            r = self._get(url, timeout=timeout)
             r.raise_for_status()
             return r.text
         except Exception:
             return None
 
     def download(self, url: str) -> Path | None:
-        return download_pdf(self.session, url, self.pdf_dir)
+        return download_pdf(self.session, url, self.pdf_dir,
+                            robots_override=self._overrides(url))
 
     def rel(self, path: Path) -> str:
         return str(path.relative_to(self.out_dir))
@@ -76,18 +107,25 @@ def _pdf_basename(url: str) -> str:
     return name if name.lower().endswith(".pdf") else name + ".pdf"
 
 
-def download_pdf(session: Any, url: str, dest_dir: Path, *, timeout: float = 60.0) -> Path | None:
+def download_pdf(session: Any, url: str, dest_dir: Path, *, timeout: float = 60.0,
+                 robots_override: bool = False) -> Path | None:
     """Download a PDF via the probe session. Returns the local path or None.
 
     Filename is the sanitized basename; the probe session already enforces the
     SSRF guard, so no separate url-safety check is needed here.
+
+    ``robots_override`` carries the institution's registry opt-in to this
+    request. The caller decides the scope; this function only forwards it.
     """
     dest_dir.mkdir(parents=True, exist_ok=True)
     path = dest_dir / _pdf_basename(url)
     if path.exists() and path.stat().st_size > 0:
         return path
+    kwargs: dict[str, Any] = {"timeout": timeout, "stream": True}
+    if robots_override:
+        kwargs["respect_robots"] = False
     try:
-        r = session.get(url, timeout=timeout, stream=True)
+        r = session.get(url, **kwargs)
     except Exception:
         return None
     status = getattr(r, "status_code", 200)

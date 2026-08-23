@@ -148,7 +148,8 @@ class AcademicJobsProbe:
             return "", "http_error", code
         return text, "ok", code
 
-    def _fetcher(self, enabled: bool, session: object | None = None) -> Fetcher | None:
+    def _fetcher(self, enabled: bool, session: object | None = None,
+                 inst: dict | None = None) -> Fetcher | None:
         """A Fetcher (PDF download + per-position HTML sub-page helper), or None
         when download is disabled (parsers then degrade to listing-page output).
 
@@ -156,10 +157,19 @@ class AcademicJobsProbe:
         listing page on its User-Agent refuses the annexure PDF behind it too.
         A User-Agent that stopped at the listing would fetch the page at 200.
         It would then 403 on every document in that page.
+
+        A registry `robots_override` reaches the Fetcher for the same reason.
+        A host that refuses `/robots.txt` to every User-Agent reads as
+        disallow-all, and the listing retry alone would emit ads with
+        `pdf_path: null` and no error. The override covers the institution's
+        own site, not every host its page links to.
         """
         if not enabled:
             return None
-        return Fetcher(session or self.session, self.pdf_dir, self.out_dir)
+        override_for = None
+        if inst is not None and inst.get("robots_override") is True:
+            override_for = inst.get("career_page_url_guess")
+        return Fetcher(session or self.session, self.pdf_dir, self.out_dir, override_for)
 
     def _record(
         self, ad: dict, inst: dict, *, status: str = "ok", source_method: str | None = "official scrape"
@@ -299,7 +309,7 @@ class AcademicJobsProbe:
         for inst in self.selected_institutions():
             # Built per institution rather than per run, because the Fetcher
             # carries that institution's session.
-            pdf = self._fetcher(download and not dry_run, self._session_for(inst))
+            pdf = self._fetcher(download and not dry_run, self._session_for(inst), inst)
             records = self.probe_institution(inst, pdf=pdf, dry_run=dry_run)
             for rec in records:
                 if rec["key"] in seen:

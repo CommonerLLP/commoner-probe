@@ -19,6 +19,15 @@
   disallow-all reading is the gateway's artefact, not a policy the origin
   states. Each row records its reason in the registry.
 
+- **A registry `robots_override` now reaches the institution's documents.** It
+  covered the listing-page retry only. A host that refuses `/robots.txt` to
+  every User-Agent reads as disallow-all, and that verdict also reached the
+  annexure PDF behind the page. The run emitted ads with `pdf_path: null` and
+  `pdf_parsed: false`, with no error and no failed-download record. Measured on
+  `iim-bodhgaya`: the PDF now lands at 268,271 bytes and its text reaches the
+  record. The override covers the institution's own site, ignoring a leading
+  `www.`. A third-party link off the page still obeys robots.
+
 ## 0.17.0 — 2026-08-23
 
 ### Added
