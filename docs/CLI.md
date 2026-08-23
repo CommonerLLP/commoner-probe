@@ -941,6 +941,17 @@ commoner-probe academic-jobs \
 | `--no-download` | off | Skip PDF download + text extraction (listing-page heuristics only) |
 | `--dry-run` | off | List which institutions would be probed without fetching |
 
+Two registry fields depart from the defaults. Each names its reason in the row
+that uses it. `user_agent` sets the User-Agent for one institution's fetches.
+It reaches the listing page, the robots.txt and the PDFs. `robots_override`
+retries past a robots disallow.
+
+`iim-bangalore` and `iim-bodhgaya` carry a browser User-Agent. Their WAF answers
+403 to every `commoner-probe/...` spelling. `iim-bodhgaya` also carries the
+override, because its gateway refuses `/robots.txt` to every User-Agent. Every
+other institution uses the default identity. Prefer the User-Agent alone and
+re-measure. The override suppresses a signal that may be real.
+
 ### `commoner-probe evidence dmft` — cross-source evidence bundle
 
 ```bash

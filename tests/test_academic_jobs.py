@@ -471,9 +471,9 @@ def test_probe_hands_the_fetcher_the_institution_session(tmp_path):
     seen: list[object] = []
     original = probe._fetcher
 
-    def record_fetcher(enabled, session=None):
+    def record_fetcher(enabled, session=None, inst=None):
         seen.append(session)
-        return original(enabled, session)
+        return original(enabled, session, inst)
 
     probe._fetcher = record_fetcher
     probe.probe(download=True)
@@ -491,12 +491,101 @@ def test_probe_hands_the_fetcher_the_default_session_without_a_user_agent(tmp_pa
     seen: list[object] = []
     original = probe._fetcher
 
-    def record_fetcher(enabled, session=None):
+    def record_fetcher(enabled, session=None, inst=None):
         seen.append(session)
-        return original(enabled, session)
+        return original(enabled, session, inst)
 
     probe._fetcher = record_fetcher
     probe.probe(download=True)
 
     assert seen == [probe.session]
     assert probe._sessions == {}
+
+
+def test_bundled_registry_names_a_user_agent_where_a_waf_needs_one():
+    """The `user_agent` field must reach the BUNDLED registry, not only `--registry`.
+
+    The field shipped in 0.17.0 with no bundled row using it, so a default CLI
+    run kept the 403 the field exists to clear. Both institutions below answer
+    403 to every commoner-probe User-Agent, measured 2026-08-23.
+    """
+    from commoner_probe.academia.registry import load_registry
+
+    by_id = {inst["id"]: inst for inst in load_registry()}
+    for inst_id in ("iim-bangalore", "iim-bodhgaya"):
+        assert by_id[inst_id].get("user_agent"), inst_id
+
+
+def test_bundled_registry_states_a_reason_for_every_override():
+    """A `user_agent` or a `robots_override` departs from the default. Say why."""
+    from commoner_probe.academia.registry import load_registry
+
+    for inst in load_registry():
+        if inst.get("user_agent"):
+            assert inst.get("user_agent_reason"), inst["id"]
+        if inst.get("robots_override") is True:
+            assert inst.get("robots_override_reason"), inst["id"]
+
+
+class RecordingSession:
+    """Records the kwargs of every request, so a test can read `respect_robots`."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, dict]] = []
+
+    def get(self, url: str, **kwargs):
+        self.calls.append((url, kwargs))
+        return FakeResp("<html>ok</html>")
+
+
+def test_fetcher_carries_the_robots_override_to_the_institution_s_own_documents(tmp_path):
+    """A registry override must reach the PDF, not stop at the listing page.
+
+    A host that refuses `/robots.txt` to every User-Agent reads as disallow-all.
+    The listing retry alone leaves ads with `pdf_path: null` and no error.
+    """
+    from commoner_probe.academia.pdf_text import Fetcher
+
+    session = RecordingSession()
+    fetcher = Fetcher(session, tmp_path / "pdfs", tmp_path,
+                      "https://www.demo.example.ac.in/careers")
+
+    fetcher.get_html("https://demo.example.ac.in/ad/1")
+
+    assert session.calls[0][1].get("respect_robots") is False
+
+
+def test_fetcher_leaves_a_third_party_link_under_robots(tmp_path):
+    """The override covers the institution's own site. It covers nothing else."""
+    from commoner_probe.academia.pdf_text import Fetcher
+
+    session = RecordingSession()
+    fetcher = Fetcher(session, tmp_path / "pdfs", tmp_path,
+                      "https://www.demo.example.ac.in/careers")
+
+    fetcher.get_html("https://cdn.other.example.com/ad.pdf")
+
+    assert "respect_robots" not in session.calls[0][1]
+
+
+def test_fetcher_without_an_override_sends_no_robots_kwarg(tmp_path):
+    """The default path is unchanged: no override field, no extra kwarg."""
+    from commoner_probe.academia.pdf_text import Fetcher
+
+    session = RecordingSession()
+    Fetcher(session, tmp_path / "pdfs", tmp_path).get_html("https://demo.example.ac.in/ad/1")
+
+    assert "respect_robots" not in session.calls[0][1]
+
+
+def test_probe_gives_the_fetcher_the_override_only_when_the_registry_asks(tmp_path):
+    """`_fetcher` reads `robots_override` from the institution row."""
+    from commoner_probe.academia import AcademicJobsProbe
+
+    probe = AcademicJobsProbe(tmp_path, sleep=0, registry_path=_registry(tmp_path, [_INST_GENERIC]))
+
+    plain = probe._fetcher(True, probe.session, _INST_GENERIC)
+    opted_in = probe._fetcher(True, probe.session, dict(_INST_GENERIC, robots_override=True))
+
+    assert plain.robots_override_for is None
+    assert opted_in.robots_override_for == _INST_GENERIC["career_page_url_guess"]

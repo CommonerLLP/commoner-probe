@@ -1,5 +1,33 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **`academic-jobs` now carries the 0.17.0 `user_agent` field on the bundled
+  registry.** The field shipped with no bundled row using it, so a default CLI
+  run still met the 403 the field exists to clear; only a hand-edited
+  `--registry` reached the behaviour. Re-run `academic-jobs` for
+  `iim-bangalore` and `iim-bodhgaya`: both wrote a `robots_blocked` row and no
+  ads before this change.
+
+  Measured 2026-08-23. Both hosts answer 403 to every `commoner-probe/...`
+  User-Agent and 200 to a browser string. `iimb.ac.in` then serves a stock
+  Drupal `/robots.txt` that allows the career page, so the User-Agent alone is
+  enough. `iimbg.ac.in` refuses `/robots.txt` to every User-Agent with a 403
+  carrying a "404 Not Found" body, so it takes `robots_override` as well — the
+  disallow-all reading is the gateway's artefact, not a policy the origin
+  states. Each row records its reason in the registry.
+
+- **A registry `robots_override` now reaches the institution's documents.** It
+  covered the listing-page retry only. A host that refuses `/robots.txt` to
+  every User-Agent reads as disallow-all, and that verdict also reached the
+  annexure PDF behind the page. The run emitted ads with `pdf_path: null` and
+  `pdf_parsed: false`, with no error and no failed-download record. Measured on
+  `iim-bodhgaya`: the PDF now lands at 268,271 bytes and its text reaches the
+  record. The override covers the institution's own site, ignoring a leading
+  `www.`. A third-party link off the page still obeys robots.
+
 ## 0.17.0 — 2026-08-23
 
 ### Added
