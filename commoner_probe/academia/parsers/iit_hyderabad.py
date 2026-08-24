@@ -14,24 +14,25 @@ this parser did not exist anywhere in a released form until now.
 
 from __future__ import annotations
 
-import re
 from typing import Any, Callable
 
 from .._common import stable_id
 from ..ad_factory import make_ad
 from ..pdf_text import parse_deadline_iso, read_deadline
-from .parser_utils import classify_post_type, extract_department, iter_recruitment_links
-
-# Skip result notifications and cancellations — not job listings. The live
-# site's actual wording ("Notification of faculty recruitment results", "List
-# of Provisionally Selected Candidates") has words between "of" and "results"
-# and an inflected "provisionally" that a naive exact-phrase match misses.
-_SKIP_RE = re.compile(
-    r"\bnotification\s+of\s+(?:[\w/()-]+\s+){0,5}results?\b"
-    r"|\blist\s+of\s+provisionally?\b"
-    r"|\bcancellation\s+of\s+advertisement\b",
-    re.I,
+from .parser_utils import (
+    classify_document,
+    classify_post_type,
+    extract_department,
+    iter_recruitment_links,
 )
+
+# Result notifications, cancellations and the rest of a career page's
+# paperwork are LABELLED, not dropped. This parser used to drop them with a
+# private regex. A silent skip is the defect: a pattern that wrongly matches a
+# real advertisement removes it from the corpus, and nothing anywhere says a
+# record went missing. `classify_document` covers every shape the old regex
+# did, plus manuals, forms, exam material and sanctioned-post tables, and the
+# consumer filters on the label at render time.
 
 
 def parse(html: str, url: str, fetched_at: Any, pdf: Callable | None = None) -> list[dict]:
@@ -41,9 +42,6 @@ def parse(html: str, url: str, fetched_at: Any, pdf: Callable | None = None) -> 
     ads: list[dict] = []
 
     for abs_url, title, parent_text in iter_recruitment_links(soup, url):
-        if _SKIP_RE.search(title):
-            continue
-
         # The listing page carries no dates. The advertisement PDF behind each
         # link carries them, and this parser read only the link text until
         # 2026-08-23. `pdf` is None when download is disabled, and the status
@@ -73,6 +71,7 @@ def parse(html: str, url: str, fetched_at: Any, pdf: Callable | None = None) -> 
             parse_confidence=0.55,
             raw_text_excerpt=parent_text[:500],
             closing_date=closing_iso,
+            document_class=classify_document(title, parent_text),
             closing_date_status=deadline_status,
             pdf_path=pdf_path,
             pdf_parsed=bool(text and text.strip()),

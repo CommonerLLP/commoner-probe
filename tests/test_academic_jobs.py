@@ -780,3 +780,76 @@ def test_iit_hyderabad_publishes_no_date_it_cannot_normalise():
 
     assert ads[0]["closing_date"] is None
     assert ads[0]["closing_date_status"] == "not_found"
+
+
+def test_classify_document_labels_every_shape_the_requester_measured():
+    """The eight non-advertisements found in a live 364-record corpus.
+
+    A career page serves the advertisement and its paperwork. 38 of 79 registry
+    institutions use the generic parser, and it read every recruitment link as
+    an ad.
+    """
+    from commoner_probe.academia.parsers.parser_utils import classify_document
+
+    cases = {
+        "Result of the recruitment for the post of Deputy Registrar": "results_notice",
+        "Provisionally selected candidates for the position of Technical Officer": "results_notice",
+        "Corrigendum": "corrigendum",
+        "Faculty Recruitment Manual": "policy_document",
+        "Sanctioned Faculty Positions": "sanctioned_posts",
+        "Previous Question Papers (Permanent Non-Teaching Staff)": "exam_material",
+        "Instructions for Online Recruitment Application Form": "application_form",
+        "Click here to fill Online Recruitment Application Form": "application_form",
+    }
+    for title, expected in cases.items():
+        assert classify_document(title) == expected, title
+
+
+def test_classify_document_defaults_to_advertisement():
+    """Only a positive match reclassifies. Everything else is offered as an ad."""
+    from commoner_probe.academia.parsers.parser_utils import classify_document
+
+    for title in (
+        "Advertisement for the post of Assistant Professor",
+        "Recruitment of Junior Research Fellow under a DST project",
+        "Walk-in interview for Project Scientist",
+    ):
+        assert classify_document(title) == "advertisement", title
+
+
+def test_classify_document_survives_the_dropped_ti_ligature():
+    """These titles are often the PDF filename, or text lifted out of one."""
+    from commoner_probe.academia.parsers.parser_utils import classify_document
+
+    assert classify_document("Sanc oned Faculty Posi ons") == "sanctioned_posts"
+    assert classify_document("No fica on of Results") == "results_notice"
+    assert classify_document("Applica on Form") == "application_form"
+
+
+def test_generic_parser_labels_a_non_advertisement():
+    """It had no filter of any kind. `grep -nE '_SKIP|skip'` returned nothing."""
+    pytest.importorskip("bs4")
+    from commoner_probe.academia.parsers import generic
+
+    html = (
+        '<p><a href="/recruitment/manual.pdf">Faculty Recruitment Manual</a></p>'
+        '<p><a href="/recruitment/advt-01.pdf">Advertisement for Assistant Professor</a></p>'
+    )
+    ads = generic.parse(html, "https://demo.example.ac.in/careers", datetime(2026, 6, 1))
+
+    by_title = {a["title"]: a["document_class"] for a in ads}
+    assert by_title["Faculty Recruitment Manual"] == "policy_document"
+    assert by_title["Advertisement for Assistant Professor"] == "advertisement"
+
+
+def test_a_record_written_before_document_class_still_validates():
+    """The field is new. Rows on disk carry no value and must not start failing."""
+    import json
+    from importlib import resources
+
+    schema = json.loads(
+        resources.files("commoner_probe.schemas")
+        .joinpath("manifest_academic_job.schema.json").read_text(encoding="utf-8")
+    )
+    assert "document_class" not in schema.get("required", [])
+    assert schema["properties"]["document_class"]["default"] == "advertisement"

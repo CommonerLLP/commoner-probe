@@ -314,7 +314,13 @@ def test_iit_hyderabad_extracts_department_and_post_type():
     assert ad["info_url"] == url
 
 
-def test_iit_hyderabad_skips_result_notifications():
+def test_iit_hyderabad_labels_result_notifications_rather_than_dropping_them():
+    """It dropped these with a private regex until 2026-08-24.
+
+    A silent skip is the defect. A pattern that wrongly matches a real
+    advertisement removes it from the corpus and nothing says a record went
+    missing. The label is visible, and the consumer filters on it.
+    """
     from commoner_probe.academia.parsers import iit_hyderabad
 
     url = "https://www.iith.ac.in/careers/"
@@ -323,14 +329,14 @@ def test_iit_hyderabad_skips_result_notifications():
         "Notification of Results — Assistant Professor Recruitment</a></p>"
     )
     ads = iit_hyderabad.parse(html, url, FETCHED)
-    assert ads == []
+    assert len(ads) == 1
+    assert ads[0]["document_class"] == "results_notice"
 
 
-def test_iit_hyderabad_skips_result_notification_with_inflected_wording():
-    """Regression test for a live-page bug: the site's actual results-notification
-    wording has extra words between "of" and "results", and "Provisionally"
-    (inflected) rather than "provisional" — a naive exact-phrase _SKIP_RE match
-    let this slip through as a fake job posting. Title captured live.
+def test_iit_hyderabad_labels_a_results_notice_with_inflected_wording():
+    """The live wording puts words between "of" and "results", and inflects
+    "Provisionally". A naive exact-phrase match let this through as a fake job
+    posting. Title captured live. It is now labelled rather than dropped.
     """
     from commoner_probe.academia.parsers import iit_hyderabad
 
@@ -342,7 +348,8 @@ def test_iit_hyderabad_skips_result_notification_with_inflected_wording():
         "</a></p>"
     )
     ads = iit_hyderabad.parse(html, url, FETCHED)
-    assert ads == []
+    assert len(ads) == 1
+    assert ads[0]["document_class"] == "results_notice"
 
 
 def test_iit_hyderabad_non_pdf_link_has_no_apply_url():

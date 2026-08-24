@@ -18,6 +18,7 @@ from typing import Any, Callable
 from urllib.parse import urljoin
 
 from .._common import PLACEHOLDER_INSTITUTION_ID, iso, stable_id
+from .parser_utils import classify_document
 
 RECRUITMENT_KEYWORDS = [
     r"recruit", r"vacanc", r"advert", r"non[- ]?teaching", r"ministerial",
@@ -196,6 +197,10 @@ def parse(html: str, url: str, fetched_at: Any, pdf: Callable | None = None) -> 
             "pay_scale": None,
             "publication_date": pub,
             "closing_date": close,
+            # A career page serves the advertisement and its paperwork.
+            # 38 of 79 registry institutions use this parser, and it read
+            # every recruitment link as an ad until 2026-08-24.
+            "document_class": classify_document(title, context),
             "original_url": abs_url,
             "snapshot_fetched_at": iso(fetched_at),
             "parse_confidence": 0.5 if RECRUITMENT_LINK_RE.search(f"{link_text} {href}") else 0.4,
