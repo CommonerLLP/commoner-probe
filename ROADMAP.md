@@ -17,7 +17,6 @@ record; this file says what ships next and what is deliberately deferred.
 | 0.10.0 | 2026-07-29 | OCR fallback (`ocr_pdf_text`, `extract-answers --ocr`); run-level `status` on `_runs.jsonl` + non-zero exit on a failed crawl; corpus-truncation audit recipe; two post-merge Codex waves |
 | 0.10.1 | 2026-07-29 | Fixes only. Two live breakages on shipped code: `mca-csr` dead at the TLS layer since 2026-07-02 (cert SAN vs a hardcoded `www.`), and `prs --surface mp-track --house rs` writing nothing and exiting 0 for its whole life. Plus the `--ocr` acceptance gate (16/60 -> 26/60 recovery, no longer destroys records) and five Codex findings |
 | 0.11.0 | 2026-07-30 | Two new source families: `census` (ORGI/Census of India — PCA, village/town amenities, town directory, via the data.gov.in API instead of ~11.5 GB of DCHB PDFs) and `niti-annual-report` (NITI Annual Reports, the residual). NeVA extraction checkpoints, so an interrupted corpus pass resumes instead of restarting |
-
 | 0.12.x | 2026-07-31 | `nada` (NADA platform, MoSPI + ORGI from one `--base-url`), `dchb-town`; the shared HTTP client had been ignoring 429 entirely |
 | 0.13.0 | 2026-08-01 | Eleven review findings, each demonstrated failing first; public surface cleaned |
 | 0.14.x | 2026-08-04 → 08-16 | The questions-list subject bleed (97.9% of adjacent pairs, now 0); `parse_status` gains `boundary_bleed` |
