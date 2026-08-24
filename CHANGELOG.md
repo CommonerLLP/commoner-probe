@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.19.0 — 2026-08-24
 
 **This release is a MINOR.** `manifest_academic_job` gains a field, so the
 public output schema grew.

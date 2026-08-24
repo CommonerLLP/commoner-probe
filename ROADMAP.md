@@ -24,10 +24,11 @@ record; this file says what ships next and what is deliberately deferred.
 | 0.16.0 | 2026-08-20 | `mirror`, `udise-docs`, `supervisor`, `dopo_catalogue`; a bills resume that skips recorded outcomes |
 | 0.17.0 | 2026-08-23 | A per-institution `user_agent` for `academic-jobs` |
 | 0.18.0 | 2026-08-23 | `closing_date_status` on `academic_job_posting`; `iit_hyderabad` reads the advertisement PDF; `textparse.term_pattern` |
+| 0.19.0 | 2026-08-24 | `document_class` on `academic_job_posting`; the generic parser had no filter and `iit_hyderabad` dropped records silently |
 
 ## On master, unreleased
 
-Nothing. 0.18.0 was cut from master with no open PRs and no open issues.
+Nothing. 0.19.0 was cut from master with no open PRs and no open issues.
 
 **Next gate: 1.0.0 — deferred deliberately, and gated on Phase 2.** Declaring
 1.0 promises interface stability, and the package rename to `probe`/`compose`
