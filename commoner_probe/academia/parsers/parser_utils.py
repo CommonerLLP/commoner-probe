@@ -21,6 +21,8 @@ from __future__ import annotations
 import re
 from urllib.parse import urljoin
 
+from ...textparse import term_pattern
+
 # ── Recruitment-link detection ─────────────────────────────────────────────
 
 RECRUITMENT_KEYWORDS = [
@@ -265,3 +267,103 @@ def iter_recruitment_links(soup, base_url: str):
 
         title = resolve_title(link_text, parent_text)
         yield abs_url, title, parent_text
+
+
+#: What a recruitment page serves that is NOT a job advertisement.
+#:
+#: A career page carries the advertisement and its whole paperwork: the results
+#: notice that closes it, the manual that governs it, the form you apply on,
+#: and last year's question papers. A parser that reads every recruitment link
+#: as an ad publishes a policy manual as an open post.
+#:
+#: **These are labelled, never dropped.** A skip filter fails silently: a regex
+#: that wrongly matches a real advertisement removes it from the corpus and
+#: nothing says a record went missing. A label is visible and arguable, and the
+#: consumer filters at render time, which is where the interpretation belongs.
+#:
+#: Order matters. The first match wins, so the narrow patterns come first.
+def _lig(word: str) -> str:
+    r"""``word`` with every dropped ``ti`` allowed. Built, never hand-written.
+
+    "Notification" carries TWO. A hand-rolled single ``(?:ti|\s)?`` reads
+    ``Notifica on`` and misses ``No fica on``, which is what a font dropping
+    both actually produces. That exact miss is why this helper exists.
+    """
+    return term_pattern(word).pattern
+
+
+_DOCUMENT_CLASSES: tuple[tuple[str, "re.Pattern[str]"], ...] = (
+    ("results_notice", re.compile(
+        r"\b" + _lig("notification") + r"\s+of\s+(?:[\w/()-]+\s+){0,5}results?\b"
+        r"|\blist\s+of\s+" + _lig("provisionally") + r"?\b"
+        r"|\b" + _lig("provisionally") + r"\s+selected\b"
+        r"|\bresults?\s+of\s+the\s+recruitment\b"
+        r"|\b(?:select|merit|wai" + _lig("ting") + r")\s+list\b"
+        r"|\blist\s+of\s+candidates\s+selected\b",
+        re.I)),
+    ("cancellation", re.compile(
+        r"\b" + _lig("cancellation") + r"\s+of\s+advertisement\b"
+        r"|\bwithdrawal\s+of\s+advertisement\b",
+        re.I)),
+    ("corrigendum", re.compile(
+        r"\bcorrigend(?:um|a)\b|\baddend(?:um|a)\b|\bamendment\s+to\s+advertisement\b",
+        re.I)),
+    ("exam_material", re.compile(
+        r"\b(?:previous|old|sample|model)\s+(?:year'?s?\s+)?"
+        + _lig("question") + r"\s+papers?\b"
+        r"|\b" + _lig("question") + r"\s+papers?\b"
+        r"|\banswer\s+keys?\b|\bsyllabus\b|\badmit\s+cards?\b",
+        re.I)),
+    ("application_form", re.compile(
+        r"\b(?:" + _lig("application") + r"|" + _lig("registration") + r")\s+form\b"
+        r"|\b" + _lig("instructions") + r"\s+for\s+(?:filling|online)\b"
+        r"|\bclick\s+here\s+to\s+(?:fill|apply)\b",
+        re.I)),
+    ("policy_document", re.compile(
+        r"\brecruitment\s+(?:manual|rules|policy|guidelines?)\b"
+        r"|\b(?:manual|guidelines?)\s+for\s+(?:faculty\s+)?recruitment\b",
+        re.I)),
+    ("sanctioned_posts", re.compile(
+        r"\b" + _lig("sanctioned") + r"\s+(?:faculty\s+)?" + _lig("positions") + r"?\b"
+        r"|\b" + _lig("sanctioned") + r"\s+strength\b"
+        r"|\bcadre\s+strength\b",
+        re.I)),
+)
+
+#: The value every other record carries. A parser that classifies nothing still
+#: reports this, because "we did not classify" and "we classified it as an ad"
+#: are the same fact for a consumer: the row is offered as an advertisement.
+DOCUMENT_CLASS_DEFAULT = "advertisement"
+
+DOCUMENT_CLASSES = (DOCUMENT_CLASS_DEFAULT,) + tuple(k for k, _ in _DOCUMENT_CLASSES)
+
+
+def classify_document(title: str, href: str = "") -> str:
+    """What kind of document this link is, from the link's OWN text and URL.
+
+    Returns one of :data:`DOCUMENT_CLASSES`.
+
+    **Surrounding page text is never consulted, and that is the whole rule.**
+    A career page routinely groups an advertisement with its corrigendum and
+    its application form inside one cell. Shared context then labels the real
+    advertisement with a sibling's class, and a consumer filtering out
+    non-advertisements hides a genuine opening. An earlier draft of this
+    function read context as a fallback and did exactly that.
+
+    The href is link-local, so it is safe and it earns its keep: a link reading
+    only "English Version" points at `Corrigendum-English-Version.pdf`.
+
+    Every pattern tolerates the dropped ``ti`` ligature — ``Sanc oned``,
+    ``No fica on`` — because these titles are frequently the PDF filename, or
+    text lifted out of one.
+    """
+    for name, pattern in _DOCUMENT_CLASSES:
+        if pattern.search(title):
+            return name
+    if href:
+        # The path only. A query string can carry another document's name.
+        path = href.split("?", 1)[0].split("#", 1)[0].replace("-", " ").replace("_", " ")
+        for name, pattern in _DOCUMENT_CLASSES:
+            if pattern.search(path):
+                return name
+    return DOCUMENT_CLASS_DEFAULT

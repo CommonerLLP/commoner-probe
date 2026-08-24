@@ -83,6 +83,12 @@
     "closing_date": {
       "type": ["string", "null"]
     },
+    "document_class": {
+      "type": "string",
+      "enum": ["advertisement", "results_notice", "cancellation", "corrigendum", "exam_material", "application_form", "policy_document", "sanctioned_posts"],
+      "description": "What kind of document the link is. A career page serves the advertisement and its paperwork: the results notice that closes it, the manual that governs it, the form you apply on. These are labelled, never dropped, so a wrong classification stays visible and the consumer filters at render time. Absent on records written before this field existed.",
+      "default": "advertisement"
+    },
     "closing_date_status": {
       "type": "string",
       "enum": ["read", "rolling", "not_found", "not_examined"],

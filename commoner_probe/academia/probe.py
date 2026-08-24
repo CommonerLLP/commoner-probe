@@ -213,6 +213,7 @@ class AcademicJobsProbe:
             "pay_scale": ad.get("pay_scale"),
             "publication_date": ad.get("publication_date"),
             "closing_date": ad.get("closing_date"),
+            "document_class": ad.get("document_class") or "advertisement",
             "closing_date_status": _closing_status(ad),
             "original_url": ad.get("original_url") or "",
             "info_url": ad.get("info_url"),

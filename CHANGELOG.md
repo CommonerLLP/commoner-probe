@@ -1,5 +1,53 @@
 # Changelog
 
+## Unreleased
+
+**This release is a MINOR.** `manifest_academic_job` gains a field, so the
+public output schema grew.
+
+**`academic-jobs` record counts CHANGE for `iit-hyderabad`.** That parser used
+to drop results notices and cancellations with a private regex. It now labels
+them. A live run went from 85 records to 93. Re-run and re-filter rather than
+diffing counts.
+
+### Added
+
+- **`document_class` on `academic_job_posting`.** A career page serves the
+  advertisement and its paperwork: the results notice that closes it, the
+  manual that governs it, the form you apply on, last year's question papers.
+  Eight values — `advertisement` plus `results_notice`, `cancellation`,
+  `corrigendum`, `exam_material`, `application_form`, `policy_document` and
+  `sanctioned_posts`. The field is not in `required`, so records written before
+  it still validate.
+
+  **These are labelled, never dropped.** A skip filter fails silently: a pattern
+  that wrongly matches a real advertisement removes it from the corpus and
+  nothing says a record went missing. A label is visible and arguable, and the
+  consumer filters at render time.
+
+  **The class comes from the link's own text and URL, never from surrounding
+  page text.** A career page groups an advertisement with its corrigendum and
+  its application form in one cell. Shared context labels the advertisement
+  with a sibling's class, and a consumer filtering out non-advertisements then
+  hides a genuine opening.
+
+- **`parser_utils.classify_document`**, the shared classifier. Every pattern is
+  built with `textparse.term_pattern`, so it survives the dropped `ti`
+  ligature. `Sanc oned Faculty Posi ons` and `No fica on of Results` both
+  classify. Hand-rolling a single `(?:ti|\s)?` reads `Notifica on` and misses
+  `No fica on`, which is what a font dropping both actually produces.
+
+### Fixed
+
+- **The generic parser admitted anything on a recruitment page.** It had no
+  filter of any kind, and 38 of 79 bundled institutions use it. A faculty
+  recruitment manual entered a corpus as an open post.
+
+- **`iit_hyderabad` dropped records silently.** Its private skip regex removed
+  results notices with no trace, and missed manuals, forms and exam material
+  entirely. `Previous Question Papers (Permanent Non-Teaching Staff)` shipped
+  as a job advertisement. Both halves are now one labelled path.
+
 ## 0.18.0 — 2026-08-23
 
 **This release is a MINOR.** `manifest_academic_job` gains a field, so the

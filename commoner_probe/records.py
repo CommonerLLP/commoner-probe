@@ -573,6 +573,10 @@ class ManifestAcademicJobRecord:
     pay_scale: str | None = None
     publication_date: str | None = None
     closing_date: str | None = None
+    #: What kind of document the link is: `advertisement` and seven
+    #: non-advertisement classes. Labelled, never dropped. None on rows
+    #: written before this field existed.
+    document_class: str | None = None
     #: What a null `closing_date` means: `read`, `rolling`, `not_found` or
     #: `not_examined`. Defaults to None, because rows written before this field
     #: existed carry no value and the schema does not require one.

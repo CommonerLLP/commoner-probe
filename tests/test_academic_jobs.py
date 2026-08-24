@@ -780,3 +780,114 @@ def test_iit_hyderabad_publishes_no_date_it_cannot_normalise():
 
     assert ads[0]["closing_date"] is None
     assert ads[0]["closing_date_status"] == "not_found"
+
+
+def test_classify_document_labels_every_shape_the_requester_measured():
+    """The eight non-advertisements found in a live 364-record corpus.
+
+    A career page serves the advertisement and its paperwork. 38 of 79 registry
+    institutions use the generic parser, and it read every recruitment link as
+    an ad.
+    """
+    from commoner_probe.academia.parsers.parser_utils import classify_document
+
+    cases = {
+        "Result of the recruitment for the post of Deputy Registrar": "results_notice",
+        "Provisionally selected candidates for the position of Technical Officer": "results_notice",
+        "Corrigendum": "corrigendum",
+        "Faculty Recruitment Manual": "policy_document",
+        "Sanctioned Faculty Positions": "sanctioned_posts",
+        "Previous Question Papers (Permanent Non-Teaching Staff)": "exam_material",
+        "Instructions for Online Recruitment Application Form": "application_form",
+        "Click here to fill Online Recruitment Application Form": "application_form",
+    }
+    for title, expected in cases.items():
+        assert classify_document(title) == expected, title
+
+
+def test_classify_document_defaults_to_advertisement():
+    """Only a positive match reclassifies. Everything else is offered as an ad."""
+    from commoner_probe.academia.parsers.parser_utils import classify_document
+
+    for title in (
+        "Advertisement for the post of Assistant Professor",
+        "Recruitment of Junior Research Fellow under a DST project",
+        "Walk-in interview for Project Scientist",
+    ):
+        assert classify_document(title) == "advertisement", title
+
+
+def test_classify_document_survives_the_dropped_ti_ligature():
+    """These titles are often the PDF filename, or text lifted out of one."""
+    from commoner_probe.academia.parsers.parser_utils import classify_document
+
+    assert classify_document("Sanc oned Faculty Posi ons") == "sanctioned_posts"
+    assert classify_document("No fica on of Results") == "results_notice"
+    assert classify_document("Applica on Form") == "application_form"
+
+
+def test_generic_parser_labels_a_non_advertisement():
+    """It had no filter of any kind. `grep -nE '_SKIP|skip'` returned nothing."""
+    pytest.importorskip("bs4")
+    from commoner_probe.academia.parsers import generic
+
+    html = (
+        '<p><a href="/recruitment/manual.pdf">Faculty Recruitment Manual</a></p>'
+        '<p><a href="/recruitment/advt-01.pdf">Advertisement for Assistant Professor</a></p>'
+    )
+    ads = generic.parse(html, "https://demo.example.ac.in/careers", datetime(2026, 6, 1))
+
+    by_title = {a["title"]: a["document_class"] for a in ads}
+    assert by_title["Faculty Recruitment Manual"] == "policy_document"
+    assert by_title["Advertisement for Assistant Professor"] == "advertisement"
+
+
+def test_a_record_written_before_document_class_still_validates():
+    """The field is new. Rows on disk carry no value and must not start failing."""
+    import json
+    from importlib import resources
+
+    schema = json.loads(
+        resources.files("commoner_probe.schemas")
+        .joinpath("manifest_academic_job.schema.json").read_text(encoding="utf-8")
+    )
+    assert "document_class" not in schema.get("required", [])
+    assert schema["properties"]["document_class"]["default"] == "advertisement"
+
+
+def test_a_sibling_link_never_decides_a_document_class():
+    """A career page groups an advertisement with its corrigendum in one cell.
+
+    Shared context labelled the real advertisement `corrigendum`, and a
+    consumer filtering out non-advertisements then hid a genuine opening. The
+    classifier reads the link's own text and URL, never its neighbours'.
+    """
+    pytest.importorskip("bs4")
+    from commoner_probe.academia.parsers import generic
+
+    html = (
+        '<td><a href="/advt-01.pdf">Advertisement for Assistant Professor</a> '
+        '<a href="/corr-01.pdf">Corrigendum</a></td>'
+    )
+    ads = generic.parse(html, "https://demo.example.ac.in/careers", datetime(2026, 6, 1))
+
+    by_title = {a["title"]: a["document_class"] for a in ads}
+    assert by_title["Advertisement for Assistant Professor"] == "advertisement"
+    assert by_title["Corrigendum"] == "corrigendum"
+
+
+def test_classify_document_reads_the_links_own_url():
+    """A link reading only "English Version" points at Corrigendum-English-Version.pdf."""
+    from commoner_probe.academia.parsers.parser_utils import classify_document
+
+    assert classify_document(
+        "English Version",
+        "https://iisc.ac.in/wp-content/uploads/2023/01/Corrigendum-English-Version.pdf",
+    ) == "corrigendum"
+
+
+def test_classify_document_ignores_a_query_string():
+    """A query string can name another document entirely."""
+    from commoner_probe.academia.parsers.parser_utils import classify_document
+
+    assert classify_document("Advertisement for Professor", "/apply?doc=corrigendum") == "advertisement"
