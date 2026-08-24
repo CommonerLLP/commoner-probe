@@ -200,7 +200,11 @@ def parse(html: str, url: str, fetched_at: Any, pdf: Callable | None = None) -> 
             # A career page serves the advertisement and its paperwork.
             # 38 of 79 registry institutions use this parser, and it read
             # every recruitment link as an ad until 2026-08-24.
-            "document_class": classify_document(title, context),
+            #
+            # `context` is NOT passed. It holds every sibling anchor's text, so
+            # an advertisement sharing a cell with its corrigendum was labelled
+            # `corrigendum` and vanished from any consumer filtering non-ads.
+            "document_class": classify_document(title, abs_url),
             "original_url": abs_url,
             "snapshot_fetched_at": iso(fetched_at),
             "parse_confidence": 0.5 if RECRUITMENT_LINK_RE.search(f"{link_text} {href}") else 0.4,

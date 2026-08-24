@@ -338,23 +338,32 @@ DOCUMENT_CLASS_DEFAULT = "advertisement"
 DOCUMENT_CLASSES = (DOCUMENT_CLASS_DEFAULT,) + tuple(k for k, _ in _DOCUMENT_CLASSES)
 
 
-def classify_document(title: str, context: str = "") -> str:
-    """What kind of document this link is, from its title.
+def classify_document(title: str, href: str = "") -> str:
+    """What kind of document this link is, from the link's OWN text and URL.
 
-    Returns one of :data:`DOCUMENT_CLASSES`. The title is the evidence, because
-    it is what the institution wrote on the link. ``context`` is checked only
-    when the title decides nothing, since surrounding page text belongs to
-    neighbouring links as often as to this one.
+    Returns one of :data:`DOCUMENT_CLASSES`.
+
+    **Surrounding page text is never consulted, and that is the whole rule.**
+    A career page routinely groups an advertisement with its corrigendum and
+    its application form inside one cell. Shared context then labels the real
+    advertisement with a sibling's class, and a consumer filtering out
+    non-advertisements hides a genuine opening. An earlier draft of this
+    function read context as a fallback and did exactly that.
+
+    The href is link-local, so it is safe and it earns its keep: a link reading
+    only "English Version" points at `Corrigendum-English-Version.pdf`.
 
     Every pattern tolerates the dropped ``ti`` ligature — ``Sanc oned``,
-    ``No fica on`` — because these titles are frequently the PDF filename or
+    ``No fica on`` — because these titles are frequently the PDF filename, or
     text lifted out of one.
     """
     for name, pattern in _DOCUMENT_CLASSES:
         if pattern.search(title):
             return name
-    if context:
+    if href:
+        # The path only. A query string can carry another document's name.
+        path = href.split("?", 1)[0].split("#", 1)[0].replace("-", " ").replace("_", " ")
         for name, pattern in _DOCUMENT_CLASSES:
-            if pattern.search(context):
+            if pattern.search(path):
                 return name
     return DOCUMENT_CLASS_DEFAULT

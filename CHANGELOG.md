@@ -25,6 +25,12 @@ diffing counts.
   nothing says a record went missing. A label is visible and arguable, and the
   consumer filters at render time.
 
+  **The class comes from the link's own text and URL, never from surrounding
+  page text.** A career page groups an advertisement with its corrigendum and
+  its application form in one cell. Shared context labels the advertisement
+  with a sibling's class, and a consumer filtering out non-advertisements then
+  hides a genuine opening.
+
 - **`parser_utils.classify_document`**, the shared classifier. Every pattern is
   built with `textparse.term_pattern`, so it survives the dropped `ti`
   ligature. `Sanc oned Faculty Posi ons` and `No fica on of Results` both

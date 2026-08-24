@@ -853,3 +853,41 @@ def test_a_record_written_before_document_class_still_validates():
     )
     assert "document_class" not in schema.get("required", [])
     assert schema["properties"]["document_class"]["default"] == "advertisement"
+
+
+def test_a_sibling_link_never_decides_a_document_class():
+    """A career page groups an advertisement with its corrigendum in one cell.
+
+    Shared context labelled the real advertisement `corrigendum`, and a
+    consumer filtering out non-advertisements then hid a genuine opening. The
+    classifier reads the link's own text and URL, never its neighbours'.
+    """
+    pytest.importorskip("bs4")
+    from commoner_probe.academia.parsers import generic
+
+    html = (
+        '<td><a href="/advt-01.pdf">Advertisement for Assistant Professor</a> '
+        '<a href="/corr-01.pdf">Corrigendum</a></td>'
+    )
+    ads = generic.parse(html, "https://demo.example.ac.in/careers", datetime(2026, 6, 1))
+
+    by_title = {a["title"]: a["document_class"] for a in ads}
+    assert by_title["Advertisement for Assistant Professor"] == "advertisement"
+    assert by_title["Corrigendum"] == "corrigendum"
+
+
+def test_classify_document_reads_the_links_own_url():
+    """A link reading only "English Version" points at Corrigendum-English-Version.pdf."""
+    from commoner_probe.academia.parsers.parser_utils import classify_document
+
+    assert classify_document(
+        "English Version",
+        "https://iisc.ac.in/wp-content/uploads/2023/01/Corrigendum-English-Version.pdf",
+    ) == "corrigendum"
+
+
+def test_classify_document_ignores_a_query_string():
+    """A query string can name another document entirely."""
+    from commoner_probe.academia.parsers.parser_utils import classify_document
+
+    assert classify_document("Advertisement for Professor", "/apply?doc=corrigendum") == "advertisement"
