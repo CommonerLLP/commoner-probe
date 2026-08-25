@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **Five dead career URLs in the bundled academia registry (REQ-0077).**
+  `iiser-mohali`, `iiser-berhampur`, `iiser-kolkata`, `iim-jammu`, and
+  `iim-rohtak` pointed at paths that 404. Replacements come from
+  academiaindia PR #92 (live-verified there). `iim-rohtak`'s new URL is
+  correct; TLS chain failure at that host is separate and unchanged.
+
 ## 0.19.0 — 2026-08-24
 
 **This release is a MINOR.** `manifest_academic_job` gains a field, so the
