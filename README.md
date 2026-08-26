@@ -364,7 +364,7 @@ vouches for, and `--verify` re-hashes every file the manifest names.
 
 ## Commands
 
-42 subcommands across parliament, courts, budgets, census, state registers and archives.
+43 subcommands across parliament, courts, budgets, census, state registers and archives.
 `commoner-probe --help` lists them; **[docs/CLI.md](docs/CLI.md)** documents
 each one with a worked example.
 

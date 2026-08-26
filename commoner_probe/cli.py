@@ -28,6 +28,7 @@ from .dspace import DEFAULT_HANDLE_PREFIX, LegacyDSpaceProbe
 from .evidence import build_dmft_evidence_bundle
 from .example_topics import list_example_topics, load_example_topic_text
 from .extract_debates import extract_debates
+from .koha import KohaProbe
 from .ministry_pdf_index import (
     MINISTRY_DDG_PORTALS,
     MinistryDDGPortal,
@@ -1005,6 +1006,30 @@ def legacy_dspace_cmd(args: argparse.Namespace) -> None:
     )
     for record in records:
         print(json.dumps(record, ensure_ascii=False))
+
+
+def koha_cmd(args: argparse.Namespace) -> None:
+    emit = None if args.dry_run else lambda record: print(json.dumps(record, ensure_ascii=False))
+    probe = KohaProbe(
+        Path(args.out),
+        base_url=args.base_url,
+        portal_name=args.portal_name,
+        per_page=args.per_page,
+        embeds=args.embed,
+        sleep=args.sleep,
+        emit=emit,
+    )
+    result = probe.probe(marc=args.marc, max_records=args.max_records, dry_run=args.dry_run)
+    if args.dry_run:
+        print(json.dumps({
+            "held_items_total": result.held_items_total_first,
+            "derived_pages": result.derived_pages,
+            "items": result.records,
+        }, ensure_ascii=False))
+    else:
+        print(result.report, file=sys.stderr)
+    if result.failed_units:
+        raise SystemExit(1)
 
 
 def myneta_cmd(args: argparse.Namespace) -> None:
@@ -2187,6 +2212,46 @@ def build_parser() -> argparse.ArgumentParser:
         help="List candidate handles from the browse index without fetching item pages.",
     )
     legacy_dspace.set_defaults(func=legacy_dspace_cmd)
+
+    koha = sub.add_parser(
+        "koha",
+        help="Enumerate held items through a Koha public REST API and optionally fetch MARC.",
+    )
+    koha.add_argument("--out", required=True, help="Output corpus directory")
+    koha.add_argument("--base-url", required=True, help="Koha portal base URL")
+    koha.add_argument("--portal-name", required=True, help="Short lowercase slug for this portal")
+    koha.add_argument(
+        "--per-page",
+        type=int,
+        choices=range(1, 1001),
+        default=1000,
+        metavar="N",
+        help="Held items per API page, from 1 to 1000 (default: 1000)",
+    )
+    koha.add_argument(
+        "--embed",
+        action="append",
+        default=["biblio"],
+        metavar="FIELD",
+        help="Repeatable x-koha-embed field (default: biblio)",
+    )
+    koha.add_argument(
+        "--marc",
+        action="store_true",
+        help="Fetch MARC-in-JSON once per distinct held biblio",
+    )
+    koha.add_argument(
+        "--max-records",
+        type=int,
+        help="Stop after N new held-item rows; does not bound MARC",
+    )
+    koha.add_argument("--sleep", type=float, default=1.0)
+    koha.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Fetch page 1, print live held-item counts and five rows, and write nothing",
+    )
+    koha.set_defaults(func=koha_cmd)
 
     nai = sub.add_parser(
         "abhilekh-patal",

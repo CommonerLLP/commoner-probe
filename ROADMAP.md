@@ -28,7 +28,9 @@ record; this file says what ships next and what is deliberately deferred.
 
 ## On master, unreleased
 
-Nothing. 0.19.0 was cut from master with no open PRs and no open issues.
+- `koha`: public REST API acquisition for held items, with optional MARC
+  deepening for distinct held biblios. This adds a public subcommand and two
+  public manifest kinds, so the next release is a minor.
 
 **Next gate: 1.0.0 — deferred deliberately, and gated on Phase 2.** Declaring
 1.0 promises interface stability, and the package rename to `probe`/`compose`

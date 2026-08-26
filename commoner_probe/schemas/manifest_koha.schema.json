@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CommonerLLP/commoner-probe/schemas/v1/manifest_koha.json",
+  "title": "manifest.jsonl — Koha held item or held biblio",
+  "description": "One held item enumerated through a Koha public REST API, or one held biblio deepened with MARC-in-JSON. This route cannot see biblios with zero holdings.",
+  "type": "object",
+  "required": [
+    "key",
+    "kind",
+    "record_type",
+    "source",
+    "source_url",
+    "portal_name",
+    "status",
+    "probed_at"
+  ],
+  "properties": {
+    "key": { "type": "string" },
+    "kind": { "type": "string", "enum": ["koha_item", "koha_biblio"] },
+    "record_type": { "type": "string", "enum": ["koha_item", "koha_biblio"] },
+    "source": { "type": "string", "format": "uri" },
+    "source_url": { "type": "string", "format": "uri" },
+    "portal_name": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+    "item_id": { "type": "integer", "minimum": 1 },
+    "biblio_id": { "type": "integer", "minimum": 1 },
+    "barcode": { "type": ["string", "null"] },
+    "callnumber": { "type": ["string", "null"] },
+    "home_library_id": { "type": ["string", "null"] },
+    "withdrawn": { "type": ["integer", "null"] },
+    "lost_status": { "type": ["integer", "null"] },
+    "biblio": { "type": "object" },
+    "embedded": { "type": "object" },
+    "page": { "type": "integer", "minimum": 1 },
+    "source_total_count": { "type": "integer", "minimum": 0 },
+    "holdings_count": { "type": "integer", "minimum": 1 },
+    "marc": { "type": "object" },
+    "status": { "type": "string", "const": "metadata_only" },
+    "probed_at": { "type": "string" }
+  },
+  "oneOf": [
+    {
+      "properties": {
+        "key": { "pattern": "^KOHA\\|[a-z0-9-]+\\|item\\|\\d+$" },
+        "kind": { "const": "koha_item" },
+        "record_type": { "const": "koha_item" }
+      },
+      "required": [
+        "item_id",
+        "biblio_id",
+        "barcode",
+        "callnumber",
+        "home_library_id",
+        "withdrawn",
+        "lost_status",
+        "biblio",
+        "embedded",
+        "page",
+        "source_total_count"
+      ]
+    },
+    {
+      "properties": {
+        "key": { "pattern": "^KOHA\\|[a-z0-9-]+\\|biblio\\|\\d+$" },
+        "kind": { "const": "koha_biblio" },
+        "record_type": { "const": "koha_biblio" }
+      },
+      "required": ["biblio_id", "holdings_count", "marc"]
+    }
+  ]
+}

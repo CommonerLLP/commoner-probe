@@ -908,6 +908,43 @@ Distinct from `commoner-probe indiacode`, which targets indiacode.nic.in's
 JSPUI theme specifically (different browse-page markup) — the two adapters
 are kept separate rather than forcing one regex set across both themes.
 
+### `commoner-probe koha` — Koha public REST APIs
+
+```bash
+commoner-probe koha \
+  --out data/niti-library \
+  --base-url https://library.niti.gov.in \
+  --portal-name niti-aayog
+```
+
+Enumerates held items through `/api/v1/public/items`. It writes one
+`koha_item` row per holding. It cannot see biblios with zero holdings.
+Coverage is limited to held items and held biblios. Search stays downstream.
+
+Use `--marc` to write one `koha_biblio` row per distinct held biblio. Each row
+stores the server's MARC-in-JSON verbatim. This option is off by default
+because it adds one request per held biblio.
+
+`probe.log` records truncation, failed units, and count changes. Failed units
+remain retryable. The command exits with status 1 when any unit fails.
+
+| Flag | Default | What it does |
+|---|---|---|
+| `--out` | required | Output corpus directory |
+| `--base-url` | required | Koha portal base URL |
+| `--portal-name` | required | Lowercase portal slug used in record keys |
+| `--per-page` | `1000` | Held items per page, capped at 1000 |
+| `--embed` | `biblio` | Repeatable `x-koha-embed` field |
+
+Control flags:
+
+| Flag | Default | What it does |
+|---|---|---|
+| `--marc` | off | Fetch MARC for each distinct held biblio |
+| `--max-records` | — | Stop after N new held-item rows |
+| `--sleep` | `1.0` | Minimum delay between requests to this host |
+| `--dry-run` | off | Read page 1 and print live counts plus five rows; write nothing |
+
 ### `commoner-probe budget` — Union Budget & RBI State-Finances files
 
 ```bash
@@ -1072,4 +1109,3 @@ Validates every JSONL file against its JSON Schema. Exits 1 on errors.
 Requires `[dev]` extra.
 
 ---
-

@@ -60,6 +60,8 @@ from .records import (
     ManifestDpeCsrRecord,
     ManifestFloorDebateRecord,
     ManifestIndiaCodeRecord,
+    ManifestKohaBiblioRecord,
+    ManifestKohaItemRecord,
     ManifestLegacyDspaceRecord,
     ManifestMcaCsrRecord,
     ManifestMinesDmftRecord,
@@ -321,6 +323,18 @@ class Corpus:
             if d.get("kind") == "legacy_dspace_item":
                 yield ManifestLegacyDspaceRecord.from_dict(d)
 
+    def manifest_koha_items(self) -> Iterator[ManifestKohaItemRecord]:
+        """Stream held-item records from a Koha public REST API."""
+        for d in _iter_jsonl(self.out_dir / "manifest.jsonl"):
+            if d.get("kind") == "koha_item":
+                yield ManifestKohaItemRecord.from_dict(d)
+
+    def manifest_koha_biblios(self) -> Iterator[ManifestKohaBiblioRecord]:
+        """Stream held-biblio MARC records from a Koha public REST API."""
+        for d in _iter_jsonl(self.out_dir / "manifest.jsonl"):
+            if d.get("kind") == "koha_biblio":
+                yield ManifestKohaBiblioRecord.from_dict(d)
+
     def manifest_mospi(self) -> Iterator[ManifestMospiRecord]:
         """Stream MoSPI eSankhyiki pull records from manifest.jsonl."""
         for d in _iter_jsonl(self.out_dir / "manifest.jsonl"):
@@ -513,6 +527,8 @@ class Corpus:
         "manifest_nai_catalogue": "manifest_nai_catalogue",
         "manifest_wayback_captures": "manifest_wayback_captures",
         "manifest_legacy_dspace": "manifest_legacy_dspace",
+        "manifest_koha_items": "manifest_koha_items",
+        "manifest_koha_biblios": "manifest_koha_biblios",
         "manifest_mospi": "manifest_mospi",
         "manifest_court_records": "manifest_court_records",
         "manifest_rendered_pages": "manifest_rendered_pages",

@@ -85,6 +85,9 @@ namespaces = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+  "network: live source checks that are skipped unless COMMONER_LIVE_TESTS=1",
+]
 
 [tool.ruff]
 target-version = "py310"
