@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+**This release is a MINOR.** `koha` adds a public subcommand and two manifest
+kinds.
+
+### Added
+
+- **`commoner-probe koha`.** Enumerate held items through a Koha public REST
+  API. Optional `--marc` deepens distinct held biblios with verbatim
+  MARC-in-JSON. Page and biblio checkpoints make both phases resumable.
+
+- **`manifest_koha` public schema.** `koha_item` preserves holding
+  multiplicity. `koha_biblio` carries the full MARC object and its holdings
+  count. This route cannot see biblios with zero holdings.
+
 ### Fixed
 
 - **Five dead career URLs in the bundled academia registry.**

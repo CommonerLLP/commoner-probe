@@ -94,6 +94,7 @@ class CliCommandSyncTests(unittest.TestCase):
                 "prs",
                 "questions-list",
                 "legacy-dspace",
+                "koha",
                 "budget",
                 "academic-jobs",
                 "debates",

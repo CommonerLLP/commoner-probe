@@ -879,6 +879,72 @@ class ManifestLegacyDspaceRecord:
 
 
 # ---------------------------------------------------------------------------
+# manifest.jsonl records (Koha public REST API)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class ManifestKohaItemRecord:
+    """One held item enumerated through a Koha public REST API."""
+
+    key: str
+    kind: str
+    record_type: str
+    source: str
+    source_url: str
+    portal_name: str
+    item_id: int
+    biblio_id: int
+    biblio: dict
+    page: int
+    source_total_count: int
+    status: str
+    probed_at: str
+    barcode: str | None = None
+    callnumber: str | None = None
+    home_library_id: str | None = None
+    withdrawn: int | None = None
+    lost_status: int | None = None
+    embedded: dict = field(default_factory=dict)
+    holdings_count: int | None = None
+    marc: dict | None = None
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "ManifestKohaItemRecord":
+        return _from_dict(cls, d)
+
+
+@dataclass
+class ManifestKohaBiblioRecord:
+    """One held biblio deepened with verbatim MARC-in-JSON."""
+
+    key: str
+    kind: str
+    record_type: str
+    source: str
+    source_url: str
+    portal_name: str
+    biblio_id: int
+    holdings_count: int
+    marc: dict
+    status: str
+    probed_at: str
+    item_id: int | None = None
+    barcode: str | None = None
+    callnumber: str | None = None
+    home_library_id: str | None = None
+    withdrawn: int | None = None
+    lost_status: int | None = None
+    biblio: dict | None = None
+    embedded: dict = field(default_factory=dict)
+    page: int | None = None
+    source_total_count: int | None = None
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "ManifestKohaBiblioRecord":
+        return _from_dict(cls, d)
+
+
+# ---------------------------------------------------------------------------
 # manifest.jsonl record (MoSPI eSankhyiki pull)
 # ---------------------------------------------------------------------------
 
@@ -1395,6 +1461,8 @@ __all__ = [
     "ManifestMynetaRecord",
     "ManifestPrsMpTrackRecord",
     "ManifestLegacyDspaceRecord",
+    "ManifestKohaItemRecord",
+    "ManifestKohaBiblioRecord",
     "ManifestMospiRecord",
     "ManifestCourtRecord",
     "ManifestRenderedPageRecord",
