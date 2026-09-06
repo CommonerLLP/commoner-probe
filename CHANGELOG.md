@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.20.0 — 2026-09-05
 
 **This release is a MINOR.** `koha` adds a public subcommand and two manifest
 kinds.
