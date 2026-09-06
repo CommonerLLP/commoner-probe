@@ -343,10 +343,11 @@ def parse(html: str, url: str, fetched_at: Any, pdf: Any = None) -> list[dict]:
         return []
 
     elig_text: Optional[str] = None
+    elig_path = None
     if elig_url:
-        ep = pdf.download(elig_url)
-        if ep:
-            elig_text = extract_text(ep)
+        elig_path = pdf.download(elig_url)
+        if elig_path:
+            elig_text = extract_text(elig_path)
 
     blocks = split_into_units(areas_text)
     elig_blocks_by_num: dict[int, UnitBlock] = {}
@@ -359,6 +360,21 @@ def parse(html: str, url: str, fetched_at: Any, pdf: Any = None) -> list[dict]:
         flow_text = extract_text_flow(areas_path)
         if flow_text:
             flow_excerpts = split_into_units_flow(flow_text, [b.unit_name for b in blocks])
+
+    # The eligibility PDF is a two-column table (unit name | criteria text).
+    # `extract_text` (layout=True) reads it row by row across both columns, so
+    # a plain line index mixes a fragment of the unit name with a fragment of
+    # the criteria — worse when a long name (e.g. "Ashank Desai Centre for
+    # Policy Studies") wraps across several rows, since every one of those
+    # rows still carries name text, not criteria text. `split_into_units_flow`
+    # already solves exactly this for the areas PDF; anchoring it on the same
+    # unit names over the eligibility PDF's reading-order text keeps the real
+    # criteria intact instead of reading one arbitrary interleaved line.
+    elig_flow_by_name: dict[str, str] = {}
+    if elig_path and blocks:
+        elig_flow_text = extract_text_flow(elig_path)
+        if elig_flow_text:
+            elig_flow_by_name = split_into_units_flow(elig_flow_text, [b.unit_name for b in blocks])
 
     reservation_note = find_reservation_note(areas_text)
     general_eligibility = find_general_eligibility(areas_text)
@@ -402,11 +418,18 @@ def parse(html: str, url: str, fetched_at: Any, pdf: Any = None) -> list[dict]:
     for b in blocks:
         elig_block = elig_blocks_by_num.get(b.unit_num)
         publications = find_publications(elig_block.text) if elig_block else find_publications(b.text)
-        elig_extract = (
-            re.sub(r"\s+", " ", elig_block.text.splitlines()[1:][0:30][0]).strip()
-            if (elig_block and len(elig_block.text.splitlines()) > 1)
-            else None
-        )
+        elig_flow = elig_flow_by_name.get(b.unit_name)
+        if elig_flow and elig_flow.strip():
+            elig_extract = re.sub(r"\s+", " ", elig_flow).strip()
+            if len(elig_extract) > 2000:
+                elig_extract = elig_extract[:2000].rsplit(" ", 1)[0] + "…"
+        elif elig_block and len(elig_block.text.splitlines()) > 1:
+            # Column-mashed fallback: no flow-anchored match for this unit
+            # name (e.g. it doesn't appear verbatim in the eligibility PDF).
+            # A truncated, possibly name-contaminated line beats nothing.
+            elig_extract = re.sub(r"\s+", " ", elig_block.text.splitlines()[1]).strip()
+        else:
+            elig_extract = None
         unit_breakdown = (
             find_category_breakdown(elig_block.text) if elig_block else find_category_breakdown(b.text)
         )

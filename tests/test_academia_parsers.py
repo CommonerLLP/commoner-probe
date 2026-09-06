@@ -182,6 +182,59 @@ def test_iit_rolling_parse_emits_per_unit_ads(monkeypatch):
     assert ads[0]["apply_url"].startswith("https://ecampus.iitd.ac.in")
 
 
+def test_iit_rolling_eligibility_survives_a_wrapped_unit_name(monkeypatch):
+    """A long unit name wraps across several rows in the eligibility PDF's
+    column layout. The old code read line 2 of the layout-extracted block,
+    which for a wrapped name is still the name, never the criteria. The
+    flow-anchored extraction must reach past it."""
+    pytest.importorskip("bs4")
+    from commoner_probe.academia.parsers import iit_rolling
+
+    areas_text = "2   Long Wrapping Department Name For Testing   (1) Testing area\n"
+
+    # layout=True (extract_text): the eligibility PDF's two columns read row
+    # by row, so the wrapped name occupies the first several lines with no
+    # criteria content at all — reproduces the real IIT Bombay defect shape.
+    elig_layout_text = (
+        "2   Long\n"
+        "     Wrapping\n"
+        "     Department Name For Testing   The candidate must have a PhD "
+        "and a minimum of THREE publications.\n"
+    )
+    # layout=False (extract_text_flow): reading order, name then criteria.
+    elig_flow_text = (
+        "2\n"
+        "Long Wrapping Department Name For Testing\n"
+        "The candidate must have a PhD and a minimum of THREE publications.\n"
+    )
+
+    def fake_extract_text(path):
+        return elig_layout_text if "eligibility" in str(path) else areas_text
+
+    def fake_extract_text_flow(path):
+        return elig_flow_text if "eligibility" in str(path) else areas_text
+
+    monkeypatch.setattr(iit_rolling, "extract_text", fake_extract_text)
+    monkeypatch.setattr(iit_rolling, "extract_text_flow", fake_extract_text_flow)
+
+    class FakeFetcher:
+        def download(self, url):
+            from pathlib import Path
+            return Path("/tmp/eligibility-fake.pdf" if "Eligibility" in url else "/tmp/areas-fake.pdf")
+
+    html = (
+        '<a href="/files/areas.pdf">Areas of Specialization</a>'
+        '<a href="/files/Eligibility-criteria.pdf">Eligibility Criteria</a>'
+    )
+    ads = iit_rolling.parse(html, "https://www.iitb.ac.in/job-vacancy-ad/x", FETCHED, FakeFetcher())
+
+    assert len(ads) == 1
+    elig = ads[0]["unit_eligibility"]
+    assert elig is not None
+    assert "PhD" in elig and "publications" in elig
+    assert "Wrapping" not in elig  # the old bug: a name fragment, not criteria
+
+
 def test_iit_rolling_returns_empty_without_fetcher():
     from commoner_probe.academia.parsers import iit_rolling
 
