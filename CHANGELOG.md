@@ -17,6 +17,17 @@ kinds.
 
 ### Fixed
 
+- **`unit_eligibility` on `iit_rolling`-parsed records changes on re-run.**
+  The eligibility PDF's two-column table was read row by row, so
+  `unit_eligibility` kept only the second line of that reading — usually
+  still the academic-unit name, not the criteria, worse for a name that
+  wraps across several rows (e.g. IIT Bombay's "Ashank Desai Centre for
+  Policy Studies" read as `"Centre for Policy"`). Now anchored on the same
+  flow-based per-unit split already used for the areas-of-specialization
+  PDF, so it reaches the real criteria text. Re-run against any
+  `iit_rolling`-covered institution (currently IIT Bombay) to pick up
+  corrected values; nothing else in the record shape changes.
+
 - **Five dead career URLs in the bundled academia registry.**
   `iiser-mohali`, `iiser-berhampur`, `iiser-kolkata`, `iim-jammu`, and
   `iim-rohtak` pointed at paths that 404. `iim-rohtak`'s new URL is correct;
