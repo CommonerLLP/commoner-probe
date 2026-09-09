@@ -463,16 +463,16 @@ def split_into_units_flow(text: str, dept_names: list[str]) -> dict[str, str]:
     department names as anchors. Returns {dept_name: body_text}."""
     if not text or not dept_names:
         return {}
-    by_pos: list[tuple[int, str]] = []
+    by_pos: list[tuple[int, int, str]] = []
     for name in dept_names:
         flexible = re.escape(name).replace(r"\ ", r"\s+")
         pattern = re.compile(r"(?:^|\n)\s*(?:\d{1,2}\s*\n\s*)?" + flexible + r"\s*\n", re.IGNORECASE)
         m = pattern.search(text)
         if m:
-            by_pos.append((m.end(), name))
+            by_pos.append((m.start(), m.end(), name))
     by_pos.sort()
     out: dict[str, str] = {}
-    for i, (pos, name) in enumerate(by_pos):
+    for i, (_, pos, name) in enumerate(by_pos):
         end = by_pos[i + 1][0] if i + 1 < len(by_pos) else len(text)
         body = text[pos:end].strip()
         if body:
