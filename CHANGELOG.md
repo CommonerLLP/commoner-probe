@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **IIT rolling-advertisement eligibility and specialization text changes on re-run.**
+  Each unit's text now ends before the next unit's heading.
+  Re-run `academic-jobs` for institutions using `iit_rolling` to refresh existing records.
+  Record IDs and the output schema do not change.
+
 ## 0.20.0 — 2026-09-05
 
 **This release is a MINOR.** `koha` adds a public subcommand and two manifest

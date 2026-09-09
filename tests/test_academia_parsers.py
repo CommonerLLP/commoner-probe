@@ -235,6 +235,42 @@ def test_iit_rolling_eligibility_survives_a_wrapped_unit_name(monkeypatch):
     assert "Wrapping" not in elig  # the old bug: a name fragment, not criteria
 
 
+@pytest.mark.parametrize("wrapped", [False, True])
+def test_iit_rolling_adjacent_units_keep_separate_eligibility(monkeypatch, tmp_path, wrapped):
+    from commoner_probe.academia.parsers import iit_rolling
+
+    names = ["Department Alpha", "Department Beta", "Department Gamma"]
+    areas = "\n".join(f"{i}   {name}   (1) Area {i}" for i, name in enumerate(names, 1))
+    headings = [name.replace(" ", "\n") if wrapped else name for name in names]
+    flow = "\n".join(
+        f"{i}\n{heading}\nPhD in subject {i} required."
+        for i, heading in enumerate(headings, 1)
+    ) + "\n"
+    monkeypatch.setattr(iit_rolling, "extract_text", lambda path: areas)
+    monkeypatch.setattr(iit_rolling, "extract_text_flow", lambda path: flow)
+
+    class Fetcher:
+        def download(self, url):
+            return tmp_path / "fixture.pdf"
+
+    html = ('<a href="/areas.pdf">Areas of Specialization</a>'
+            '<a href="/eligibility.pdf">Eligibility Criteria</a>')
+    ads = iit_rolling.parse(html, "https://www.iitb.ac.in/job-vacancy-ad/x", FETCHED, Fetcher())
+    assert len(ads) == 3
+    assert [ad["unit_eligibility"] for ad in ads] == [
+        f"PhD in subject {i} required." for i in range(1, 4)
+    ]
+
+
+def test_unit_flow_empty_section_does_not_capture_next_heading():
+    from commoner_probe.academia.pdf_text import split_into_units_flow
+
+    text = "1\nDepartment Alpha\n2\nDepartment Beta\nPhD required.\n"
+    assert split_into_units_flow(text, ["Department Beta", "Department Alpha"]) == {
+        "Department Beta": "PhD required.",
+    }
+
+
 def test_iit_rolling_returns_empty_without_fetcher():
     from commoner_probe.academia.parsers import iit_rolling
 
