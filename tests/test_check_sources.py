@@ -1643,15 +1643,16 @@ def _status_committed():
     }}
 
 
-def test_render_readme_status_is_a_collapsed_table_with_icons():
+def test_render_readme_status_shows_the_counts_and_collapses_the_table():
     block = cs.render_readme_status(_status_committed(), _status_sources())
     lines = block.splitlines()
     assert lines[0] == cs.README_STATUS_START and lines[-1] == cs.README_STATUS_END
-    assert "<details>" in lines and "</details>" in lines
-    summary = next(line for line in lines if line.startswith("<summary>"))
+    # The counts sit outside <details>, so they show without expanding anything.
     # Fresh first, then the table's order, then any unknown status.
-    assert summary == ("<summary>Status of all 5 sources: 2 ✅ fresh · 1 ❌ broken · "
-                       "1 🟡 stale · 1 ⚪ mystery</summary>")
+    tally = "**2 ✅ fresh · 1 ❌ broken · 1 🟡 stale · 1 ⚪ mystery**"
+    assert lines.index(tally) < lines.index("<details>") < lines.index("</details>")
+    summary = next(line for line in lines if line.startswith("<summary>"))
+    assert summary == "<summary>All 5 sources</summary>"
     # GitHub renders a table inside <details> only after a blank line.
     assert lines[lines.index(summary) + 1] == ""
     rows = [line for line in lines if line.startswith("| ") and not line.startswith("| Status")]
@@ -1691,7 +1692,7 @@ def test_main_rewrites_the_readme_status_block(tmp_path):
     assert run_main(p) == 0
     text = p["readme"].read_text(encoding="utf-8")
     assert text.startswith("# Title\n\n") and text.endswith("\n\nMore.\n")
-    assert "<summary>Status of all 2 sources: 1 ✅ fresh · 1 🟡 stale</summary>" in text
+    assert "**1 ✅ fresh · 1 🟡 stale**" in text and "<summary>All 2 sources</summary>" in text
     first = text
     assert run_main(p) == 0
     assert p["readme"].read_text(encoding="utf-8") == first
