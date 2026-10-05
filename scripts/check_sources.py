@@ -20,12 +20,13 @@ The script isn't shipped with the package, and it uses only what
 
 from __future__ import annotations
 
+import math
 import re
 import socket
 import urllib.error
 from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 from typing import Protocol
 
 from commoner_probe import reachability
@@ -86,6 +87,159 @@ class Rule(Protocol):
 
     def evaluate(self, *, source_id: str, records: list[dict], newest: str,
                  count: int | None, ctx: Context) -> RuleResult: ...
+
+
+# -- Freshness rules --------------------------------------------------------
+# Every rule reads "today" from ctx.today, never from the system clock.
+
+
+@dataclass(frozen=True)
+class MaxAge:
+    days: int
+
+    def depends_on(self) -> tuple[str, ...]:
+        return ()
+
+    def evaluate(self, *, source_id: str, records: list[dict], newest: str,
+                 count: int | None, ctx: Context) -> RuleResult:
+        if not newest:
+            return RuleResult(False, "no newest date to measure")
+        age = (ctx.today - date.fromisoformat(newest)).days
+        if age <= self.days:
+            return RuleResult(True)
+        return RuleResult(False, f"newest {newest} is {age} days old (limit {self.days})")
+
+
+@dataclass(frozen=True)
+class SessionAware:
+    calendar_id: str = "sessions-ls"
+    fallback_days: int = 120
+
+    def depends_on(self) -> tuple[str, ...]:
+        return (self.calendar_id,)
+
+    def evaluate(self, *, source_id: str, records: list[dict], newest: str,
+                 count: int | None, ctx: Context) -> RuleResult:
+        threshold = self._last_ended_session_start(ctx)
+        if threshold is None:
+            fallback = MaxAge(self.fallback_days).evaluate(
+                source_id=source_id, records=records, newest=newest, count=count, ctx=ctx)
+            return RuleResult(fallback.ok, "calendar unavailable; " + fallback.reason)
+        if newest >= threshold:
+            return RuleResult(True)
+        return RuleResult(
+            False, f"newest {newest} is before the start of the last ended session ({threshold})")
+
+    def _last_ended_session_start(self, ctx: Context) -> str | None:
+        """Return the first sitting of the latest ended session, or None when the
+        calendar isn't usable (not fresh this run, empty, or no ended session)."""
+        obs = ctx.results.get(self.calendar_id)
+        calendar = ctx.records.get(self.calendar_id)
+        if obs is None or obs.outcome != FRESH or not calendar:
+            return None
+        # Skip a record whose dates aren't valid ISO dates: a calendar fault must
+        # not break the sources that read it.
+        ended: list[tuple[date, date]] = []
+        for rec in calendar:
+            if not isinstance(rec, dict):
+                continue
+            first, last = _parse_iso(rec.get("first_sitting")), _parse_iso(rec.get("last_sitting"))
+            if first is not None and last is not None and last < ctx.today:
+                ended.append((last, first))
+        if not ended:
+            return None
+        return max(ended)[1].isoformat()
+
+
+@dataclass(frozen=True)
+class SiblingLag:
+    other_id: str
+    max_days: int
+
+    def depends_on(self) -> tuple[str, ...]:
+        return (self.other_id,)
+
+    def evaluate(self, *, source_id: str, records: list[dict], newest: str,
+                 count: int | None, ctx: Context) -> RuleResult:
+        other = ctx.results.get(self.other_id)
+        # A sibling counts only if it reached the freshness step. A BROKEN sibling
+        # (for example a document failure) can still carry a newest date.
+        if other is None or other.outcome not in (FRESH, STALE) or not other.newest:
+            return RuleResult(True, "sibling unavailable")
+        lag = (date.fromisoformat(other.newest) - date.fromisoformat(newest)).days
+        if lag <= self.max_days:
+            return RuleResult(True)
+        return RuleResult(
+            False,
+            f"newest {newest} trails {self.other_id} ({other.newest}) by {lag} days "
+            f"(limit {self.max_days})")
+
+
+@dataclass(frozen=True)
+class ExpectedEdition:
+    release_month: int  # 1-12
+    grace_days: int
+    edition: Callable[[int], str]  # cycle year -> edition label, for example 2026 -> "2026-27"
+    edition_of: Callable[[dict], str]  # record -> its edition label
+
+    def depends_on(self) -> tuple[str, ...]:
+        return ()
+
+    def evaluate(self, *, source_id: str, records: list[dict], newest: str,
+                 count: int | None, ctx: Context) -> RuleResult:
+        this_year = self._deadline(ctx.today.year)
+        cycle = ctx.today.year if ctx.today >= this_year else ctx.today.year - 1
+        want = self.edition(cycle)
+        for rec in records:
+            try:
+                if self.edition_of(rec) == want:
+                    return RuleResult(True)
+            except Exception:  # noqa: BLE001 - an odd record doesn't match
+                continue
+        return RuleResult(False, f"expected edition {want} (due {self._deadline(cycle)}) not found")
+
+    def _deadline(self, year: int) -> date:
+        return date(year, self.release_month, 1) + timedelta(days=self.grace_days)
+
+
+@dataclass(frozen=True)
+class Sentinel:
+    lookup: Callable[[], dict | None]  # fetches one known record live
+    title_of: Callable[[dict], str]
+    title_contains: str
+
+    def depends_on(self) -> tuple[str, ...]:
+        return ()
+
+    def evaluate(self, *, source_id: str, records: list[dict], newest: str,
+                 count: int | None, ctx: Context) -> RuleResult:
+        rec = self.lookup()  # an exception propagates, and check_source reports BROKEN
+        if not rec:
+            return RuleResult(False, "sentinel record not found")
+        title = self.title_of(rec)
+        if self.title_contains.lower() in title.lower():
+            return RuleResult(True)
+        return RuleResult(False, f"sentinel title changed: {title[:80]}")
+
+
+@dataclass(frozen=True)
+class CountFloor:
+    ratio: float = 0.95
+
+    def depends_on(self) -> tuple[str, ...]:
+        return ()
+
+    def evaluate(self, *, source_id: str, records: list[dict], newest: str,
+                 count: int | None, ctx: Context) -> RuleResult:
+        if count is None:
+            raise ValueError("CountFloor needs a count")
+        best = ctx.state.get(source_id, {}).get("max_count")
+        if not best:
+            return RuleResult(True, "no count baseline yet")
+        if count >= math.floor(best * self.ratio):
+            return RuleResult(True)
+        return RuleResult(
+            False, f"count {count} is below {self.ratio:.0%} of the highest seen ({best})")
 
 
 def _truncate(text: str) -> str:
