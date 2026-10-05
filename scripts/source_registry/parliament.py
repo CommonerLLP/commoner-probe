@@ -193,22 +193,51 @@ def _question_lists(house: str) -> list[dict]:
         probe = QuestionsListProbe(SCRATCH / f"questions-list-{house}-{day}", house=house,
                                    sessions=[entry.session], from_date=day, to_date=day,
                                    sleep=0, **kwargs)
-        records = probe.probe(download=False)
+        # The probe returns Bulletin I and II records too. A sitting with only a
+        # bulletin has no question list, so it doesn't count.
+        records = [r for r in probe.probe(download=False)
+                   if r.get("document_kind") == "question_list"]
         if records:
             return records
     return []
 
 
 def _debates(house: str) -> list[dict]:
+    """Return the newest sitting's debate records.
+
+    DebateProbe.probe() logs a failed day and moves on, so a 503 or timeout would
+    reach the checker as an empty sample. This calls the adapter's per-day
+    lookups, which raise. A sitting that answers with no PDF falls back to an
+    earlier one, as does a sitting whose lookup fails; when every sitting
+    fails, the last error propagates."""
+    error: Exception | None = None
     for entry, day in _house_sittings(house, 5):
         kwargs = {"loksabhas": [entry.loksabha]} if house == "ls" else {}
         probe = DebateProbe(SCRATCH / f"debates-{house}-{day}", house=house,
                             sessions=[entry.session], from_date=day, to_date=day,
                             sleep=0, **kwargs)
-        records = probe.probe(download=False)
+        year, month, dom = day.split("-")
+        try:
+            if house == "ls":
+                url = probe.debate_pdf_url(entry.loksabha, entry.session,
+                                           f"{int(month)}/{int(dom)}/{year}")
+                records = [probe._ls_record(entry.loksabha, entry.session, day, pdf_url=url,
+                                            status="metadata_only", run_id="freshness")] if url else []
+            else:
+                records = [
+                    probe._rs_record(entry.session, day, pdf_url=row.get("FileUrl"),
+                                     status="metadata_only", run_id="freshness",
+                                     segment=str(row.get("Time") or row.get("Name") or "").strip() or None)
+                    for row in probe.rs_debate_pdfs(entry.session, f"{dom}/{month}/{year}")
+                ]
+        except Exception as exc:  # noqa: BLE001 - try an earlier sitting, then re-raise
+            error = exc
+            continue
         records = [r for r in records if r.get("pdf_url")]
         if records:
             return records
+    if error is not None:
+        raise error
     return []
 
 
@@ -402,13 +431,13 @@ SOURCES = [
                                       edition_of=_committee_edition),)),
     Source(id="prs-report-summaries", label="PRS report summaries", host="prsindia.org",
            fetch=lambda: _prs_publications("report-summaries"), required=("slug", "title", "pdf_url"),
-           document=lambda r: r["pdf_url"],
+           document=lambda r: r["pdf_url"], document_rate_limit_sec=PRS_CRAWL_DELAY_SEC,
            total=lambda: len(_prs_listing("report-summaries")),
            freshness=(Sentinel(_prs_sentinel("report-summaries", "cyber-crimes-and-cyber-security-of-women"),
                                lambda r: r["title"], "Cyber Crimes"), CountFloor())),
     Source(id="prs-vital-stats", label="PRS vital stats", host="prsindia.org",
            fetch=lambda: _prs_publications("vital-stats"), required=("slug", "title", "pdf_url"),
-           document=lambda r: r["pdf_url"],
+           document=lambda r: r["pdf_url"], document_rate_limit_sec=PRS_CRAWL_DELAY_SEC,
            total=lambda: len(_prs_listing("vital-stats")),
            freshness=(Sentinel(_prs_sentinel("vital-stats", "direct-taxes-in-india"),
                                lambda r: r["title"], "Direct Taxes"), CountFloor())),
@@ -421,10 +450,12 @@ SOURCES = [
            fetch=lambda: _mptrack("ls"), required=("mp_election_index", "mp_name", "mp_note"),
            record_date=_mptrack_date,
            document=lambda r: r["csv_url"], document_kind="any-non-html",
+           document_rate_limit_sec=PRS_CRAWL_DELAY_SEC,
            freshness=(SessionAware(),)),
     Source(id="prs-mp-track-rs", label="PRS MP Track, Rajya Sabha", host="prsindia.org",
            fetch=lambda: _mptrack("rs"), required=("mp_election_index", "mp_name", "mp_note"),
            record_date=_mptrack_date,
            document=lambda r: r["csv_url"], document_kind="any-non-html",
+           document_rate_limit_sec=PRS_CRAWL_DELAY_SEC,
            freshness=(SessionAware(), SiblingLag("prs-mp-track-ls", 60))),
 ]
