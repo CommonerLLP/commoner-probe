@@ -15,7 +15,6 @@ The weekly source freshness check writes this table. For what each status means,
 | MoSPI eSankhyiki UDISE dropout rate: no date, can't see new years | api.mospi.gov.in | `broken` | 2026-10-05 | TLS handshake failed: SSLError: HTTPSConnectionPool(host='api.mospi.gov.in', port=443): Max retries exceeded with url: /api/udise/getUdiseRecords?indicator_code=41&year=2024-25&state_code=8&page=1&lim |
 | NADA catalogue (MoSPI microdata): no date, can't see new studies | microdata.gov.in | `broken` | 2026-10-05 | TLS handshake failed: SSLError: HTTPSConnectionPool(host='microdata.gov.in', port=443): Max retries exceeded with url: /NADA/index.php/api/catalog/search?ps=3&page=1 (Caused by SSLError(SSLCertVerific |
 | NITI Aayog Annual Reports (English) | www.niti.gov.in | `broken` | 2026-10-05 | PermissionError: Disallowed by robots.txt: https://www.niti.gov.in/publication/annual-report |
-| Odisha DMF summary files (JSON) | dmf.odisha.gov.in | `broken` | 2026-10-05 | document: SSLError: HTTPSConnectionPool(host='dmf.odisha.gov.in', port=443): Max retries exceeded with url: /assets/cron_files/state_summary_data.json (Caused by SSLError(SSLCertVerificationError(1, ' |
 | RBI State Finances: A Study of Budgets | rbi.org.in | `broken` | 2026-10-05 | document: body isn't a PDF |
 | SHRUG table catalogue (Development Data Lab): no date, can't see new tables | www.devdatalab.org | `broken` | 2026-10-05 | no record has all required fields: table_label, filetype, url |
 | UDISE+ public documents: pinned catalogue, can't see new documents | api.udiseplus.gov.in | `broken` | 2026-10-05 | no record has all required fields: key, url, sha256 |
@@ -25,6 +24,7 @@ The weekly source freshness check writes this table. For what each status means,
 | Rajya Sabha daily question lists | sansad.in | `down` | 2026-10-05 | HTTP 500 |
 | CAG State Finance Accounts Vol-II (Gujarat) | cag.gov.in | `unreachable` | 2026-10-05 | ConnectTimeout: HTTPSConnectionPool(host='cag.gov.in', port=443): Max retries exceeded with url: /en/state-accounts-report?defuat_state_id=71 (Caused by ConnectTimeoutError(<HTTPSConnection(host='cag. |
 | India Code state Acts (West Bengal) | indiacode.nic.in | `unreachable` | 2026-10-05 | ReadTimeout: HTTPSConnectionPool(host='www.indiacode.nic.in', port=443): Read timed out. (read timeout=45) |
+| Odisha DMF summary files (JSON) | dmf.odisha.gov.in | `unreachable` | 2026-10-05 | URLError: <urlopen error timed out> |
 | Academic job ads (anna_university parser, Anna University): no posting date, can't see stale ads | www.annauniv.edu | `fresh` | 2026-10-05 |  |
 | Academic job ads (generic parser, IIT Guwahati): no posting date, can't see stale ads | www.iitg.ac.in | `fresh` | 2026-10-05 |  |
 | Academic job ads (iim_recruit parser, IIM Calcutta): no posting date, can't see stale ads | www.iimcal.ac.in | `fresh` | 2026-10-05 |  |
