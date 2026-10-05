@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import copy
+import http.client
 import importlib
 import json
 import math
@@ -36,9 +37,11 @@ from dataclasses import dataclass, field
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Protocol
+from urllib.parse import urlparse
 
 from commoner_probe import reachability
 from commoner_probe.http_client import ChallengeDetected, make_session
+from commoner_probe.url_safety import is_safe_url
 
 FRESH, STALE, BROKEN, DOWN, UNREACHABLE, GEO_FENCED = (
     "fresh", "stale", "broken", "down", "unreachable", "geo-fenced")
@@ -52,6 +55,11 @@ _HTTP_MESSAGE = re.compile(r"^HTTP (\d{3})\b")
 # A TLS error whose text says the peer closed the connection mid-handshake is a
 # dropped connection, not a rejected certificate or protocol.
 _TLS_DROPPED = re.compile(r"EOF occurred in violation of protocol|UNEXPECTED_EOF", re.IGNORECASE)
+# http_client raises these as ValueError. is_safe_url also returns False when the
+# host doesn't resolve, so a DNS failure arrives in the same form.
+_SSRF_REJECTED = re.compile(r"^(?:URL|Redirect target) rejected by SSRF guard: (\S+)")
+# http_client gives up at once when a 429 or 5xx asks for a longer wait than it allows.
+_RETRY_AFTER_CAP = re.compile(r"^server asked for Retry-After")
 
 
 @dataclass(frozen=True)
@@ -65,7 +73,8 @@ class Source:
     document: Callable[[dict], str] | None = None  # returns a URL
     document_kind: str = "pdf"  # "pdf" | "spreadsheet" | "zip" | "any-non-html"
     document_headers: Mapping[str, str] = field(default_factory=dict)
-    document_respect_robots: bool = True  # False skips robots.txt for the document fetch
+    # False skips robots.txt for the document fetch. A function decides per document URL.
+    document_respect_robots: bool | Callable[[str], bool] = True
     total: Callable[[], int] | None = None  # total count, for CountFloor
     freshness: tuple[Rule, ...] = ()
 
@@ -203,9 +212,12 @@ class ExpectedEdition:
         this_year = self._deadline(ctx.today.year)
         cycle = ctx.today.year if ctx.today >= this_year else ctx.today.year - 1
         want = self.edition(cycle)
+        # Before the next deadline, the next edition counts too: a source that
+        # publishes early may already list only its replacement.
+        accepted = {want, self.edition(cycle + 1)}
         for rec in records:
             try:
-                if self.edition_of(rec) == want:
+                if self.edition_of(rec) in accepted:
                     return RuleResult(True)
             except Exception:  # noqa: BLE001 - an odd record doesn't match
                 continue
@@ -281,6 +293,19 @@ def _tls_failure(exc: BaseException, requests: object) -> bool | None:
     return not dropped
 
 
+def _rejected_for_dns(url: str) -> bool:
+    """True when an SSRF-guard rejection of *url* came from a failed DNS lookup,
+    or from one that has since recovered, rather than from an unsafe address."""
+    host = urlparse(url).hostname
+    if not host:
+        return False
+    try:
+        socket.getaddrinfo(host, None)
+    except (socket.gaierror, UnicodeError):
+        return True
+    return is_safe_url(url)
+
+
 def classify_exception(exc: BaseException) -> tuple[str, int | None, str]:
     """Return (kind, http_status, reason). kind is HTTP_ERROR, NO_RESPONSE or BROKEN."""
     try:
@@ -304,6 +329,13 @@ def classify_exception(exc: BaseException) -> tuple[str, int | None, str]:
         if match:
             code = int(match.group(1))
             return HTTP_ERROR, code, f"HTTP {code}"
+        if _RETRY_AFTER_CAP.match(str(exc)):
+            return HTTP_ERROR, None, _describe(exc)
+    if isinstance(exc, ValueError):
+        match = _SSRF_REJECTED.match(str(exc))
+        if match and _rejected_for_dns(match.group(1)):
+            host = urlparse(match.group(1)).hostname or match.group(1)
+            return NO_RESPONSE, None, _truncate(f"DNS lookup failed for {host}: {_describe(exc)}")
     if requests is not None and isinstance(exc, requests.exceptions.RetryError):
         return HTTP_ERROR, None, _describe(exc)
     # requests' SSLError subclasses its ConnectionError, but a rejected
@@ -314,10 +346,14 @@ def classify_exception(exc: BaseException) -> tuple[str, int | None, str]:
         return BROKEN, None, _truncate("TLS handshake failed: " + _describe(exc))
     if tls is False:
         return NO_RESPONSE, None, _describe(exc)
+    # A connection dropped mid-body is a network failure too. requests raises
+    # ChunkedEncodingError for it, which isn't one of its ConnectionErrors.
     no_response: tuple[type[BaseException], ...] = (
-        urllib.error.URLError, socket.gaierror, TimeoutError, ConnectionError)
+        urllib.error.URLError, socket.gaierror, TimeoutError, ConnectionError,
+        http.client.IncompleteRead)
     if requests is not None:
-        no_response += (requests.exceptions.ConnectionError, requests.exceptions.Timeout)
+        no_response += (requests.exceptions.ConnectionError, requests.exceptions.Timeout,
+                        requests.exceptions.ChunkedEncodingError)
     if isinstance(exc, no_response):
         return NO_RESPONSE, None, _describe(exc)
     return BROKEN, None, _describe(exc)
@@ -512,9 +548,12 @@ def _fetch_and_check_document(source: Source, valid: list[dict], newest: str,
         rec = next(
             (r for r in valid if _safe_date(source.record_date, r) == newest), valid[0])
     try:
-        robots = {} if source.document_respect_robots else {"respect_robots": False}
-        status, content_type, head = fetch_document(
-            source.document(rec), source.document_headers, **robots)
+        url = source.document(rec)
+        respect = source.document_respect_robots
+        if callable(respect):
+            respect = respect(url)
+        robots = {} if respect else {"respect_robots": False}
+        status, content_type, head = fetch_document(url, source.document_headers, **robots)
     except Exception as exc:  # noqa: BLE001 - classified below
         kind, code, reason = classify_exception(exc)
         if kind == HTTP_ERROR and not _transient_status(code):
@@ -563,7 +602,12 @@ def default_fetch_document(url: str, headers: Mapping[str, str], *,
     resp = make_session().get(url, headers=dict(headers), timeout=60, stream=True,
                               respect_robots=respect_robots)
     try:
-        head = next(resp.iter_content(_DOCUMENT_HEAD_BYTES), b"")
+        # A chunked response can yield a first chunk shorter than the magic bytes.
+        head = b""
+        for chunk in resp.iter_content(_DOCUMENT_HEAD_BYTES):
+            head += chunk
+            if len(head) >= _DOCUMENT_HEAD_BYTES:
+                break
         content_type = resp.headers.get("Content-Type", "")
         return resp.status_code, content_type, head[:_DOCUMENT_HEAD_BYTES]
     finally:
@@ -619,13 +663,16 @@ _STATUS_ORDER = (BROKEN, STALE, DOWN, UNREACHABLE, GEO_FENCED, FRESH)
 _NO_RESPONSE_RATIO = 0.8
 _NO_RESPONSE_MIN_SOURCES = 5
 _FAILS_BEFORE_REPORTING = 2
-_VOLATILE = re.compile(r"0x[0-9a-f]+|\d+", re.IGNORECASE)
+_VOLATILE_URL = re.compile(r"https?://\S+|(?<=url: )\S+")
+_VOLATILE_NUMBER = re.compile(r"0x[0-9a-f]+|(?<!\d)(?<!HTTP )\d+", re.IGNORECASE)
 
 
 def _reason_category(reason: str) -> str:
-    """The reason with its numbers masked. A stale source's growing lag and a
-    moving date stay in one category, and a new cause starts a new one."""
-    return _VOLATILE.sub("#", reason)
+    """The kind of failure a reason describes: the reason with URLs and numbers
+    masked, but HTTP statuses kept. A growing lag, a moving date, and a new
+    document URL stay in one category; a different status or exception starts
+    a new one."""
+    return _VOLATILE_NUMBER.sub("#", _VOLATILE_URL.sub("<url>", reason))
 
 
 @dataclass(frozen=True)
@@ -707,9 +754,9 @@ def resolve(observations: Mapping[str, Observation], *, committed: dict, state: 
                 # until its category changes, so the committed file changes only
                 # when the cause does.
                 remembered = memory.get("reason", "")
-                if status != GEO_FENCED and (
-                        reason is None
-                        or _reason_category(reason) == _reason_category(remembered)):
+                if reason is None or (
+                        status != GEO_FENCED
+                        and _reason_category(reason) == _reason_category(remembered)):
                     reason = remembered
             new_sources[sid] = {"reason": reason or "", "since": since, "status": status}
             entry.update(since=since, reason=reason or "")
@@ -769,7 +816,24 @@ def load_state(path: Path) -> dict:
         return {}
     if not isinstance(data, dict) or not isinstance(data.get("sources", {}), dict):
         return {}
+    # The artifact comes from an earlier run, so read it defensively: drop an
+    # entry that isn't an object and a field of the wrong type.
+    sources = {}
+    for sid, entry in data.get("sources", {}).items():
+        if not isinstance(entry, dict):
+            continue
+        sources[sid] = {
+            key: value for key, value in entry.items()
+            if (key in _STATE_TEXT_FIELDS and isinstance(value, str))
+            or (key in _STATE_INT_FIELDS and isinstance(value, int)
+                and not isinstance(value, bool))
+        }
+    data["sources"] = sources
     return data
+
+
+_STATE_TEXT_FIELDS = frozenset({"status", "since", "reason", "newest"})
+_STATE_INT_FIELDS = frozenset({"fail_count", "max_count"})
 
 
 def render_committed(committed: dict) -> str:

@@ -5,7 +5,9 @@ Every test uses fakes; none touches the network.
 
 from __future__ import annotations
 
+import http.client
 import json
+import socket
 import ssl
 import urllib.error
 from dataclasses import dataclass
@@ -178,6 +180,69 @@ def test_tls_failure_on_the_main_fetch_skips_the_control():
 
     obs, _ = check(src(fetch), control=control)
     assert obs.outcome == cs.BROKEN and obs.reason.startswith("TLS handshake failed: ")
+
+
+def test_classify_unresolvable_host_rejected_by_the_ssrf_guard_is_no_response(monkeypatch):
+    # is_safe_url returns False when getaddrinfo fails, so a DNS failure reaches
+    # the checker as the guard's ValueError.
+    def no_dns(*a, **kw):
+        raise socket.gaierror(-3, "Temporary failure in name resolution")
+
+    monkeypatch.setattr(cs.socket, "getaddrinfo", no_dns)
+    kind, status, reason = cs.classify_exception(
+        ValueError("URL rejected by SSRF guard: https://records.example.gov.in/api"))
+    assert (kind, status) == (cs.NO_RESPONSE, None)
+    assert reason.startswith("DNS lookup failed for records.example.gov.in")
+
+
+def test_classify_ssrf_rejection_of_a_resolvable_unsafe_host_stays_broken(monkeypatch):
+    monkeypatch.setattr(cs.socket, "getaddrinfo",
+                        lambda *a, **kw: [(2, 1, 6, "", ("10.0.0.5", 0))])
+    kind, _, reason = cs.classify_exception(
+        ValueError("URL rejected by SSRF guard: https://intranet.example/x"))
+    assert kind == cs.BROKEN and reason.startswith("ValueError: URL rejected by SSRF guard")
+
+
+def test_dns_outage_makes_the_run_inconclusive(monkeypatch):
+    def no_dns(*a, **kw):
+        raise socket.gaierror(-3, "Temporary failure in name resolution")
+
+    monkeypatch.setattr(cs.socket, "getaddrinfo", no_dns)
+
+    def fetch():
+        raise ValueError("URL rejected by SSRF guard: https://records.example.gov.in/api")
+
+    obs, _ = check(src(fetch), control=lambda: False)
+    assert obs.outcome == cs.CONTROL_FAILED
+
+
+@pytest.mark.parametrize("status_text", ["503", "429"])
+def test_classify_retry_after_above_the_cap_is_an_http_error(status_text):
+    exc = RuntimeError("server asked for Retry-After: 3600s, above the 30s cap — stopping "
+                       "rather than blocking")
+    kind, status, reason = cs.classify_exception(exc)
+    assert (kind, status) == (cs.HTTP_ERROR, None)
+    assert reason.startswith("RuntimeError: server asked for Retry-After")
+
+
+def test_document_retry_after_above_the_cap_is_an_http_error_candidate():
+    exc = RuntimeError("server asked for Retry-After: 120s, above the 30s cap — stopping")
+    obs, _ = check(_doc_source(), fetch_document=_raising_document(exc))
+    assert obs.outcome == cs.HTTP_ERROR
+
+
+@pytest.mark.parametrize("exc", [
+    requests.exceptions.ChunkedEncodingError("Connection broken: IncompleteRead(8 bytes read)"),
+    http.client.IncompleteRead(b"partial", 100),
+])
+def test_classify_a_connection_dropped_mid_body_is_no_response(exc):
+    kind, _, _ = cs.classify_exception(exc)
+    assert kind == cs.NO_RESPONSE
+
+
+def test_classify_content_decoding_error_stays_broken():
+    kind, _, _ = cs.classify_exception(requests.exceptions.ContentDecodingError("bad gzip"))
+    assert kind == cs.BROKEN
 
 
 def test_classify_challenge_is_broken_not_http_error():
@@ -632,6 +697,24 @@ def test_document_robots_opt_out_is_forwarded_only_when_set():
     assert seen == [{}, {"respect_robots": False}]
 
 
+def test_document_robots_decision_can_depend_on_the_url():
+    seen = []
+
+    def fetch_document(url, headers, **kw):
+        seen.append((url, kw))
+        return (200, "application/pdf", b"%PDF")
+
+    recs = [{"title": "t", "u": "https://bucket.example/a.pdf"}]
+    respect = lambda url: "bucket.example" not in url  # noqa: E731
+    check(src(lambda: recs, document=lambda r: r["u"], document_respect_robots=respect),
+          fetch_document=fetch_document)
+    recs[0]["u"] = "https://other.example/a.pdf"
+    check(src(lambda: recs, document=lambda r: r["u"], document_respect_robots=respect),
+          fetch_document=fetch_document)
+    assert seen == [("https://bucket.example/a.pdf", {"respect_robots": False}),
+                    ("https://other.example/a.pdf", {})]
+
+
 def test_default_fetch_document_forwards_respect_robots(monkeypatch):
     seen = {}
 
@@ -657,7 +740,7 @@ def test_default_fetch_document_forwards_respect_robots(monkeypatch):
     assert seen["respect_robots"] is False
 
 
-def test_default_fetch_document_reads_only_the_first_chunk(monkeypatch):
+def test_default_fetch_document_stops_after_2048_bytes(monkeypatch):
     class Resp:
         status_code = 200
         headers = {"Content-Type": "application/pdf"}
@@ -666,8 +749,8 @@ def test_default_fetch_document_reads_only_the_first_chunk(monkeypatch):
 
         def iter_content(self, chunk_size):
             Resp.requested = chunk_size
-            yield b"%PDF" + b"x" * 10
-            raise AssertionError("must not read a second chunk")
+            yield b"%PDF" + b"x" * 2044
+            raise AssertionError("must not read past the first 2048 bytes")
 
         def close(self):
             Resp.closed = True
@@ -683,6 +766,46 @@ def test_default_fetch_document_reads_only_the_first_chunk(monkeypatch):
     assert head.startswith(b"%PDF") and Resp.closed
     assert Resp.requested == 2048
     assert Session.kw["stream"] is True and Session.kw["headers"] == {"Referer": "r"}
+
+
+def test_default_fetch_document_reads_past_a_short_first_chunk(monkeypatch):
+    class Resp:
+        status_code = 200
+        headers = {"Content-Type": "application/pdf"}
+
+        def iter_content(self, chunk_size):
+            yield b"%"
+            yield b""
+            yield b"PDF-1.7 " + b"x" * 3000
+            raise AssertionError("must stop once it has 2048 bytes")
+
+        def close(self):
+            pass
+
+    class Session:
+        def get(self, url, **kw):
+            return Resp()
+
+    monkeypatch.setattr(cs, "make_session", lambda: Session())
+    _, _, head = cs.default_fetch_document("https://x/a.pdf", {})
+    assert head.startswith(b"%PDF-1.7") and len(head) == 2048
+
+
+def test_default_fetch_document_returns_a_short_body_whole(monkeypatch):
+    class Resp:
+        status_code = 200
+        headers = {}
+
+        def iter_content(self, chunk_size):
+            yield b"a,"
+            yield b"b\n"
+
+    class Session:
+        def get(self, url, **kw):
+            return Resp()
+
+    monkeypatch.setattr(cs, "make_session", lambda: Session())
+    assert cs.default_fetch_document("https://x/a.csv", {})[2] == b"a,b\n"
 
 
 def test_default_fetch_document_works_with_the_stdlib_response(monkeypatch):
@@ -922,6 +1045,14 @@ def test_expected_edition_wants_the_new_cycle_after_grace():
                     context=ctx_on(date(2026, 2, 20))).ok
 
 
+def test_expected_edition_accepts_the_next_edition_published_before_the_deadline():
+    # Committee membership is reconstituted in late September, before its
+    # deadline, and the API then holds only the new year's records.
+    r = evaluate(budget_rule(), records=[{"edition": "2026-27"}],
+                 context=ctx_on(date(2026, 2, 10)))
+    assert r.ok
+
+
 def test_expected_edition_deadline_day_counts_as_due():
     r = evaluate(budget_rule(), records=[{"edition": "2025-26"}],
                  context=ctx_on(date(2026, 2, 15)))
@@ -1107,9 +1238,55 @@ def test_reason_updates_when_its_category_changes_but_since_stays():
 
 def test_reason_keeps_its_first_wording_when_only_numbers_change():
     c1, s1, _, _ = do_resolve([obs("a", cs.BROKEN, "document: HTTP 404 at 2026-10-05")])
-    c2, _, _, _ = do_resolve([obs("a", cs.BROKEN, "document: HTTP 410 at 2026-10-12")],
+    c2, _, _, _ = do_resolve([obs("a", cs.BROKEN, "document: HTTP 404 at 2026-10-12")],
                              committed=c1, state=s1, today=date(2026, 10, 12))
     assert c2["sources"]["a"]["reason"] == "document: HTTP 404 at 2026-10-05"
+
+
+def test_reason_keeps_its_first_wording_when_only_the_url_changes():
+    first = "document: PermissionError: Disallowed by robots.txt: https://x.gov.in/files/annual-report.pdf"
+    later = "document: PermissionError: Disallowed by robots.txt: https://x.gov.in/files/border-circular.pdf"
+    c1, s1, _, _ = do_resolve([obs("a", cs.BROKEN, first)])
+    c2, _, transitions, _ = do_resolve([obs("a", cs.BROKEN, later)],
+                                       committed=c1, state=s1, today=date(2026, 10, 12))
+    assert c2["sources"]["a"]["reason"] == first
+    assert cs.render_committed(c1) == cs.render_committed(c2) and transitions == []
+
+
+@pytest.mark.parametrize("first, later", [
+    ("HTTP 503", "HTTP 404"),
+    ("document: HTTP 403", "document: HTTP 404"),
+    ("document: HTTP 202: no document served", "document: HTTP 302: no document served"),
+])
+def test_a_different_http_status_is_a_new_cause(first, later):
+    c1, s1, _, _ = do_resolve([obs("a", cs.BROKEN, first)])
+    c2, _, _, _ = do_resolve([obs("a", cs.BROKEN, later)],
+                             committed=c1, state=s1, today=date(2026, 10, 12))
+    assert c2["sources"]["a"]["reason"] == later
+
+
+def test_reason_category_masks_urls_and_numbers_but_keeps_http_statuses():
+    cat = cs._reason_category
+    assert cat("HTTP 503") != cat("HTTP 504")
+    assert cat("document: HTTP 503") == cat("document: HTTP 503")
+    assert cat("newest 2026-03-18 is 61 days old (limit 60)") == cat(
+        "newest 2026-03-18 is 68 days old (limit 60)")
+    assert cat("ReadTimeout: HTTPSConnectionPool(host='a', port=443): /x?id=17") == cat(
+        "ReadTimeout: HTTPSConnectionPool(host='a', port=443): /x?id=99")
+    assert cat("TLS handshake failed: SSLError: https://a/b.pdf (x)") == cat(
+        "TLS handshake failed: SSLError: https://a/c-d.pdf (x)")
+
+
+def test_pending_failure_after_leaving_the_geo_fenced_list_keeps_the_reason():
+    master = {"geo_fenced": {}, "sources": {"a": {
+        "status": "geo-fenced", "since": "2026-09-28",
+        "reason": "verify by hand (last verified 2026-08-14)"}}}
+    state = {"sources": {"a": {"status": "geo-fenced", "since": "2026-09-28",
+                               "reason": "verify by hand (last verified 2026-08-14)",
+                               "fail_count": 0}}}
+    committed, _, _, _ = do_resolve([obs("a", cs.NO_RESPONSE, "ConnectTimeout: x")],
+                                    committed=master, state=state)
+    assert committed["sources"]["a"] == master["sources"]["a"]
 
 
 def test_down_reason_updates_on_a_new_failure_kind():
@@ -1268,6 +1445,32 @@ def test_load_state_missing_or_unreadable_is_empty(tmp_path):
     assert cs.load_state(bad) == {}
     bad.write_text("[1]")
     assert cs.load_state(bad) == {}
+
+
+def test_load_state_drops_malformed_entries_and_fields(tmp_path):
+    path = tmp_path / "state.json"
+    path.write_text(json.dumps({"version": 1, "sources": {
+        "null": None, "list": [1], "text": "x",
+        "odd": {"status": "fresh", "fail_count": "9", "max_count": "big", "since": 5,
+                "reason": 7, "newest": 3},
+        "good": {"status": "down", "since": "2026-09-28", "reason": "HTTP 500",
+                 "fail_count": 2, "max_count": 10, "newest": "2026-09-01"},
+        "flag": {"status": "fresh", "fail_count": True},
+    }}))
+    sources = cs.load_state(path)["sources"]
+    assert set(sources) == {"odd", "good", "flag"}
+    assert sources["odd"] == {"status": "fresh"}
+    assert sources["flag"] == {"status": "fresh"}
+    assert sources["good"]["fail_count"] == 2 and sources["good"]["max_count"] == 10
+
+
+def test_resolve_survives_a_state_file_with_malformed_entries(tmp_path):
+    path = tmp_path / "state.json"
+    path.write_text(json.dumps({"sources": {"a": None, "b": {"fail_count": "x"}}}))
+    state = cs.load_state(path)
+    committed, _, _, pending = do_resolve(
+        [obs("a", cs.HTTP_ERROR, "HTTP 500"), obs("b", cs.HTTP_ERROR, "HTTP 500")], state=state)
+    assert pending == ["a", "b"]
 
 
 def test_render_committed_is_sorted_indented_and_keeps_unicode():
