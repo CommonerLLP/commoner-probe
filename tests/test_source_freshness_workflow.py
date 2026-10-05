@@ -45,12 +45,13 @@ def test_check_step_passes_state_and_github_output():
     assert '--github-output "$GITHUB_OUTPUT"' in command
 
 
-def test_pr_step_uses_the_bot_branch_and_only_the_two_artifacts():
+def test_pr_step_uses_the_bot_branch_and_only_the_generated_files():
     text = _text()
     assert re.search(r"^\s+branch: bot/source-freshness$", text, re.M)
     match = re.search(r"^\s+add-paths: \|\n((?:\s+[^\s:]+\n)+)", text, re.M)
     assert match
-    assert match.group(1).split() == ["SOURCES.md", "staleness/sources.json"]
+    # README.md carries the generated status table between its markers.
+    assert match.group(1).split() == ["README.md", "SOURCES.md", "staleness/sources.json"]
 
 
 def test_state_download_is_tolerant_of_failure_and_authenticated():
