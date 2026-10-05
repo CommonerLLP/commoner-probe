@@ -40,17 +40,20 @@ jobs:
       # Rolling state (pending failures, newest dates, highest counts) travels
       # between runs as an artifact so that it never creates commits. A missing
       # artifact is normal on the first run or after 90 days without a run.
+      # The newest artifact wins whatever its run's conclusion: a run whose PR
+      # step failed has still saved its state, and skipping it would restart
+      # every run from the same old state.
       - name: Download the previous run's state
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          run_id=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow source-freshness.yml \
-            --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty')
+          run_id=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=source-state&per_page=100" \
+            --jq '[.artifacts[] | select(.expired | not)] | max_by(.created_at) | .workflow_run.id // empty')
           if [ -n "$run_id" ]; then
             gh run download "$run_id" --repo "$GITHUB_REPOSITORY" --name source-state --dir . \
-              || echo "No state artifact on run $run_id; starting empty."
+              || echo "Can't download the state artifact from run $run_id; starting empty."
           else
-            echo "No previous successful run; starting empty."
+            echo "No state artifact from a previous run; starting empty."
           fi
       - name: Check sources
         id: check

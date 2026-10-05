@@ -72,3 +72,18 @@ def test_readme_documents_source_freshness_statuses():
     section = readme.split("## Source freshness", 1)[1].split("\n## ", 1)[0]
     for status in _STATUSES:
         assert f"`{status}`" in section
+
+
+def test_state_comes_from_the_newest_artifact_not_the_last_successful_run():
+    # A run whose PR step fails has still uploaded its state. Reading only
+    # successful runs would restart every run from the same old state, so
+    # fail_count would never reach the two-run threshold.
+    step = _text().split("- name: Download the previous run's state", 1)[1].split("\n      - name:", 1)[0]
+    assert "--status success" not in step
+    assert "actions/artifacts?name=source-state" in step
+    assert "select(.expired | not)" in step
+
+
+def test_state_is_saved_before_the_pr_step():
+    text = _text()
+    assert text.index("- name: Save state") < text.index("- name: Open or update the PR")
