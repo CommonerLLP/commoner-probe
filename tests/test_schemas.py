@@ -514,7 +514,7 @@ def test_probed_committee_records_validate():
                     return _FakeResponse(payload)
             raise AssertionError(f"No route for {url}")
 
-    routes = {"api_ls/committee": ls_payload, "api_rs/committee": rs_payload}
+    routes = {"api_ls/committee": ls_payload, "committee-integration/api/v1/web/committee-reports": rs_payload}
     topic = load_topic(TOPIC)
     records_seen = 0
     for slug, fn_name in [("finance", "probe_ls"), ("health", "probe_rs")]:

@@ -472,6 +472,29 @@ blocked, or unreachable) — read before adding a new `ministry-ddg` portal.
 
 ---
 
+## Source freshness
+
+Government portals change without notice, and a source can keep answering
+while its data stops updating. A weekly workflow checks each source and
+records the result in [SOURCES.md](SOURCES.md). When any status changes, the
+workflow opens or updates a pull request on the `bot/source-freshness` branch.
+
+| Status | Meaning |
+|---|---|
+| `fresh` | The source returns current, parseable data. |
+| `stale` | The source answers, but its newest data is older than expected. |
+| `broken` | The source answers, but the adapter can't parse it. |
+| `down` | The source returned HTTP errors on two consecutive runs. |
+| `unreachable` | The source didn't answer on two consecutive runs. It may be geo-fenced. |
+| `geo-fenced` | The source blocks traffic from outside India, so CI skips it. |
+
+To mark a host as geo-fenced after you verify it by hand, add it to
+`geo_fenced` in `staleness/sources.json` with a note and the date you verified
+it, for example `"cag.gov.in": {"note": "Blocks non-India IPs", "verified": "2026-10-05"}`. To run the check yourself, run `python scripts/check_sources.py`. To check
+one source, add `--only <id>`.
+
+---
+
 ## Contributing
 
 Bug reports, portal breakage reports, and pull requests are welcome at

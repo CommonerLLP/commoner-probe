@@ -1,0 +1,94 @@
+name: Source freshness
+
+# Checks every registered data source for live, current, parseable data and
+# opens or updates one PR when any source's status changes. A stale source is a
+# finding, not a CI failure: this job turns red only when the checker itself
+# can't trust its own network (exit 2) or its configuration is broken (exit 1).
+#
+# One-time repository setting: Settings → Actions → General → "Allow GitHub
+# Actions to create and approve pull requests". Without it, the PR step fails.
+
+on:
+  schedule:
+    - cron: "30 3 * * 1"   # Mondays 03:30 UTC (09:00 IST)
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: read
+
+concurrency:
+  group: source-freshness
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: master
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: python -m pip install -e ".[all]"
+      # Rolling state (pending failures, newest dates, highest counts) travels
+      # between runs as an artifact so that it never creates commits. A missing
+      # artifact is normal on the first run or after 90 days without a run.
+      #
+      # The state comes from the newest artifact of an earlier scheduled or
+      # manual run of this workflow on master in this repository, whatever that
+      # run's conclusion: a run whose PR step failed has still saved its state.
+      # Artifacts from other workflows, branches, and forks are untrusted and
+      # skipped. So is the current run, because a re-run attempt would
+      # otherwise read its own first attempt and count one failure twice. A
+      # failing API call means starting empty, not a failed job.
+      - name: Download the previous run's state
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          runs=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/source-freshness.yml/runs?branch=master&per_page=100" \
+            --jq "[.workflow_runs[] | select(.id != $GITHUB_RUN_ID and .head_repository.full_name == \"$GITHUB_REPOSITORY\" and (.event == \"schedule\" or .event == \"workflow_dispatch\")) | .id]") \
+            || runs='[]'
+          artifacts=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=source-state&per_page=100") \
+            || artifacts='{"artifacts": []}'
+          run_id=$(jq -rn --argjson runs "$runs" --argjson artifacts "$artifacts" \
+            '[$artifacts.artifacts[] | select((.expired | not) and (.workflow_run.id as $id | $runs | any(. == $id)))]
+             | max_by(.created_at) | .workflow_run.id // empty') || run_id=""
+          if [ -n "$run_id" ]; then
+            gh run download "$run_id" --repo "$GITHUB_REPOSITORY" --name source-state --dir . \
+              || echo "Can't download the state artifact from run $run_id; starting empty."
+          else
+            echo "No state artifact from a previous run; starting empty."
+          fi
+      - name: Check sources
+        id: check
+        run: >
+          python scripts/check_sources.py
+          --state state.json
+          --summary "$GITHUB_STEP_SUMMARY"
+          --pr-body pr-body.md
+          --github-output "$GITHUB_OUTPUT"
+      - name: Save state
+        uses: actions/upload-artifact@v4
+        with:
+          name: source-state
+          path: state.json
+          retention-days: 90
+      - name: Open or update the PR
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: bot/source-freshness
+          base: master
+          add-paths: |
+            SOURCES.md
+            staleness/sources.json
+          commit-message: "chore: update source freshness"
+          title: "Source freshness: ${{ steps.check.outputs.changes }} status changes"
+          body-path: pr-body.md
+          delete-branch: true

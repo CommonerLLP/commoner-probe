@@ -9,7 +9,7 @@ Frozen smoke fixture for the standing-committee probe.
   `https://sansad.in/api_ls/committee/lsRSAllReports`.
 - `raw/rs_health_p1.json` — page 1 of RS Health Committee reports
   (mstCommId=14), pulled from
-  `https://sansad.in/api_rs/committee/committee-reports`.
+  `https://integration.rajyasabha.digital/committee-integration/api/v1/web/committee-reports`.
 - `manifest.jsonl` — canonical probe output produced from the raw
   payloads above using `examples/topics/libraries.json` and the regex
   classifier. Volatile fields (`run_id`, `crawled_at`, `elapsed_ms`)

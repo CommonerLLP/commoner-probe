@@ -13,14 +13,23 @@ when v0.3.0 ships). Reuses existing topic profiles unchanged — `tag_rules`
 and classifiers operate on the report subject. The `lok_sabha_ministries`
 and `rajya_sabha_ministry_likes` profile fields are unused here.
 
-Endpoints (verified 2026-05-08):
+Endpoints (verified 2026-10-05):
     LS: GET https://sansad.in/api_ls/committee/lsRSAllReports
-    RS: GET https://sansad.in/api_rs/committee/committee-reports
+    RS: GET https://integration.rajyasabha.digital/committee-integration/api/v1/web/committee-reports
 
-Both return ``{"records": [...], "_metadata": {"totalPages": N, ...}}``.
+LS returns ``{"records": [...], "_metadata": {"totalPages": N, ...}}``. RS
+wraps that same page in an envelope,
+``{"success": true, "data": {"records": [...], "_metadata": {...}}, "message": ...}``,
+and ``rs_page()`` returns the inner ``data`` object. The older
+``sansad.in/api_rs/committee/committee-reports`` endpoint still answers, but
+it stopped receiving reports around March 2026, so this module doesn't use it.
+RS records keep ``"source": "sansad.in/api_rs/committee"``. That value labels
+the RS committee-report stream, not the exact host, because consumers filter
+on it.
 LS field names use PascalCase / mixedCase; RS uses camelCase. Report
 subjects (English) live in `SubjectOfTheReport` (LS) and
-`subjectOfTheReport` (RS). PDFs are absolute URLs on `sansad.in/getFile/`.
+`subjectOfTheReport` (RS). LS PDFs are absolute URLs on `sansad.in/getFile/`;
+RS PDFs are absolute URLs on `bucketapi.rajyasabha.digital`.
 """
 
 from __future__ import annotations
@@ -31,14 +40,14 @@ import time
 from datetime import datetime
 from pathlib import Path
 from typing import Iterable, Iterator
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 
 from .base import BaseProbe, now, safe_filename_segment
 from .parliament_qa_api import date_in_range
 from .topics import TopicProfile
 
 LS_REPORTS_API = "https://sansad.in/api_ls/committee/lsRSAllReports"
-RS_REPORTS_API = "https://sansad.in/api_rs/committee/committee-reports"
+RS_REPORTS_API = "https://integration.rajyasabha.digital/committee-integration/api/v1/web/committee-reports"
 DEFAULT_LOK_SABHA = 18
 
 LS_HEADERS = {
@@ -53,6 +62,8 @@ RS_HEADERS = {**LS_HEADERS, "Referer": "https://sansad.in/rs/committees"}
 # ways), so this is hardening against the class, not a live-bug fix.
 LS_PDF_HEADERS = {k: v for k, v in LS_HEADERS.items() if k != "Accept"}
 RS_PDF_HEADERS = {k: v for k, v in RS_HEADERS.items() if k != "Accept"}
+# The one host whose PDF downloads skip the robots.txt check (see probe_rs).
+RS_PDF_BUCKET_HOST = "bucketapi.rajyasabha.digital"
 
 # slug -> (display name, sansad committeeCode). LS-side Department-Related
 # Standing Committees (DRSCs). Display names canonical here — the API's
@@ -518,7 +529,18 @@ class CommitteeProbe(BaseProbe):
         url = f"{RS_REPORTS_API}?{urlencode(params)}"
         r = self.session.get(url, headers=RS_HEADERS, timeout=45)
         r.raise_for_status()
-        return r.json()
+        payload = r.json()
+        # The integration API wraps the page in {"success", "data", "message"}.
+        if (
+            not isinstance(payload, dict)
+            or payload.get("success") is False
+            or not isinstance(payload.get("data"), dict)
+        ):
+            success = payload.get("success") if isinstance(payload, dict) else None
+            raise ValueError(
+                f"unexpected RS committee-report response from {url}: success={success!r}"
+            )
+        return payload["data"]
 
     def rs_all(self, mst_comm_id: int) -> Iterator[dict]:
         page = 1
@@ -592,6 +614,7 @@ class CommitteeProbe(BaseProbe):
                         "date_adoption": parse_rs_date(raw.get("dateOfAdoption")),
                         "pdf_url": raw.get("url"),
                         "pdf_url_hindi": raw.get("urlHindi"),
+                        # Labels the RS stream, not the exact host (public schema value).
                         "source": "sansad.in/api_rs/committee",
                         "probed_at": now(),
                     }
@@ -601,7 +624,16 @@ class CommitteeProbe(BaseProbe):
                             f"{safe_filename_segment(report_no)}.pdf"
                         )
                         pdf_path = self.pdf_dir / "rs" / fname
-                        if self.write_pdf(rec["pdf_url"], pdf_path, RS_PDF_HEADERS):
+                        # respect_robots=False is deliberate and narrow. RS PDFs
+                        # live on bucketapi.rajyasabha.digital, an S3-style bucket
+                        # whose /robots.txt returns HTTP 403 (AccessDenied).
+                        # http_client reads that as disallow-all, but RFC 9309
+                        # §2.3.1.4 treats a 4xx robots.txt as "no restrictions".
+                        # An RS PDF on any other host, and every LS PDF, keeps
+                        # the robots check.
+                        on_bucket = urlparse(rec["pdf_url"]).hostname == RS_PDF_BUCKET_HOST
+                        if self.write_pdf(rec["pdf_url"], pdf_path, RS_PDF_HEADERS,
+                                          respect_robots=not on_bucket):
                             rec["pdf_path"] = str(pdf_path.relative_to(self.out_dir))
                     self.append(rec)
                     seen.add(key)

@@ -161,7 +161,7 @@ Both shapes share `key`, `run_id`, `kind`, `house`, `title`, `date`, `qtype`,
 | `pdf_url` | string\|null | yes | English PDF URL | committees.py:478 |
 | `pdf_url_hindi` | string\|null | yes | Hindi PDF URL; may be null | committees.py:479 |
 | `pdf_path` | string | cond | Relative path; present only when download succeeded | committees.py:490 |
-| `source` | string | yes | `"sansad.in/api_rs/committee"` | committees.py:480 |
+| `source` | string | yes | `"sansad.in/api_rs/committee"`. Rajya Sabha committee reports keep this value. Since October 2026 they come from `integration.rajyasabha.digital`. | committees.py:480 |
 | `probed_at` | string | cond | ISO datetime; present in all freshly probed corpora | committees.py:481 |
 
 **Note — field divergence between LS and RS committee reports**: LS reports carry
@@ -762,7 +762,7 @@ Source: `commoner_probe/entities.py`.
 | `"elibrary.sansad.in"` | LS Q/A |
 | `"rsdoc.nic.in"` | RS Q/A |
 | `"sansad.in/api_ls/committee"` | LS committee reports |
-| `"sansad.in/api_rs/committee"` | RS committee reports |
+| `"sansad.in/api_rs/committee"` | RS committee reports. Rajya Sabha committee reports keep this value. Since October 2026 they come from `integration.rajyasabha.digital`. |
 
 ### `kind` (answers.jsonl)
 

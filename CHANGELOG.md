@@ -4,6 +4,14 @@
 
 ### Fixed
 
+- **Rajya Sabha committee reports stopped at March 2026.** `committees --house rs`
+  now reads the Rajya Sabha Secretariat's current endpoint on
+  `integration.rajyasabha.digital`. The old `sansad.in/api_rs` endpoint still
+  answers but stopped receiving reports around March 2026. To pick up later
+  reports, re-run `committees --house rs`. The `source` value on records doesn't change.
+  RS report PDFs now come from `bucketapi.rajyasabha.digital`, whose `robots.txt`
+  returns HTTP 403. RFC 9309 treats that as "no restrictions", so PDF downloads
+  from that host alone skip the robots.txt check.
 - **IIT rolling-advertisement eligibility and specialization text changes on re-run.**
   Each unit's text now ends before the next unit's heading.
   Re-run `academic-jobs` for institutions using `iit_rolling` to refresh existing records.

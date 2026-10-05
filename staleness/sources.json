@@ -1,0 +1,280 @@
+{
+  "geo_fenced": {},
+  "sources": {
+    "abhilekh-patal": {
+      "reason": "ChallengeBlocked: abhilekh-patal.in answered with the AWS WAF challenge (HTTP 202), not the catalogue. This source requires India-region egress; a headless browser does not clear it. Run this probe fr",
+      "since": "2026-10-05",
+      "status": "broken"
+    },
+    "academic-jobs-anna-university": {
+      "reason": "",
+      "since": "2026-10-05",
+      "status": "fresh"
+    },
+    "academic-jobs-generic": {
+      "reason": "",
+      "since": "2026-10-05",
+      "status": "fresh"
+    },
+    "academic-jobs-iim-recruit": {
+      "reason": "",
+      "since": "2026-10-05",
+      "status": "fresh"
+    },
+    "academic-jobs-iit-gandhinagar": {
+      "reason": "",
+      "since": "2026-10-05",
+      "status": "fresh"
+    },
+    "academic-jobs-iit-hyderabad": {
+      "reason": "",
+      "since": "2026-10-05",
+      "status": "fresh"
+    },
+    "academic-jobs-iit-indore": {
+      "reason": "ValueError: iit-indore yielded no ads: fetch_error http_error (HTTP 404)",
+      "since": "2026-10-05",
+      "status": "broken"
+    },
+    "academic-jobs-iit-kanpur": {
+      "reason": "",
+      "since": "2026-10-05",
+      "status": "fresh"
+    },
+    "academic-jobs-iit-rolling": {
+      "reason": "",
+      "since": "2026-10-05",
+      "status": "fresh"
+    },
+    "academic-jobs-private-university": {
+      "reason": "",
+      "since": "2026-10-05",
+      "status": "fresh"
+    },
+    "attendance-ls": {
+      "reason": "",
+      "since": "2026-10-05",
+      "status": "fresh"
+    },
+    "bills-ls": {
+      "reason": "",
+      "since": "2026-10-05",
+      "status": "fresh"
+    },
+    "bills-rs": {
+      "reason": "",
+      "since": "2026-10-05",
+      "status": "fresh"
+    },
+    "budget-rbi": {
+      "reason": "document: body isn't a PDF",
+      "since": "2026-10-05",
+      "status": "broken"
+    },
+    "budget-union": {
+      "reason": "document: PermissionError: Disallowed by robots.txt: https://www.indiabudget.gov.in/doc/eb/sbe101.xlsx",
+      "since": "2026-10-05",
+      "status": "broken"
+    },
+    "cag-finance-accounts": {
+      "reason": "ConnectTimeout: HTTPSConnectionPool(host='cag.gov.in', port=443): Max retries exceeded with url: /en/state-accounts-report?defuat_state_id=71 (Caused by ConnectTimeoutError(<HTTPSConnection(host='cag.",
+      "since": "2026-10-05",
+      "status": "unreachable"
+    },
+    "committees-ls": {
+      "reason": "",
+      "since": "2026-10-05",
+      "status": "fresh"
+    },
+    "committees-members-ls": {
+      "reason": "",
+      "since": "2026-10-05",
+      "status": "fresh"
+    },
+    "committees-rs": {
+      "reason": "",
+      "since": "2026-10-05",
+      "status": "fresh"
+    },
+    "dchb-town": {
+      "reason": "SSLError: HTTPSConnectionPool(host='censusindia.gov.in', port=443): Max retries exceeded with url: /nada/index.php/api/catalog/DH_2011_1301_PART_A_DCHB_MON (Caused by SSLError(SSLCertVerificationError",
+      "since": "2026-10-05",
+      "status": "unreachable"
+    },
+    "debates-ls": {
+      "reason": "",
+      "since": "2026-10-05",
+      "status": "fresh"
+    },
+    "debates-rs": {
+      "reason": "",
+      "since": "2026-10-05",
+      "status": "fresh"
+    },
+    "doe-pay-allowances": {
+      "reason": "PermissionError: Disallowed by robots.txt: https://doe.gov.in/annual-report-pay-and-allowances",
+      "since": "2026-10-05",
+      "status": "broken"
+    },
+    "dpe-csr": {
+      "reason": "HTTP 403",
+      "since": "2026-10-05",
+      "status": "down"
+    },
+    "go-register-ap": {
+      "reason": "",
+      "since": "2026-10-05",
+      "status": "fresh"
+    },
+    "indiacode": {
+      "reason": "ReadTimeout: HTTPSConnectionPool(host='www.indiacode.nic.in', port=443): Read timed out. (read timeout=45)",
+      "since": "2026-10-05",
+      "status": "unreachable"
+    },
+    "koha-niti": {
+      "reason": "",
+      "since": "2026-10-05",
+      "status": "fresh"
+    },
+    "legacy-dspace-assam-ala": {
+      "reason": "",
+      "since": "2026-10-05",
+      "status": "fresh"
+    },
+    "mca-csr": {
+      "reason": "HTTP 400",
+      "since": "2026-10-05",
+      "status": "down"
+    },
+    "mines-dmft-ministry": {
+      "reason": "",
+      "since": "2026-10-05",
+      "status": "fresh"
+    },
+    "mines-dmft-odisha": {
+      "reason": "document: SSLError: HTTPSConnectionPool(host='dmf.odisha.gov.in', port=443): Max retries exceeded with url: /assets/cron_files/state_summary_data.json (Caused by SSLError(SSLCertVerificationError(1, '",
+      "since": "2026-10-05",
+      "status": "broken"
+    },
+    "ministry-ddg-dea": {
+      "reason": "document: SSLError: HTTPSConnectionPool(host='dea.gov.in', port=443): Max retries exceeded with url: /files/detail_demands_grants_documents/Final%20DDG%20%282026-27%29%20MoF-1.pdf (Caused by SSLError(",
+      "since": "2026-10-05",
+      "status": "broken"
+    },
+    "ministry-ddg-dst": {
+      "reason": "",
+      "since": "2026-10-05",
+      "status": "fresh"
+    },
+    "ministry-ddg-mha": {
+      "reason": "document: PermissionError: Disallowed by robots.txt: https://www.mha.gov.in/sites/default/files/2026-02/DDGVOL12026-27_11022026.pdf",
+      "since": "2026-10-05",
+      "status": "broken"
+    },
+    "mospi-udise": {
+      "reason": "SSLError: HTTPSConnectionPool(host='api.mospi.gov.in', port=443): Max retries exceeded with url: /api/udise/getUdiseRecords?indicator_code=41&year=2024-25&state_code=8&page=1&limit=5 (Caused by SSLErr",
+      "since": "2026-10-05",
+      "status": "unreachable"
+    },
+    "myneta-ls2024": {
+      "reason": "",
+      "since": "2026-10-05",
+      "status": "fresh"
+    },
+    "nada": {
+      "reason": "SSLError: HTTPSConnectionPool(host='microdata.gov.in', port=443): Max retries exceeded with url: /NADA/index.php/api/catalog/search?ps=3&page=1 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: C",
+      "since": "2026-10-05",
+      "status": "unreachable"
+    },
+    "niti-annual-report": {
+      "reason": "PermissionError: Disallowed by robots.txt: https://www.niti.gov.in/publication/annual-report",
+      "since": "2026-10-05",
+      "status": "broken"
+    },
+    "prs-bill-track": {
+      "reason": "",
+      "since": "2026-10-05",
+      "status": "fresh"
+    },
+    "prs-mp-track-ls": {
+      "reason": "",
+      "since": "2026-10-05",
+      "status": "fresh"
+    },
+    "prs-mp-track-rs": {
+      "reason": "",
+      "since": "2026-10-05",
+      "status": "fresh"
+    },
+    "prs-report-summaries": {
+      "reason": "",
+      "since": "2026-10-05",
+      "status": "fresh"
+    },
+    "prs-vital-stats": {
+      "reason": "",
+      "since": "2026-10-05",
+      "status": "fresh"
+    },
+    "questions-list-ls": {
+      "reason": "",
+      "since": "2026-10-05",
+      "status": "fresh"
+    },
+    "questions-list-rs": {
+      "reason": "HTTP 500",
+      "since": "2026-10-05",
+      "status": "down"
+    },
+    "sansad-ls": {
+      "reason": "",
+      "since": "2026-10-05",
+      "status": "fresh"
+    },
+    "sansad-rs": {
+      "reason": "",
+      "since": "2026-10-05",
+      "status": "fresh"
+    },
+    "sansad-tabled": {
+      "reason": "",
+      "since": "2026-10-05",
+      "status": "fresh"
+    },
+    "sessions-ls": {
+      "reason": "",
+      "since": "2026-10-05",
+      "status": "fresh"
+    },
+    "sessions-rs": {
+      "reason": "",
+      "since": "2026-10-05",
+      "status": "fresh"
+    },
+    "shrug": {
+      "reason": "no record has all required fields: table_label, filetype, url",
+      "since": "2026-10-05",
+      "status": "broken"
+    },
+    "state-assembly-neva": {
+      "reason": "",
+      "since": "2026-10-05",
+      "status": "fresh"
+    },
+    "state-assembly-probe-neva": {
+      "reason": "",
+      "since": "2026-10-05",
+      "status": "fresh"
+    },
+    "udise-docs": {
+      "reason": "",
+      "since": "2026-10-05",
+      "status": "fresh"
+    },
+    "wayback-recover": {
+      "reason": "",
+      "since": "2026-10-05",
+      "status": "fresh"
+    }
+  }
+}
