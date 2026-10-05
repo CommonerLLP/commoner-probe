@@ -75,6 +75,9 @@ class Source:
     document_headers: Mapping[str, str] = field(default_factory=dict)
     # False skips robots.txt for the document fetch. A function decides per document URL.
     document_respect_robots: bool | Callable[[str], bool] = True
+    # Seconds between requests to the document's host, when the source needs
+    # more than http_client's default. None keeps the default.
+    document_rate_limit_sec: float | None = None
     total: Callable[[], int] | None = None  # total count, for CountFloor
     freshness: tuple[Rule, ...] = ()
 
@@ -552,8 +555,10 @@ def _fetch_and_check_document(source: Source, valid: list[dict], newest: str,
         respect = source.document_respect_robots
         if callable(respect):
             respect = respect(url)
-        robots = {} if respect else {"respect_robots": False}
-        status, content_type, head = fetch_document(url, source.document_headers, **robots)
+        options: dict = {} if respect else {"respect_robots": False}
+        if source.document_rate_limit_sec is not None:
+            options["rate_limit_sec"] = source.document_rate_limit_sec
+        status, content_type, head = fetch_document(url, source.document_headers, **options)
     except Exception as exc:  # noqa: BLE001 - classified below
         kind, code, reason = classify_exception(exc)
         if kind == HTTP_ERROR and not _transient_status(code):
@@ -597,10 +602,14 @@ def _close(resp: object) -> None:
 
 
 def default_fetch_document(url: str, headers: Mapping[str, str], *,
-                           respect_robots: bool = True) -> tuple[int, str, bytes]:
+                           respect_robots: bool = True,
+                           rate_limit_sec: float | None = None) -> tuple[int, str, bytes]:
     """Return (status, content_type, first ≤2048 bytes) without downloading the whole file."""
-    resp = make_session().get(url, headers=dict(headers), timeout=60, stream=True,
-                              respect_robots=respect_robots)
+    # http_client paces each domain across sessions, so a longer limit here also
+    # spaces this request from the adapter's own requests to the same host.
+    session = make_session() if rate_limit_sec is None else make_session(rate_limit_sec=rate_limit_sec)
+    resp = session.get(url, headers=dict(headers), timeout=60, stream=True,
+                       respect_robots=respect_robots)
     try:
         # A chunked response can yield a first chunk shorter than the magic bytes.
         head = b""
@@ -694,6 +703,19 @@ def inconclusive_reason(observations: Mapping[str, Observation]) -> str | None:
     return None
 
 
+def _previous_fail_kind(prev: Mapping) -> str | None:
+    """The kind of the failures *prev* counts, or None when it counts none.
+
+    State written before fail_kind existed has only a status, which names the
+    kind when it's down or unreachable."""
+    if not prev.get("fail_count"):
+        return None
+    kind = prev.get("fail_kind")
+    if kind in (HTTP_ERROR, NO_RESPONSE):
+        return kind
+    return {DOWN: HTTP_ERROR, UNREACHABLE: NO_RESPONSE}.get(prev.get("status"))
+
+
 def resolve(observations: Mapping[str, Observation], *, committed: dict, state: dict,
             registry_ids: Collection[str], today: date,
             ) -> tuple[dict, dict, list[Transition], list[str]]:
@@ -718,12 +740,17 @@ def resolve(observations: Mapping[str, Observation], *, committed: dict, state: 
         committed_entry = old_sources.get(sid, {})
         prev_status = prev.get("status") or committed_entry.get("status")
         fail_count = prev.get("fail_count", 0)
+        fail_kind: str | None = None
 
         if obs.outcome == GEO_FENCED:
             status, fail_count = GEO_FENCED, 0
             reason: str | None = obs.reason or "verify by hand"
         elif obs.outcome in (HTTP_ERROR, NO_RESPONSE):
-            fail_count += 1
+            # down and unreachable each need consecutive failures of their own
+            # kind, so a failure of the other kind, or of an unknown kind,
+            # restarts the count.
+            fail_kind = obs.outcome
+            fail_count = fail_count + 1 if _previous_fail_kind(prev) == fail_kind else 1
             candidate = DOWN if obs.outcome == HTTP_ERROR else UNREACHABLE
             if fail_count >= _FAILS_BEFORE_REPORTING:
                 status, reason = candidate, obs.reason
@@ -761,6 +788,8 @@ def resolve(observations: Mapping[str, Observation], *, committed: dict, state: 
             new_sources[sid] = {"reason": reason or "", "since": since, "status": status}
             entry.update(since=since, reason=reason or "")
         entry.update(status=status, fail_count=fail_count)
+        if fail_kind is not None:
+            entry["fail_kind"] = fail_kind
         newest = obs.newest or prev.get("newest")
         if newest:
             entry["newest"] = newest
@@ -832,7 +861,7 @@ def load_state(path: Path) -> dict:
     return data
 
 
-_STATE_TEXT_FIELDS = frozenset({"status", "since", "reason", "newest"})
+_STATE_TEXT_FIELDS = frozenset({"status", "since", "reason", "newest", "fail_kind"})
 _STATE_INT_FIELDS = frozenset({"fail_count", "max_count"})
 
 

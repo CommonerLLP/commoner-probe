@@ -715,6 +715,44 @@ def test_document_robots_decision_can_depend_on_the_url():
                     ("https://other.example/a.pdf", {})]
 
 
+def test_document_rate_limit_is_forwarded_only_when_set():
+    seen = []
+
+    def fetch_document(url, headers, **kw):
+        seen.append(kw)
+        return (200, "application/pdf", b"%PDF")
+
+    recs = [{"title": "t", "u": "a.pdf"}]
+    check(src(lambda: recs, document=lambda r: r["u"]), fetch_document=fetch_document)
+    check(src(lambda: recs, document=lambda r: r["u"], document_rate_limit_sec=10.0),
+          fetch_document=fetch_document)
+    assert seen == [{}, {"rate_limit_sec": 10.0}]
+
+
+def test_default_fetch_document_builds_its_session_with_the_rate_limit(monkeypatch):
+    made = []
+
+    class Resp:
+        status_code = 200
+        headers = {}
+
+        def iter_content(self, chunk_size):
+            yield b"%PDF"
+
+    class Session:
+        def get(self, url, **kw):
+            return Resp()
+
+    def make_session(**kw):
+        made.append(kw)
+        return Session()
+
+    monkeypatch.setattr(cs, "make_session", make_session)
+    cs.default_fetch_document("https://x/a.pdf", {})
+    cs.default_fetch_document("https://x/a.pdf", {}, rate_limit_sec=10.0)
+    assert made == [{}, {"rate_limit_sec": 10.0}]
+
+
 def test_default_fetch_document_forwards_respect_robots(monkeypatch):
     seen = {}
 
@@ -1201,6 +1239,68 @@ def test_two_run_rule_for_a_committed_source():
     assert state["sources"]["a"]["fail_count"] == 0
 
 
+@pytest.mark.parametrize("first, second", [
+    (cs.HTTP_ERROR, cs.NO_RESPONSE),
+    (cs.NO_RESPONSE, cs.HTTP_ERROR),
+])
+def test_mixed_failure_kinds_restart_the_count(first, second):
+    # down and unreachable each need two consecutive failures of their own kind.
+    master = committed_with(a=("fresh", "2026-09-01", ""))
+    _, state, _, _ = do_resolve([obs("a", first, "x")], committed=master)
+    committed, state, transitions, _ = do_resolve(
+        [obs("a", second, "y")], committed=master, state=state, today=date(2026, 10, 12))
+    assert committed["sources"]["a"]["status"] == "fresh" and transitions == []
+    assert state["sources"]["a"]["fail_count"] == 1
+    assert state["sources"]["a"]["fail_kind"] == second
+    # A second failure of the new kind reports it.
+    committed, state, transitions, _ = do_resolve(
+        [obs("a", second, "y")], committed=master, state=state, today=date(2026, 10, 19))
+    expected = "down" if second == cs.HTTP_ERROR else "unreachable"
+    assert committed["sources"]["a"]["status"] == expected
+    assert state["sources"]["a"]["fail_count"] == 2
+
+
+def test_two_no_responses_in_a_row_report_unreachable():
+    master = committed_with(a=("fresh", "2026-09-01", ""))
+    _, state, _, _ = do_resolve([obs("a", cs.NO_RESPONSE, "ReadTimeout")], committed=master)
+    committed, _, transitions, _ = do_resolve(
+        [obs("a", cs.NO_RESPONSE, "ReadTimeout")], committed=master, state=state)
+    assert committed["sources"]["a"]["status"] == "unreachable"
+    assert transitions == [cs.Transition("a", "fresh", "unreachable", "ReadTimeout")]
+
+
+def test_a_non_failing_result_clears_the_failure_kind():
+    _, state, _, _ = do_resolve([obs("a", cs.HTTP_ERROR, "HTTP 500")])
+    _, state, _, _ = do_resolve([obs("a", cs.FRESH)], state=state)
+    assert state["sources"]["a"]["fail_count"] == 0
+    assert "fail_kind" not in state["sources"]["a"]
+
+
+@pytest.mark.parametrize("status, outcome", [
+    ("down", cs.HTTP_ERROR), ("unreachable", cs.NO_RESPONSE)])
+def test_state_without_a_failure_kind_infers_it_from_a_failing_status(status, outcome):
+    # State written before fail_kind existed: a source already down keeps
+    # counting HTTP errors, so its reason still follows the cause.
+    master = committed_with(a=(status, "2026-09-01", "old"))
+    state = {"sources": {"a": {"status": status, "since": "2026-09-01", "reason": "old",
+                               "fail_count": 3}}}
+    committed, state, _, _ = do_resolve([obs("a", outcome, "new cause")],
+                                        committed=master, state=state)
+    assert state["sources"]["a"]["fail_count"] == 4
+    assert committed["sources"]["a"] == {"status": status, "since": "2026-09-01",
+                                         "reason": "new cause"}
+
+
+def test_state_without_a_failure_kind_restarts_a_pending_count():
+    master = committed_with(a=("fresh", "2026-09-01", ""))
+    state = {"sources": {"a": {"status": "fresh", "since": "2026-09-01", "reason": "",
+                               "fail_count": 1}}}
+    committed, state, _, _ = do_resolve([obs("a", cs.HTTP_ERROR, "HTTP 500")],
+                                        committed=master, state=state)
+    assert committed["sources"]["a"]["status"] == "fresh"
+    assert state["sources"]["a"]["fail_count"] == 1
+
+
 def test_two_run_rule_for_a_new_source():
     committed, state, transitions, pending = do_resolve([obs("n", cs.NO_RESPONSE, "timed out")])
     assert pending == ["n"]
@@ -1454,7 +1554,8 @@ def test_load_state_drops_malformed_entries_and_fields(tmp_path):
         "odd": {"status": "fresh", "fail_count": "9", "max_count": "big", "since": 5,
                 "reason": 7, "newest": 3},
         "good": {"status": "down", "since": "2026-09-28", "reason": "HTTP 500",
-                 "fail_count": 2, "max_count": 10, "newest": "2026-09-01"},
+                 "fail_count": 2, "fail_kind": "http_error", "max_count": 10,
+                 "newest": "2026-09-01"},
         "flag": {"status": "fresh", "fail_count": True},
     }}))
     sources = cs.load_state(path)["sources"]
@@ -1462,6 +1563,7 @@ def test_load_state_drops_malformed_entries_and_fields(tmp_path):
     assert sources["odd"] == {"status": "fresh"}
     assert sources["flag"] == {"status": "fresh"}
     assert sources["good"]["fail_count"] == 2 and sources["good"]["max_count"] == 10
+    assert sources["good"]["fail_kind"] == "http_error"
 
 
 def test_resolve_survives_a_state_file_with_malformed_entries(tmp_path):
