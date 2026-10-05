@@ -81,7 +81,26 @@ def test_state_comes_from_the_newest_artifact_not_the_last_successful_run():
     step = _text().split("- name: Download the previous run's state", 1)[1].split("\n      - name:", 1)[0]
     assert "--status success" not in step
     assert "actions/artifacts?name=source-state" in step
-    assert "select(.expired | not)" in step
+    assert "select((.expired | not)" in step
+
+
+def test_state_comes_only_from_this_workflows_own_earlier_runs_on_master():
+    # An artifact named source-state from a fork PR, another workflow, or a
+    # branch dispatch is untrusted, and the current run is a re-run's own
+    # first attempt.
+    step = _text().split("- name: Download the previous run's state", 1)[1].split("\n      - name:", 1)[0]
+    assert "actions/workflows/source-freshness.yml/runs?branch=master" in step
+    assert "select(.id != $GITHUB_RUN_ID" in step
+    assert '.head_repository.full_name == \\"$GITHUB_REPOSITORY\\"' in step
+    assert '.event == \\"schedule\\"' in step
+
+
+def test_state_download_falls_back_to_empty_when_an_api_call_fails():
+    # The step runs under bash -e, so a failing $(...) assignment would end it.
+    step = _text().split("- name: Download the previous run's state", 1)[1].split("\n      - name:", 1)[0]
+    assert "|| runs='[]'" in step
+    assert """|| artifacts='{"artifacts": []}'""" in step
+    assert '|| run_id=""' in step
 
 
 def test_state_is_saved_before_the_pr_step():

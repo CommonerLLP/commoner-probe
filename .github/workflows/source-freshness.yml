@@ -40,15 +40,26 @@ jobs:
       # Rolling state (pending failures, newest dates, highest counts) travels
       # between runs as an artifact so that it never creates commits. A missing
       # artifact is normal on the first run or after 90 days without a run.
-      # The newest artifact wins whatever its run's conclusion: a run whose PR
-      # step failed has still saved its state, and skipping it would restart
-      # every run from the same old state.
+      #
+      # The state comes from the newest artifact of an earlier scheduled or
+      # manual run of this workflow on master in this repository, whatever that
+      # run's conclusion: a run whose PR step failed has still saved its state.
+      # Artifacts from other workflows, branches, and forks are untrusted and
+      # skipped. So is the current run, because a re-run attempt would
+      # otherwise read its own first attempt and count one failure twice. A
+      # failing API call means starting empty, not a failed job.
       - name: Download the previous run's state
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          run_id=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=source-state&per_page=100" \
-            --jq '[.artifacts[] | select(.expired | not)] | max_by(.created_at) | .workflow_run.id // empty')
+          runs=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/source-freshness.yml/runs?branch=master&per_page=100" \
+            --jq "[.workflow_runs[] | select(.id != $GITHUB_RUN_ID and .head_repository.full_name == \"$GITHUB_REPOSITORY\" and (.event == \"schedule\" or .event == \"workflow_dispatch\")) | .id]") \
+            || runs='[]'
+          artifacts=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=source-state&per_page=100") \
+            || artifacts='{"artifacts": []}'
+          run_id=$(jq -rn --argjson runs "$runs" --argjson artifacts "$artifacts" \
+            '[$artifacts.artifacts[] | select((.expired | not) and (.workflow_run.id as $id | $runs | any(. == $id)))]
+             | max_by(.created_at) | .workflow_run.id // empty') || run_id=""
           if [ -n "$run_id" ]; then
             gh run download "$run_id" --repo "$GITHUB_REPOSITORY" --name source-state --dir . \
               || echo "Can't download the state artifact from run $run_id; starting empty."
