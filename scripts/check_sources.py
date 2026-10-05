@@ -31,6 +31,7 @@ import re
 import socket
 import ssl
 import sys
+import time
 import urllib.error
 from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -628,9 +629,14 @@ def run_checks(sources: Sequence[Source], *, today: date, state: dict,
                control: Callable[[], bool] | None = None,
                fetch_document: Callable[[str, Mapping[str, str]], tuple[int, str, bytes]] | None = None,
                only: Collection[str] | None = None,
+               progress: Callable[[str], None] | None = None,
                ) -> dict[str, Observation]:
     """Order the sources, restrict them to `only` plus transitive dependencies,
     and check each one, filling ctx.results and ctx.records as it goes.
+
+    As each source finishes, `progress` gets one line with its position, ID,
+    outcome, and time taken, so a CI log shows how far a run has got. It
+    defaults to printing to stderr.
 
     `state` is the whole rolling-state dict (the state.json shape). The rules see
     its "sources" mapping as `ctx.state`.
@@ -656,14 +662,38 @@ def run_checks(sources: Sequence[Source], *, today: date, state: dict,
 
     control = control or default_control
     fetch_document = fetch_document or default_fetch_document
+    progress = progress or _print_progress
     ctx = Context(today=today, results={}, records={}, state=state.get("sources", {}),
                   geo_fenced=geo_fenced)
-    for source in ordered:
+    for position, source in enumerate(ordered, 1):
+        started = time.monotonic()
         obs, valid = check_source(source, ctx, control=control, fetch_document=fetch_document)
+        progress(_progress_line(position, len(ordered), obs, time.monotonic() - started))
         ctx.results[source.id] = obs
         if obs.outcome != GEO_FENCED:
             ctx.records[source.id] = valid
     return ctx.results
+
+
+_PROGRESS_REASON_MAX = 100
+
+
+def _duration(seconds: float) -> str:
+    if seconds < 60:
+        return f"{seconds:.1f} s"
+    minutes, rest = divmod(int(seconds), 60)
+    return f"{minutes}m {rest}s"
+
+
+def _progress_line(position: int, total: int, obs: Observation, seconds: float) -> str:
+    line = f"[{position}/{total}] {obs.source_id}: {obs.outcome.replace('_', ' ')} ({_duration(seconds)})"
+    if obs.reason:
+        line += ": " + " ".join(obs.reason.split())[:_PROGRESS_REASON_MAX]
+    return line
+
+
+def _print_progress(line: str) -> None:
+    print(line, file=sys.stderr, flush=True)
 
 
 # -- Run-level resolution ---------------------------------------------------

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import http.client
 import json
+import re
 import socket
 import ssl
 import urllib.error
@@ -600,6 +601,49 @@ def test_run_checks_isolates_a_failing_source():
     results = _run([src(boom, id="a"), _fresh_source("b")])
     assert results["a"].outcome == cs.BROKEN
     assert results["b"].outcome == cs.FRESH
+
+
+def test_run_checks_reports_each_source_as_it_finishes():
+    lines = []
+
+    def boom():
+        raise ValueError("parser broke")
+
+    _run([_fresh_source("a"), src(boom, id="b")], progress=lines.append)
+    assert len(lines) == 2
+    assert re.fullmatch(r"\[1/2\] a: fresh \(\d+\.\d s\)", lines[0])
+    assert re.fullmatch(r"\[2/2\] b: broken \(\d+\.\d s\): ValueError: parser broke", lines[1])
+
+
+def test_progress_counts_only_the_sources_checked():
+    lines = []
+    _run([_fresh_source("a"), _fresh_source("b"), _fresh_source("c")], only=["b"],
+         progress=lines.append)
+    assert [line.split(":")[0] for line in lines] == ["[1/1] b"]
+
+
+def test_progress_shortens_a_long_reason_to_one_line():
+    lines = []
+
+    def boom():
+        raise ValueError("first line\n" + "x" * 300)
+
+    _run([src(boom, id="a")], progress=lines.append)
+    assert "\n" not in lines[0] and len(lines[0]) < 160
+
+
+@pytest.mark.parametrize("seconds, text", [
+    (0.04, "0.0 s"), (4.24, "4.2 s"), (59.9, "59.9 s"), (60, "1m 0s"), (364.4, "6m 4s"),
+])
+def test_progress_formats_durations(seconds, text):
+    assert cs._duration(seconds) == text
+
+
+def test_run_checks_prints_progress_to_stderr_by_default(capsys):
+    _run([_fresh_source("a")])
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err.startswith("[1/1] a: fresh (")
 
 
 def test_run_checks_only_adds_transitive_dependencies():
