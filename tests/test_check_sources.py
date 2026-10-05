@@ -1624,6 +1624,121 @@ def test_render_committed_is_sorted_indented_and_keeps_unicode():
     assert text == '{\n  "geo_fenced": {},\n  "sources": {\n    "b": {\n      "reason": "→"\n    }\n  }\n}\n'
 
 
+def _status_sources():
+    return [
+        cs.Source(id="f", label="Zed fresh", host="f.example", fetch=list, required=()),
+        cs.Source(id="s", label="A | stale", host="s.example", fetch=list, required=()),
+        cs.Source(id="b", label="Broken one", host="b.example", fetch=list, required=()),
+        cs.Source(id="f2", label="Alpha fresh", host="f2.example", fetch=list, required=()),
+    ]
+
+
+def _status_committed():
+    return {"geo_fenced": {}, "sources": {
+        "f": {"status": "fresh", "since": "2026-10-01", "reason": ""},
+        "s": {"status": "stale", "since": "2026-10-02", "reason": "lag"},
+        "b": {"status": "broken", "since": "2026-10-04", "reason": "bad"},
+        "f2": {"status": "fresh", "since": "2026-10-03", "reason": ""},
+        "orphan": {"status": "mystery", "since": "2026-10-06", "reason": "?"},
+    }}
+
+
+def test_render_readme_status_is_a_collapsed_table_with_icons():
+    block = cs.render_readme_status(_status_committed(), _status_sources())
+    lines = block.splitlines()
+    assert lines[0] == cs.README_STATUS_START and lines[-1] == cs.README_STATUS_END
+    assert "<details>" in lines and "</details>" in lines
+    summary = next(line for line in lines if line.startswith("<summary>"))
+    # Fresh first, then the table's order, then any unknown status.
+    assert summary == ("<summary>Status of all 5 sources: 2 ✅ fresh · 1 ❌ broken · "
+                       "1 🟡 stale · 1 ⚪ mystery</summary>")
+    # GitHub renders a table inside <details> only after a blank line.
+    assert lines[lines.index(summary) + 1] == ""
+    rows = [line for line in lines if line.startswith("| ") and not line.startswith("| Status")]
+    labels = [re.split(r"(?<!\\)\|", row)[2].strip() for row in rows]
+    # Non-fresh first, then fresh, then an unknown status, as in SOURCES.md.
+    assert labels == ["Broken one", "A \\| stale", "Alpha fresh", "Zed fresh", "orphan"]
+    assert "| ✅ fresh | Alpha fresh | f2.example | 2026-10-03 |" in lines
+    assert "| ⚪ mystery | orphan |  | 2026-10-06 |" in lines
+    assert "[SOURCES.md](SOURCES.md)" in block
+    assert cs.render_readme_status(_status_committed(), _status_sources()) == block
+
+
+def test_render_readme_status_lists_every_status_icon():
+    assert cs.STATUS_ICONS == {"fresh": "✅", "stale": "🟡", "broken": "❌", "down": "🔴",
+                               "unreachable": "❓", "geo-fenced": "🌐"}
+
+
+def test_replace_readme_status_swaps_only_the_marked_block():
+    old = f"intro\n{cs.README_STATUS_START}\nold table\n{cs.README_STATUS_END}\noutro\n"
+    block = f"{cs.README_STATUS_START}\nnew\n{cs.README_STATUS_END}"
+    assert cs.replace_readme_status(old, block) == f"intro\n{block}\noutro\n"
+
+
+@pytest.mark.parametrize("text", [
+    "no markers here\n",
+    f"{cs.README_STATUS_END}\nreversed\n{cs.README_STATUS_START}\n",
+    f"{cs.README_STATUS_START}\nno end\n",
+])
+def test_replace_readme_status_without_a_usable_block_returns_none(text):
+    assert cs.replace_readme_status(text, "x") is None
+
+
+def test_main_rewrites_the_readme_status_block(tmp_path):
+    p = paths(tmp_path)
+    p["readme"].write_text(f"# Title\n\n{cs.README_STATUS_START}\nstale\n"
+                           f"{cs.README_STATUS_END}\n\nMore.\n", encoding="utf-8")
+    assert run_main(p) == 0
+    text = p["readme"].read_text(encoding="utf-8")
+    assert text.startswith("# Title\n\n") and text.endswith("\n\nMore.\n")
+    assert "<summary>Status of all 2 sources: 1 ✅ fresh · 1 🟡 stale</summary>" in text
+    first = text
+    assert run_main(p) == 0
+    assert p["readme"].read_text(encoding="utf-8") == first
+
+
+def test_main_leaves_a_readme_without_markers_alone_and_warns(tmp_path, capsys):
+    p = paths(tmp_path)
+    p["readme"].write_text("# Title\n", encoding="utf-8")
+    assert run_main(p) == 0
+    assert p["readme"].read_text(encoding="utf-8") == "# Title\n"
+    assert "source-status markers" in capsys.readouterr().err
+
+
+def test_main_skips_a_missing_readme(tmp_path):
+    p = paths(tmp_path)
+    assert run_main(p) == 0
+    assert not p["readme"].exists()
+
+
+def test_main_inconclusive_run_leaves_the_readme_alone(tmp_path):
+    p = paths(tmp_path)
+    original = f"{cs.README_STATUS_START}\nold\n{cs.README_STATUS_END}\n"
+    p["readme"].write_text(original, encoding="utf-8")
+    registry = [src(_raise(TimeoutError("slow")), id=f"s{i}") for i in range(5)]
+    assert cs.main(argv(p), registry=registry, control=lambda: False, fetch_document=PDF) == 2
+    assert p["readme"].read_text(encoding="utf-8") == original
+
+
+def _raise(exc):
+    def fetch():
+        raise exc
+
+    return fetch
+
+
+def test_repo_readme_status_block_matches_the_committed_sources():
+    # The committed README must hold what the checker would write, or the next
+    # run's bot PR carries an unrelated README diff.
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent
+    committed = cs.load_committed(root / "staleness" / "sources.json")
+    readme = (root / "README.md").read_text(encoding="utf-8")
+    block = cs.render_readme_status(committed, cs._load_registry())
+    assert cs.replace_readme_status(readme, block) == readme
+
+
 def test_render_sources_md_sorts_by_status_then_label_and_escapes_pipes():
     sources = [
         cs.Source(id="f", label="Zed fresh", host="f.example", fetch=list, required=()),
@@ -1692,6 +1807,7 @@ def paths(tmp_path):
         "state": tmp_path / "state.json",
         "json": tmp_path / "staleness" / "sources.json",
         "md": tmp_path / "SOURCES.md",
+        "readme": tmp_path / "README.md",
         "summary": tmp_path / "summary.md",
         "pr": tmp_path / "pr.md",
         "out": tmp_path / "gh_output",
@@ -1702,7 +1818,7 @@ def argv(p, *extra, today="2026-10-05"):
     return ["--state", str(p["state"]), "--sources-json", str(p["json"]),
             "--sources-md", str(p["md"]), "--summary", str(p["summary"]),
             "--pr-body", str(p["pr"]), "--github-output", str(p["out"]),
-            "--today", today, *extra]
+            "--readme", str(p["readme"]), "--today", today, *extra]
 
 
 def simple_registry(calls=None):

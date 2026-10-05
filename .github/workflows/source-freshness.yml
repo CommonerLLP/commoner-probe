@@ -86,6 +86,7 @@ jobs:
           branch: bot/source-freshness
           base: master
           add-paths: |
+            README.md
             SOURCES.md
             staleness/sources.json
           commit-message: "chore: update source freshness"
