@@ -467,14 +467,26 @@ class PdfDownloadHeaderTests(unittest.TestCase):
             self.assertNotIn("Accept", h)
             self.assertEqual(h.get("Referer"), "https://sansad.in/rs/committees")
 
-    def test_only_rs_pdf_download_skips_robots(self):
+    def test_only_rs_bucket_pdf_download_skips_robots(self):
+        bucket = "https://bucketapi.rajyasabha.digital/rsdocs/174.pdf"
         with tempfile.TemporaryDirectory() as tmp:
-            probe = self._capture_probe(tmp, {RS_ROUTE: _rs_envelope(_rs_record(174)),
+            probe = self._capture_probe(
+                tmp, {RS_ROUTE: _rs_envelope(_rs_record(174, url=bucket)),
+                      "bucketapi.rajyasabha.digital": {}})
+            probe.probe_rs(set(), committees=["health"], from_date=None, to_date=None,
+                           max_records=None, download=True)
+        rs_pdf = [flag for url, flag in self.robots if url == bucket]
+        self.assertEqual(rs_pdf, [False])
+
+        # An older RS record whose PDF is still on sansad.in keeps the check.
+        self.robots.clear()
+        with tempfile.TemporaryDirectory() as tmp:
+            probe = self._capture_probe(tmp, {RS_ROUTE: _rs_envelope(_rs_record(175)),
                                               "getFile": {}})
             probe.probe_rs(set(), committees=["health"], from_date=None, to_date=None,
                            max_records=None, download=True)
         rs_pdf = [flag for url, flag in self.robots if "getFile" in url]
-        self.assertEqual(rs_pdf, [False])
+        self.assertEqual(rs_pdf, [True])
 
         self.robots.clear()
         page1 = {"_metadata": {"totalPages": 1}, "records": [_ls_record(35)]}

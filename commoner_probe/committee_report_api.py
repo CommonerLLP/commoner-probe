@@ -40,7 +40,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 from typing import Iterable, Iterator
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 
 from .base import BaseProbe, now, safe_filename_segment
 from .parliament_qa_api import date_in_range
@@ -62,6 +62,8 @@ RS_HEADERS = {**LS_HEADERS, "Referer": "https://sansad.in/rs/committees"}
 # ways), so this is hardening against the class, not a live-bug fix.
 LS_PDF_HEADERS = {k: v for k, v in LS_HEADERS.items() if k != "Accept"}
 RS_PDF_HEADERS = {k: v for k, v in RS_HEADERS.items() if k != "Accept"}
+# The one host whose PDF downloads skip the robots.txt check (see probe_rs).
+RS_PDF_BUCKET_HOST = "bucketapi.rajyasabha.digital"
 
 # slug -> (display name, sansad committeeCode). LS-side Department-Related
 # Standing Committees (DRSCs). Display names canonical here — the API's
@@ -627,9 +629,11 @@ class CommitteeProbe(BaseProbe):
                         # whose /robots.txt returns HTTP 403 (AccessDenied).
                         # http_client reads that as disallow-all, but RFC 9309
                         # §2.3.1.4 treats a 4xx robots.txt as "no restrictions".
-                        # LS PDFs keep the robots check.
+                        # An RS PDF on any other host, and every LS PDF, keeps
+                        # the robots check.
+                        on_bucket = urlparse(rec["pdf_url"]).hostname == RS_PDF_BUCKET_HOST
                         if self.write_pdf(rec["pdf_url"], pdf_path, RS_PDF_HEADERS,
-                                          respect_robots=False):
+                                          respect_robots=not on_bucket):
                             rec["pdf_path"] = str(pdf_path.relative_to(self.out_dir))
                     self.append(rec)
                     seen.add(key)
