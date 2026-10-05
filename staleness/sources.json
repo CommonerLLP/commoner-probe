@@ -152,9 +152,9 @@
       "status": "fresh"
     },
     "mines-dmft-odisha": {
-      "reason": "document: SSLError: HTTPSConnectionPool(host='dmf.odisha.gov.in', port=443): Max retries exceeded with url: /assets/cron_files/state_summary_data.json (Caused by SSLError(SSLCertVerificationError(1, '",
+      "reason": "URLError: <urlopen error timed out>",
       "since": "2026-10-05",
-      "status": "broken"
+      "status": "unreachable"
     },
     "ministry-ddg-dea": {
       "reason": "document: TLS handshake failed: SSLError: HTTPSConnectionPool(host='dea.gov.in', port=443): Max retries exceeded with url: /files/detail_demands_grants_documents/Final%20DDG%20%282026-27%29%20MoF-1.pd",
