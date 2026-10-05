@@ -42,9 +42,9 @@
       "status": "fresh"
     },
     "academic-jobs-iit-rolling": {
-      "reason": "",
+      "reason": "ValueError: iit-bombay yielded no ads: no_ads",
       "since": "2026-10-05",
-      "status": "fresh"
+      "status": "broken"
     },
     "academic-jobs-private-university": {
       "reason": "",
@@ -97,9 +97,9 @@
       "status": "fresh"
     },
     "dchb-town": {
-      "reason": "SSLError: HTTPSConnectionPool(host='censusindia.gov.in', port=443): Max retries exceeded with url: /nada/index.php/api/catalog/DH_2011_1301_PART_A_DCHB_MON (Caused by SSLError(SSLCertVerificationError",
+      "reason": "TLS handshake failed: SSLError: HTTPSConnectionPool(host='censusindia.gov.in', port=443): Max retries exceeded with url: /nada/index.php/api/catalog/DH_2011_1301_PART_A_DCHB_MON (Caused by SSLError(SS",
       "since": "2026-10-05",
-      "status": "unreachable"
+      "status": "broken"
     },
     "debates-ls": {
       "reason": "",
@@ -112,9 +112,9 @@
       "status": "fresh"
     },
     "doe-pay-allowances": {
-      "reason": "PermissionError: Disallowed by robots.txt: https://doe.gov.in/annual-report-pay-and-allowances",
+      "reason": "",
       "since": "2026-10-05",
-      "status": "broken"
+      "status": "fresh"
     },
     "dpe-csr": {
       "reason": "HTTP 403",
@@ -122,9 +122,9 @@
       "status": "down"
     },
     "go-register-ap": {
-      "reason": "",
+      "reason": "ControlFailed: the positive control GoQuery(department='SE', from_date='13-05-2025', to_date='13-05-2025', go_no='19', go_type='1', text='') against https://goir.ap.gov.in/ raised ConnectTimeout: HTTP",
       "since": "2026-10-05",
-      "status": "fresh"
+      "status": "broken"
     },
     "indiacode": {
       "reason": "ReadTimeout: HTTPSConnectionPool(host='www.indiacode.nic.in', port=443): Read timed out. (read timeout=45)",
@@ -157,7 +157,7 @@
       "status": "broken"
     },
     "ministry-ddg-dea": {
-      "reason": "document: SSLError: HTTPSConnectionPool(host='dea.gov.in', port=443): Max retries exceeded with url: /files/detail_demands_grants_documents/Final%20DDG%20%282026-27%29%20MoF-1.pdf (Caused by SSLError(",
+      "reason": "document: TLS handshake failed: SSLError: HTTPSConnectionPool(host='dea.gov.in', port=443): Max retries exceeded with url: /files/detail_demands_grants_documents/Final%20DDG%20%282026-27%29%20MoF-1.pd",
       "since": "2026-10-05",
       "status": "broken"
     },
@@ -172,9 +172,9 @@
       "status": "broken"
     },
     "mospi-udise": {
-      "reason": "SSLError: HTTPSConnectionPool(host='api.mospi.gov.in', port=443): Max retries exceeded with url: /api/udise/getUdiseRecords?indicator_code=41&year=2024-25&state_code=8&page=1&limit=5 (Caused by SSLErr",
+      "reason": "TLS handshake failed: SSLError: HTTPSConnectionPool(host='api.mospi.gov.in', port=443): Max retries exceeded with url: /api/udise/getUdiseRecords?indicator_code=41&year=2024-25&state_code=8&page=1&lim",
       "since": "2026-10-05",
-      "status": "unreachable"
+      "status": "broken"
     },
     "myneta-ls2024": {
       "reason": "",
@@ -182,9 +182,9 @@
       "status": "fresh"
     },
     "nada": {
-      "reason": "SSLError: HTTPSConnectionPool(host='microdata.gov.in', port=443): Max retries exceeded with url: /NADA/index.php/api/catalog/search?ps=3&page=1 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: C",
+      "reason": "TLS handshake failed: SSLError: HTTPSConnectionPool(host='microdata.gov.in', port=443): Max retries exceeded with url: /NADA/index.php/api/catalog/search?ps=3&page=1 (Caused by SSLError(SSLCertVerific",
       "since": "2026-10-05",
-      "status": "unreachable"
+      "status": "broken"
     },
     "niti-annual-report": {
       "reason": "PermissionError: Disallowed by robots.txt: https://www.niti.gov.in/publication/annual-report",
@@ -267,9 +267,9 @@
       "status": "fresh"
     },
     "udise-docs": {
-      "reason": "",
+      "reason": "no record has all required fields: key, url, sha256",
       "since": "2026-10-05",
-      "status": "fresh"
+      "status": "broken"
     },
     "wayback-recover": {
       "reason": "",
