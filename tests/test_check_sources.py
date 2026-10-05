@@ -6,6 +6,7 @@ Every test uses fakes; none touches the network.
 from __future__ import annotations
 
 import json
+import ssl
 import urllib.error
 from dataclasses import dataclass
 from datetime import date
@@ -142,6 +143,41 @@ def test_classify_no_response(exc):
     kind, status, reason = cs.classify_exception(exc)
     assert (kind, status) == (cs.NO_RESPONSE, None)
     assert reason.startswith(type(exc).__name__ + ": ")
+
+
+@pytest.mark.parametrize("exc", [
+    requests.exceptions.SSLError("[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed"),
+    requests.exceptions.SSLError("UNSAFE_LEGACY_RENEGOTIATION_DISABLED"),
+    urllib.error.URLError(ssl.SSLCertVerificationError(1, "certificate verify failed")),
+    ssl.SSLCertVerificationError(1, "certificate verify failed"),
+])
+def test_classify_tls_failure_is_broken_not_no_response(exc):
+    # The host answered and the client rejected the handshake, so it isn't a
+    # transient "no response": it fails the same way every run.
+    kind, status, reason = cs.classify_exception(exc)
+    assert (kind, status) == (cs.BROKEN, None)
+    assert reason.startswith("TLS handshake failed: ")
+
+
+@pytest.mark.parametrize("exc", [
+    requests.exceptions.SSLError("EOF occurred in violation of protocol (_ssl.c:1006)"),
+    ssl.SSLEOFError(8, "EOF occurred in violation of protocol"),
+    urllib.error.URLError(ssl.SSLEOFError(8, "EOF occurred in violation of protocol")),
+])
+def test_classify_tls_connection_drop_is_still_no_response(exc):
+    kind, _, _ = cs.classify_exception(exc)
+    assert kind == cs.NO_RESPONSE
+
+
+def test_tls_failure_on_the_main_fetch_skips_the_control():
+    def fetch():
+        raise requests.exceptions.SSLError("CERTIFICATE_VERIFY_FAILED")
+
+    def control():
+        raise AssertionError("control must not run for a TLS failure")
+
+    obs, _ = check(src(fetch), control=control)
+    assert obs.outcome == cs.BROKEN and obs.reason.startswith("TLS handshake failed: ")
 
 
 def test_classify_challenge_is_broken_not_http_error():
@@ -291,13 +327,65 @@ def test_document_html_labeled_as_pdf_is_broken():
     assert obs.outcome == cs.BROKEN and obs.reason.startswith("document: ")
 
 
-def test_document_fetch_raising_is_broken():
+def _raising_document(exc):
     def fetch_document(url, headers):
-        raise TimeoutError("slow")
+        raise exc
 
-    s = src(lambda: [{"title": "a", "u": "x"}], document=lambda r: r["u"])
-    obs, _ = check(s, fetch_document=fetch_document)
+    return fetch_document
+
+
+def _doc_source():
+    return src(lambda: [{"title": "a", "u": "x", "d": "2026-10-01"}],
+               document=lambda r: r["u"], record_date=lambda r: r["d"])
+
+
+def test_document_fetch_raising_a_parser_error_is_broken():
+    obs, _ = check(_doc_source(), fetch_document=_raising_document(ValueError("bad url")))
     assert obs.outcome == cs.BROKEN and obs.reason.startswith("document: ")
+
+
+@pytest.mark.parametrize("exc", [
+    TimeoutError("slow"),
+    requests.exceptions.ConnectionError("reset"),
+    requests.exceptions.ReadTimeout("slow"),
+])
+def test_document_fetch_without_a_response_is_a_no_response_candidate(exc):
+    obs, _ = check(_doc_source(), fetch_document=_raising_document(exc), control=lambda: True)
+    assert obs.outcome == cs.NO_RESPONSE and obs.reason.startswith("document: ")
+    assert obs.newest == "2026-10-01" and obs.count == 1
+
+
+def test_document_fetch_without_a_response_runs_the_control():
+    obs, _ = check(_doc_source(), fetch_document=_raising_document(TimeoutError("slow")),
+                   control=lambda: False)
+    assert obs.outcome == cs.CONTROL_FAILED
+
+
+@pytest.mark.parametrize("exc", [
+    RuntimeError("HTTP 503 https://x/a.pdf"),
+    requests.exceptions.RetryError("too many 429s"),
+])
+def test_document_fetch_server_error_is_an_http_error_candidate(exc):
+    obs, _ = check(_doc_source(), fetch_document=_raising_document(exc))
+    assert obs.outcome == cs.HTTP_ERROR and obs.reason.startswith("document: ")
+
+
+@pytest.mark.parametrize("status", [500, 503, 429])
+def test_document_returned_server_status_is_an_http_error_candidate(status):
+    obs, _ = check(_doc_source(), fetch_document=lambda u, h: (status, "text/html", b""))
+    assert obs.outcome == cs.HTTP_ERROR and obs.http_status == status
+    assert obs.reason == f"document: HTTP {status}"
+
+
+def test_document_404_stays_broken():
+    obs, _ = check(_doc_source(), fetch_document=lambda u, h: (404, "text/html", b""))
+    assert obs.outcome == cs.BROKEN and obs.reason == "document: HTTP 404"
+
+
+def test_document_tls_failure_is_broken():
+    exc = requests.exceptions.SSLError("CERTIFICATE_VERIFY_FAILED")
+    obs, _ = check(_doc_source(), fetch_document=_raising_document(exc))
+    assert obs.outcome == cs.BROKEN and obs.reason.startswith("document: TLS handshake failed")
 
 
 def test_document_is_fetched_for_newest_record_with_headers():
@@ -595,6 +683,20 @@ def test_default_fetch_document_reads_only_the_first_chunk(monkeypatch):
     assert head.startswith(b"%PDF") and Resp.closed
     assert Resp.requested == 2048
     assert Session.kw["stream"] is True and Session.kw["headers"] == {"Referer": "r"}
+
+
+def test_default_fetch_document_works_with_the_stdlib_response(monkeypatch):
+    # Without requests installed, make_session() returns StdlibSession, whose
+    # StdlibResponse has no close method.
+    from commoner_probe.http_client import StdlibResponse
+
+    class Session:
+        def get(self, url, **kw):
+            return StdlibResponse(url, 200, b"%PDF-1.7 body", {"content-type": "application/pdf"})
+
+    monkeypatch.setattr(cs, "make_session", lambda: Session())
+    status, ctype, head = cs.default_fetch_document("https://x/a.pdf", {})
+    assert (status, ctype, head) == (200, "application/pdf", b"%PDF-1.7 body")
 
 
 def test_default_control_true_on_2xx_and_3xx(monkeypatch):
@@ -991,14 +1093,49 @@ def test_stale_since_and_reason_stay_put_while_the_lag_grows():
     assert transitions == []
 
 
+def test_reason_updates_when_its_category_changes_but_since_stays():
+    day1, day8 = date(2026, 10, 5), date(2026, 10, 12)
+    c1, s1, _, _ = do_resolve([obs("a", cs.BROKEN, "document: HTTP 404")], today=day1)
+    c2, s2, transitions, _ = do_resolve(
+        [obs("a", cs.BROKEN, "no record has all required fields: title")],
+        committed=c1, state=s1, today=day8)
+    assert c2["sources"]["a"] == {"status": "broken", "since": "2026-10-05",
+                                  "reason": "no record has all required fields: title"}
+    assert s2["sources"]["a"]["reason"] == "no record has all required fields: title"
+    assert transitions == []  # the status didn't change
+
+
+def test_reason_keeps_its_first_wording_when_only_numbers_change():
+    c1, s1, _, _ = do_resolve([obs("a", cs.BROKEN, "document: HTTP 404 at 2026-10-05")])
+    c2, _, _, _ = do_resolve([obs("a", cs.BROKEN, "document: HTTP 410 at 2026-10-12")],
+                             committed=c1, state=s1, today=date(2026, 10, 12))
+    assert c2["sources"]["a"]["reason"] == "document: HTTP 404 at 2026-10-05"
+
+
+def test_down_reason_updates_on_a_new_failure_kind():
+    master = committed_with(a=("down", "2026-09-01", "HTTP 500"))
+    state = {"sources": {"a": {"status": "down", "since": "2026-09-01", "reason": "HTTP 500",
+                               "fail_count": 3}}}
+    committed, _, _, _ = do_resolve(
+        [obs("a", cs.HTTP_ERROR, "document: HTTP 503")], committed=master, state=state)
+    assert committed["sources"]["a"] == {
+        "status": "down", "since": "2026-09-01", "reason": "document: HTTP 503"}
+
+
+def test_pending_failure_keeps_the_previous_reason():
+    master = committed_with(a=("broken", "2026-09-01", "no parseable dates"))
+    committed, _, _, _ = do_resolve([obs("a", cs.HTTP_ERROR, "HTTP 500")], committed=master)
+    assert committed["sources"]["a"]["reason"] == "no parseable dates"
+
+
 def test_since_comes_from_state_not_master():
     master = committed_with(a=("fresh", "2026-08-01", ""))
     state = {"version": 1, "sources": {"a": {
-        "status": "stale", "since": "2026-09-01", "reason": "old lag", "fail_count": 0}}}
+        "status": "stale", "since": "2026-09-01", "reason": "lag 30", "fail_count": 0}}}
     committed, _, transitions, _ = do_resolve(
-        [obs("a", cs.STALE, "new lag")], committed=master, state=state)
-    assert committed["sources"]["a"] == {"status": "stale", "since": "2026-09-01", "reason": "old lag"}
-    assert transitions == [cs.Transition("a", "fresh", "stale", "old lag")]
+        [obs("a", cs.STALE, "lag 37")], committed=master, state=state)
+    assert committed["sources"]["a"] == {"status": "stale", "since": "2026-09-01", "reason": "lag 30"}
+    assert transitions == [cs.Transition("a", "fresh", "stale", "lag 30")]
 
 
 def test_a_down_then_fresh_flap_keeps_masters_since_and_reason():
@@ -1339,6 +1476,23 @@ def test_main_geo_fenced_host_is_skipped_with_the_manual_reason(tmp_path):
     assert committed["geo_fenced"]["old.example"]["verified"] == "2026-08-14"
 
 
+@pytest.mark.parametrize("value, note", [
+    ("blocks non-India IPs", "blocks non-India IPs"),
+    (None, ""),
+    (["odd"], ""),
+])
+def test_main_tolerates_a_geo_fenced_value_that_is_not_an_object(tmp_path, value, note):
+    p = paths(tmp_path)
+    p["json"].parent.mkdir()
+    p["json"].write_text(cs.render_committed(
+        {"geo_fenced": {"old.example": value}, "sources": {}}))
+    assert run_main(p, registry=simple_registry([])) == 0
+    committed = json.loads(p["json"].read_text())
+    assert committed["sources"]["old"]["reason"] == "verify by hand (last verified unknown)"
+    assert committed["geo_fenced"]["old.example"] == value  # the hand-edited list is kept as is
+    assert f"| old.example | {note} |  |" in p["md"].read_text()
+
+
 def test_main_passes_the_whole_state_dict_so_count_floor_sees_max_count(tmp_path):
     p = paths(tmp_path)
     p["state"].write_text(json.dumps(
@@ -1370,3 +1524,38 @@ def test_main_reports_a_missing_registry_package(tmp_path, capsys, monkeypatch):
     code = cs.main(argv(p), control=lambda: True, fetch_document=PDF)
     assert code == 1
     assert "source_registry" in capsys.readouterr().err
+
+
+# -- document status and empty bodies (review fix 3) ------------------------
+
+
+@pytest.mark.parametrize("kind", ["pdf", "spreadsheet", "zip", "any-non-html"])
+def test_document_empty_body_is_broken(kind):
+    s = src(lambda: [{"title": "a", "u": "x"}], document=lambda r: r["u"], document_kind=kind)
+    obs, _ = check(s, fetch_document=lambda u, h: (200, "application/octet-stream", b""))
+    assert obs.outcome == cs.BROKEN and obs.reason == "document: empty body"
+
+
+def test_document_whitespace_only_body_is_broken():
+    s = src(lambda: [{"title": "a", "u": "x"}], document=lambda r: r["u"],
+            document_kind="any-non-html")
+    obs, _ = check(s, fetch_document=lambda u, h: (200, "text/csv", b" \r\n\t"))
+    assert obs.outcome == cs.BROKEN and obs.reason == "document: empty body"
+
+
+@pytest.mark.parametrize("status", [202, 204, 301, 302, 304])
+def test_document_status_that_serves_no_document_is_broken(status):
+    # A WAF challenge answers 202, and a 3xx that reaches the checker is a
+    # redirect the client didn't follow; neither is the document.
+    s = src(lambda: [{"title": "a", "u": "x"}], document=lambda r: r["u"],
+            document_kind="any-non-html")
+    obs, _ = check(s, fetch_document=lambda u, h: (status, "text/csv", b"a,b\n1,2\n"))
+    assert obs.outcome == cs.BROKEN
+    assert obs.reason.startswith(f"document: HTTP {status}")
+
+
+def test_document_200_with_csv_passes_any_non_html():
+    s = src(lambda: [{"title": "a", "u": "x"}], document=lambda r: r["u"],
+            document_kind="any-non-html")
+    obs, _ = check(s, fetch_document=lambda u, h: (200, "text/csv", b"a,b\n1,2\n"))
+    assert obs.outcome == cs.FRESH

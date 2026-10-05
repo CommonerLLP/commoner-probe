@@ -28,6 +28,7 @@ import json
 import math
 import re
 import socket
+import ssl
 import sys
 import urllib.error
 from collections.abc import Callable, Collection, Mapping, Sequence
@@ -45,8 +46,12 @@ HTTP_ERROR, NO_RESPONSE, CONTROL_FAILED = "http_error", "no_response", "control_
 
 _REASON_MAX = 200
 _DOCUMENT_HEAD_BYTES = 2048
+_NO_DOCUMENT_STATUSES = frozenset({202, 204})
 _ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
 _HTTP_MESSAGE = re.compile(r"^HTTP (\d{3})\b")
+# A TLS error whose text says the peer closed the connection mid-handshake is a
+# dropped connection, not a rejected certificate or protocol.
+_TLS_DROPPED = re.compile(r"EOF occurred in violation of protocol|UNEXPECTED_EOF", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -258,6 +263,24 @@ def _describe(exc: BaseException) -> str:
     return _truncate(f"{type(exc).__name__}: {exc}")
 
 
+def _tls_failure(exc: BaseException, requests: object) -> bool | None:
+    """Return True for a TLS failure that repeats every run (a rejected
+    certificate or protocol), False for a dropped TLS connection, and None when
+    *exc* isn't a TLS error."""
+    chain: list[BaseException] = []
+    seen: BaseException | None = exc
+    while seen is not None and seen not in chain:
+        chain.append(seen)
+        seen = seen.reason if isinstance(seen, urllib.error.URLError) and isinstance(
+            seen.reason, BaseException) else (seen.__cause__ or seen.__context__)
+    is_tls = any(isinstance(e, ssl.SSLError) for e in chain) or (
+        requests is not None and isinstance(exc, requests.exceptions.SSLError))
+    if not is_tls:
+        return None
+    dropped = any(isinstance(e, ssl.SSLEOFError) or _TLS_DROPPED.search(str(e)) for e in chain)
+    return not dropped
+
+
 def classify_exception(exc: BaseException) -> tuple[str, int | None, str]:
     """Return (kind, http_status, reason). kind is HTTP_ERROR, NO_RESPONSE or BROKEN."""
     try:
@@ -283,6 +306,14 @@ def classify_exception(exc: BaseException) -> tuple[str, int | None, str]:
             return HTTP_ERROR, code, f"HTTP {code}"
     if requests is not None and isinstance(exc, requests.exceptions.RetryError):
         return HTTP_ERROR, None, _describe(exc)
+    # requests' SSLError subclasses its ConnectionError, but a rejected
+    # certificate or protocol means the host answered and fails the same way
+    # every run, so it's broken. A dropped TLS connection is still no response.
+    tls = _tls_failure(exc, requests)
+    if tls:
+        return BROKEN, None, _truncate("TLS handshake failed: " + _describe(exc))
+    if tls is False:
+        return NO_RESPONSE, None, _describe(exc)
     no_response: tuple[type[BaseException], ...] = (
         urllib.error.URLError, socket.gaierror, TimeoutError, ConnectionError)
     if requests is not None:
@@ -359,6 +390,10 @@ def order_sources(sources: Sequence[Source]) -> list[Source]:
 
 def _document_problem(kind: str, content_type: str, head: bytes) -> str:
     """Return why *head* isn't a document of *kind*, or "" when it is."""
+    if kind not in ("pdf", "spreadsheet", "zip", "any-non-html"):
+        raise ValueError(f"unknown document_kind: {kind}")
+    if not head.strip():
+        return "empty body"
     if kind == "pdf":
         return "" if head.startswith(b"%PDF") else "body isn't a PDF"
     if kind == "spreadsheet":
@@ -370,8 +405,7 @@ def _document_problem(kind: str, content_type: str, head: bytes) -> str:
         start = head.lstrip().lower()
         if "text/html" in content_type.lower() or start.startswith((b"<!doctype html", b"<html")):
             return "body is HTML"
-        return ""
-    raise ValueError(f"unknown document_kind: {kind}")
+    return ""
 
 
 def check_source(source: Source, ctx: Context, *,
@@ -401,13 +435,8 @@ def _check(source: Source, ctx: Context, control: Callable[[], bool],
         count = source.total() if source.total is not None else None
     except Exception as exc:  # noqa: BLE001 - classified below
         kind, status, reason = classify_exception(exc)
-        if kind == NO_RESPONSE:
-            try:
-                reachable = bool(control())
-            except Exception:  # noqa: BLE001 - a failing control is inconclusive
-                reachable = False
-            kind = NO_RESPONSE if reachable else CONTROL_FAILED
-        return Observation(sid, kind, reason, http_status=status), []
+        return Observation(sid, _confirm_no_response(kind, control), reason,
+                           http_status=status), []
     if not isinstance(records, list):
         return Observation(
             sid, BROKEN, f"fetch returned {type(records).__name__}, not a list"), []
@@ -430,10 +459,11 @@ def _check(source: Source, ctx: Context, control: Callable[[], bool],
             return Observation(sid, BROKEN, "no parseable dates", count=count), valid
 
     if source.document is not None:
-        problem = _fetch_and_check_document(source, valid, newest, fetch_document)
+        kind, status, problem = _fetch_and_check_document(source, valid, newest, fetch_document)
         if problem:
             return Observation(
-                sid, BROKEN, _truncate(f"document: {problem}"), newest=newest, count=count), valid
+                sid, _confirm_no_response(kind, control), _truncate(f"document: {problem}"),
+                newest=newest, count=count, http_status=status), valid
 
     failures: list[str] = []
     for rule in source.freshness:
@@ -450,10 +480,32 @@ def _check(source: Source, ctx: Context, control: Callable[[], bool],
     return Observation(sid, FRESH, newest=newest, count=count), valid
 
 
+def _confirm_no_response(kind: str, control: Callable[[], bool]) -> str:
+    """Run the positive control for a NO_RESPONSE kind; CONTROL_FAILED when it fails."""
+    if kind != NO_RESPONSE:
+        return kind
+    try:
+        reachable = bool(control())
+    except Exception:  # noqa: BLE001 - a failing control is inconclusive
+        reachable = False
+    return NO_RESPONSE if reachable else CONTROL_FAILED
+
+
+def _transient_status(status: int | None) -> bool:
+    """A server error, a rate limit, or an exhausted retry budget (no status)."""
+    return status is None or status >= 500 or status == 429
+
+
 def _fetch_and_check_document(source: Source, valid: list[dict], newest: str,
                               fetch_document: Callable[[str, Mapping[str, str]],
-                                                       tuple[int, str, bytes]]) -> str:
-    """Fetch the newest record's document. Return the problem, or "" when it's fine."""
+                                                       tuple[int, str, bytes]],
+                              ) -> tuple[str, int | None, str]:
+    """Fetch the newest record's document. Return (kind, http_status, problem),
+    with problem "" when the document is fine.
+
+    A server error or no response is HTTP_ERROR or NO_RESPONSE, so the two-run
+    rule applies to it as it does to the record fetch. Every other failure (a
+    4xx status, a robots.txt refusal, a TLS failure, a wrong body) is BROKEN."""
     assert source.document is not None
     rec = valid[0]
     if source.record_date is not None:
@@ -463,11 +515,19 @@ def _fetch_and_check_document(source: Source, valid: list[dict], newest: str,
         robots = {} if source.document_respect_robots else {"respect_robots": False}
         status, content_type, head = fetch_document(
             source.document(rec), source.document_headers, **robots)
-        if status >= 400:
-            return f"HTTP {status}"
-        return _document_problem(source.document_kind, content_type or "", head)
-    except Exception as exc:  # noqa: BLE001 - any document failure is a parser problem
-        return _describe(exc)
+    except Exception as exc:  # noqa: BLE001 - classified below
+        kind, code, reason = classify_exception(exc)
+        if kind == HTTP_ERROR and not _transient_status(code):
+            kind = BROKEN
+        return kind, code, reason
+    if status >= 400:
+        kind = HTTP_ERROR if _transient_status(status) else BROKEN
+        return kind, status, f"HTTP {status}"
+    if status in _NO_DOCUMENT_STATUSES or status >= 300:
+        # A WAF challenge answers 202 with no document. A 3xx reaching here is
+        # a redirect the client didn't follow.
+        return BROKEN, status, f"HTTP {status}: no document served"
+    return BROKEN, None, _document_problem(source.document_kind, content_type or "", head)
 
 
 def _safe_date(record_date: Callable[[dict], str], rec: dict) -> str:
@@ -487,9 +547,14 @@ def default_control() -> bool:
     try:
         return 200 <= resp.status_code < 400
     finally:
-        close = getattr(resp, "close", None)
-        if close:
-            close()
+        _close(resp)
+
+
+def _close(resp: object) -> None:
+    # The stdlib fallback's StdlibResponse has no close method.
+    close = getattr(resp, "close", None)
+    if close:
+        close()
 
 
 def default_fetch_document(url: str, headers: Mapping[str, str], *,
@@ -502,7 +567,7 @@ def default_fetch_document(url: str, headers: Mapping[str, str], *,
         content_type = resp.headers.get("Content-Type", "")
         return resp.status_code, content_type, head[:_DOCUMENT_HEAD_BYTES]
     finally:
-        resp.close()
+        _close(resp)
 
 
 def run_checks(sources: Sequence[Source], *, today: date, state: dict,
@@ -554,6 +619,13 @@ _STATUS_ORDER = (BROKEN, STALE, DOWN, UNREACHABLE, GEO_FENCED, FRESH)
 _NO_RESPONSE_RATIO = 0.8
 _NO_RESPONSE_MIN_SOURCES = 5
 _FAILS_BEFORE_REPORTING = 2
+_VOLATILE = re.compile(r"0x[0-9a-f]+|\d+", re.IGNORECASE)
+
+
+def _reason_category(reason: str) -> str:
+    """The reason with its numbers masked. A stale source's growing lag and a
+    moving date stay in one category, and a new cause starts a new one."""
+    return _VOLATILE.sub("#", reason)
 
 
 @dataclass(frozen=True)
@@ -582,9 +654,9 @@ def resolve(observations: Mapping[str, Observation], *, committed: dict, state: 
 
     `since` and `reason` come from state.json when it holds the new status, then
     from the committed entry when it holds the new status, and otherwise from
-    this run. A source that
-    stays stale with a growing lag therefore produces no diff. Neither input is
-    modified."""
+    this run. A remembered reason gives way to this run's reason when its
+    category changes (see _reason_category), so a source that stays stale with
+    a growing lag produces no diff. Neither input is modified."""
     old_sources = committed["sources"]
     new_sources = {sid: dict(entry) for sid, entry in old_sources.items()
                    if sid in registry_ids}
@@ -631,9 +703,14 @@ def resolve(observations: Mapping[str, Observation], *, committed: dict, state: 
             else:
                 since = memory.get("since", today.isoformat())
                 # The manual reason comes from the hand-edited geo-fenced list, so
-                # it's never volatile. Every other reason stays as it was.
-                if status != GEO_FENCED:
-                    reason = memory.get("reason", "")
+                # it's never volatile. Every other reason keeps its first wording
+                # until its category changes, so the committed file changes only
+                # when the cause does.
+                remembered = memory.get("reason", "")
+                if status != GEO_FENCED and (
+                        reason is None
+                        or _reason_category(reason) == _reason_category(remembered)):
+                    reason = remembered
             new_sources[sid] = {"reason": reason or "", "since": since, "status": status}
             entry.update(since=since, reason=reason or "")
         entry.update(status=status, fail_count=fail_count)
@@ -733,8 +810,8 @@ def render_sources_md(committed: dict, sources: Sequence[Source]) -> str:
             f"| {_cell(entry.get('reason', ''))} |")
     if committed["geo_fenced"]:
         lines += ["", "## Geo-fenced hosts", "", "| Host | Note | Last verified |", "|---|---|---|"]
-        for host, info in sorted(committed["geo_fenced"].items()):
-            info = info if isinstance(info, dict) else {}
+        for host, value in sorted(committed["geo_fenced"].items()):
+            info = _geo_info(value)
             lines.append(
                 f"| {_cell(host)} | {_cell(info.get('note', ''))} | {_cell(info.get('verified', ''))} |")
     return "\n".join(lines) + "\n"
@@ -822,8 +899,18 @@ def _load_registry() -> Sequence[Source]:
     return importlib.import_module("source_registry").SOURCES
 
 
+def _geo_info(value: object) -> dict:
+    """Read one hand-edited geo-fenced entry. The expected shape is
+    {"note": ..., "verified": "YYYY-MM-DD"}; a bare string is read as the note."""
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        return {"note": value}
+    return {}
+
+
 def _manual_reason(committed: dict, host: str) -> str:
-    verified = committed["geo_fenced"].get(host, {}).get("verified", "unknown")
+    verified = _geo_info(committed["geo_fenced"].get(host)).get("verified") or "unknown"
     return f"verify by hand (last verified {verified})"
 
 
