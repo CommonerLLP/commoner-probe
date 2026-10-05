@@ -491,7 +491,10 @@ workflow opens or updates a pull request on the `bot/source-freshness` branch.
 To mark a host as geo-fenced after you verify it by hand, add it to
 `geo_fenced` in `staleness/sources.json` with a note and the date you verified
 it, for example `"cag.gov.in": {"note": "Blocks non-India IPs", "verified": "2026-10-05"}`. To run the check yourself, run `python scripts/check_sources.py`. To check
-one source, add `--only <id>`.
+one source, add `--only <id>`. As each source finishes, the check prints one
+line to stderr with its position, ID, outcome, and time taken, for example
+`[29/55] mines-dmft-odisha: no response (6m 4s)`, so the workflow's live log
+shows how far a run has got.
 
 ---
 
