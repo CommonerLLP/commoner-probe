@@ -10,9 +10,10 @@ This module holds the data model, exception classification, date handling,
 registry ordering, the per-source check sequence, and the run loop. The
 statuses (`fresh`, `stale`, `broken`, `down`, `unreachable`, `geo-fenced`)
 are defined in the "Statuses" table of
-notes/specs/2026-10-05-source-freshness-check-design.md. The functions here
-report what one run observed. Turning observations into statuses across runs
-is a separate step.
+notes/specs/2026-10-05-source-freshness-check-design.md. `run_checks` reports
+what one run observed. `resolve` turns observations into statuses across runs
+with the two-run rule, the render functions write the committed files, and
+`main` is the command-line entry point.
 
 The script isn't shipped with the package, and it uses only what
 `commoner-probe[all]` already installs.
@@ -20,13 +21,19 @@ The script isn't shipped with the package, and it uses only what
 
 from __future__ import annotations
 
+import argparse
+import copy
+import importlib
+import json
 import math
 import re
 import socket
+import sys
 import urllib.error
 from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date, timedelta
+from pathlib import Path
 from typing import Protocol
 
 from commoner_probe import reachability
@@ -534,3 +541,353 @@ def run_checks(sources: Sequence[Source], *, today: date, state: dict,
         if obs.outcome != GEO_FENCED:
             ctx.records[source.id] = valid
     return ctx.results
+
+
+# -- Run-level resolution ---------------------------------------------------
+
+_STATUS_ORDER = (BROKEN, STALE, DOWN, UNREACHABLE, GEO_FENCED, FRESH)
+_NO_RESPONSE_RATIO = 0.8
+_NO_RESPONSE_MIN_SOURCES = 5
+_FAILS_BEFORE_REPORTING = 2
+
+
+@dataclass(frozen=True)
+class Transition:
+    source_id: str
+    old: str | None  # status in master's committed sources.json, None if absent
+    new: str | None  # None means removed from the registry
+    reason: str
+
+
+def inconclusive_reason(observations: Mapping[str, Observation]) -> str | None:
+    """Return why the run can't be trusted, or None when it can."""
+    if any(o.outcome == CONTROL_FAILED for o in observations.values()):
+        return "the positive control failed: this runner's network is broken"
+    checked = [o for o in observations.values() if o.outcome != GEO_FENCED]
+    silent = sum(1 for o in checked if o.outcome == NO_RESPONSE)
+    if len(checked) >= _NO_RESPONSE_MIN_SOURCES and silent > _NO_RESPONSE_RATIO * len(checked):
+        return f"{silent} of {len(checked)} sources gave no response"
+    return None
+
+
+def resolve(observations: Mapping[str, Observation], *, committed: dict, state: dict,
+            registry_ids: Collection[str], today: date,
+            ) -> tuple[dict, dict, list[Transition], list[str]]:
+    """Return (new_committed, new_state, transitions_vs_committed, pending_ids).
+
+    `since` and `reason` come from state.json when it holds the new status, then
+    from the committed entry when it holds the new status, and otherwise from
+    this run. A source that
+    stays stale with a growing lag therefore produces no diff. Neither input is
+    modified."""
+    old_sources = committed["sources"]
+    new_sources = {sid: dict(entry) for sid, entry in old_sources.items()
+                   if sid in registry_ids}
+    new_state = copy.deepcopy(state) if state else {}
+    new_state["version"] = 1
+    new_state["last_run"] = today.isoformat()
+    state_sources = new_state.setdefault("sources", {})
+    pending: list[str] = []
+
+    for sid, obs in observations.items():
+        prev = state_sources.get(sid, {})
+        committed_entry = old_sources.get(sid, {})
+        prev_status = prev.get("status") or committed_entry.get("status")
+        fail_count = prev.get("fail_count", 0)
+
+        if obs.outcome == GEO_FENCED:
+            status, fail_count = GEO_FENCED, 0
+            reason: str | None = obs.reason or "verify by hand"
+        elif obs.outcome in (HTTP_ERROR, NO_RESPONSE):
+            fail_count += 1
+            candidate = DOWN if obs.outcome == HTTP_ERROR else UNREACHABLE
+            if fail_count >= _FAILS_BEFORE_REPORTING:
+                status, reason = candidate, obs.reason
+            else:
+                status, reason = prev_status, None  # keep the previous status
+        else:  # FRESH, STALE or BROKEN
+            status, reason, fail_count = obs.outcome, obs.reason, 0
+
+        entry: dict = {}
+        if status is None:
+            pending.append(sid)
+            new_sources.pop(sid, None)
+        else:
+            # Memory order: state.json when it holds this status, then the
+            # committed entry when it holds this status, else this run.
+            if status == prev.get("status") and "since" in prev:
+                memory: dict | None = prev
+            elif status == committed_entry.get("status"):
+                memory = committed_entry
+            else:
+                memory = None
+            if memory is None:
+                since = today.isoformat()
+            else:
+                since = memory.get("since", today.isoformat())
+                # The manual reason comes from the hand-edited geo-fenced list, so
+                # it's never volatile. Every other reason stays as it was.
+                if status != GEO_FENCED:
+                    reason = memory.get("reason", "")
+            new_sources[sid] = {"reason": reason or "", "since": since, "status": status}
+            entry.update(since=since, reason=reason or "")
+        entry.update(status=status, fail_count=fail_count)
+        newest = obs.newest or prev.get("newest")
+        if newest:
+            entry["newest"] = newest
+        counts = [c for c in (prev.get("max_count"), obs.count) if c is not None]
+        if counts:
+            entry["max_count"] = max(counts)
+        state_sources[sid] = entry
+
+    transitions: list[Transition] = []
+    for sid, entry in new_sources.items():
+        old = old_sources.get(sid, {}).get("status")
+        if entry["status"] != old:
+            transitions.append(Transition(sid, old, entry["status"], entry["reason"]))
+    for sid, entry in old_sources.items():
+        if sid not in registry_ids:
+            transitions.append(
+                Transition(sid, entry.get("status"), None, "removed from the registry"))
+    transitions.sort(key=lambda t: t.source_id)
+
+    new_committed = {"geo_fenced": committed["geo_fenced"], "sources": new_sources}
+    return new_committed, new_state, transitions, pending
+
+
+# -- Files ------------------------------------------------------------------
+
+
+def load_committed(path: Path) -> dict:
+    """Read staleness/sources.json. Raise ValueError when it's malformed."""
+    if not path.exists():
+        return {"geo_fenced": {}, "sources": {}}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise ValueError(f"{path}: can't read it as JSON ({exc})") from exc
+    if not isinstance(data, dict):
+        raise ValueError(f"{path}: expected a JSON object")
+    for key in ("geo_fenced", "sources"):
+        if key not in data:
+            raise ValueError(f"{path}: missing the \"{key}\" key")
+        if not isinstance(data[key], dict):
+            raise ValueError(f"{path}: \"{key}\" must be an object")
+    for sid, entry in data["sources"].items():
+        if not isinstance(entry, dict):
+            raise ValueError(f"{path}: the entry for \"{sid}\" must be an object")
+    return data
+
+
+def load_state(path: Path) -> dict:
+    """Read the rolling state. Return {} when it's missing or unreadable."""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(data, dict) or not isinstance(data.get("sources", {}), dict):
+        return {}
+    return data
+
+
+def render_committed(committed: dict) -> str:
+    return json.dumps(committed, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
+
+
+def _cell(text: object) -> str:
+    return str(text).replace("|", "\\|").replace("\n", " ")
+
+
+def render_sources_md(committed: dict, sources: Sequence[Source]) -> str:
+    """Render SOURCES.md. The output is deterministic, with no timestamps."""
+    by_id = {s.id: s for s in sources}
+
+    def order(item: tuple[str, dict]) -> tuple[int, str, str]:
+        sid, entry = item
+        status = entry.get("status")
+        rank = _STATUS_ORDER.index(status) if status in _STATUS_ORDER else len(_STATUS_ORDER)
+        source = by_id.get(sid)
+        return rank, source.label if source else sid, sid
+
+    lines = [
+        "<!-- Generated by scripts/check_sources.py. Don't edit this file. "
+        "To change the geo-fenced list, edit staleness/sources.json. -->",
+        "# Source freshness",
+        "",
+        "The weekly source freshness check writes this table. For what each status means, "
+        'see the "Source freshness" section of the README.',
+        "",
+        "| Source | Host | Status | Since | Reason |",
+        "|---|---|---|---|---|",
+    ]
+    for sid, entry in sorted(committed["sources"].items(), key=order):
+        source = by_id.get(sid)
+        lines.append(
+            f"| {_cell(source.label if source else sid)} | {_cell(source.host if source else '')} "
+            f"| `{_cell(entry.get('status', ''))}` | {_cell(entry.get('since', ''))} "
+            f"| {_cell(entry.get('reason', ''))} |")
+    if committed["geo_fenced"]:
+        lines += ["", "## Geo-fenced hosts", "", "| Host | Note | Last verified |", "|---|---|---|"]
+        for host, info in sorted(committed["geo_fenced"].items()):
+            info = info if isinstance(info, dict) else {}
+            lines.append(
+                f"| {_cell(host)} | {_cell(info.get('note', ''))} | {_cell(info.get('verified', ''))} |")
+    return "\n".join(lines) + "\n"
+
+
+def render_summary(observations: Mapping[str, Observation], pending: Sequence[str],
+                   state: dict) -> str:
+    """Render the per-source detail for the job summary. It's never committed."""
+    lines = [
+        "# Source freshness run",
+        "",
+        "| Source | Outcome | Newest | Count | HTTP status | Reason |",
+        "|---|---|---|---|---|---|",
+    ]
+    for sid, obs in observations.items():
+        lines.append(
+            f"| `{sid}` | {obs.outcome.replace('_', ' ')} | {obs.newest} "
+            f"| {'' if obs.count is None else obs.count} "
+            f"| {'' if obs.http_status is None else obs.http_status} | {_cell(obs.reason)} |")
+    lines += ["", "## Pending (first failure)", ""]
+    if pending:
+        fails = state.get("sources", {})
+        for sid in pending:
+            reason = observations[sid].reason if sid in observations else ""
+            count = fails.get(sid, {}).get("fail_count", 1)
+            lines.append(f"- `{sid}`: {_cell(reason)} (failures so far: {count})")
+    else:
+        lines.append("None.")
+    return "\n".join(lines) + "\n"
+
+
+def render_pr_body(transitions: Sequence[Transition]) -> str:
+    lines = ["## Status changes", ""]
+    if not transitions:
+        lines.append("No source changed status.")
+    for t in transitions:
+        old = t.old if t.old is not None else "(new)"
+        new = t.new if t.new is not None else "(removed)"
+        detail = f" ({_cell(t.reason)})" if t.reason and t.new is not None else ""
+        lines.append(f"- `{t.source_id}`: {old} → {new}{detail}")
+    lines += [
+        "",
+        "`SOURCES.md` has the full table. Geo-fenced and unreachable hosts need manual "
+        "verification.",
+    ]
+    return "\n".join(lines) + "\n"
+
+
+# -- Command line -----------------------------------------------------------
+
+
+class _Parser(argparse.ArgumentParser):
+    def error(self, message: str):  # type: ignore[override]
+        # argparse exits 2 by default, but exit code 2 means "inconclusive" here.
+        self.print_usage(sys.stderr)
+        print(f"{self.prog}: error: {message}", file=sys.stderr)
+        raise SystemExit(1)
+
+
+def _iso_date(text: str) -> date:
+    try:
+        return date.fromisoformat(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"{text!r} isn't an ISO date (YYYY-MM-DD)") from None
+
+
+def _write_if_changed(path: Path, text: str) -> None:
+    data = text.encode("utf-8")
+    try:
+        if path.read_bytes() == data:
+            return
+    except OSError:
+        pass
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(data)
+
+
+def _load_registry() -> Sequence[Source]:
+    # Registry modules run `from check_sources import ...`. Register this module
+    # under that name so they get this module object, even when it runs as __main__.
+    sys.modules.setdefault("check_sources", sys.modules[__name__])
+    script_dir = str(Path(__file__).resolve().parent)
+    if script_dir not in sys.path:
+        sys.path.insert(0, script_dir)
+    return importlib.import_module("source_registry").SOURCES
+
+
+def _manual_reason(committed: dict, host: str) -> str:
+    verified = committed["geo_fenced"].get(host, {}).get("verified", "unknown")
+    return f"verify by hand (last verified {verified})"
+
+
+def main(argv: Sequence[str] | None = None, *, registry: Sequence[Source] | None = None,
+         control: Callable[[], bool] | None = None,
+         fetch_document: Callable[[str, Mapping[str, str]], tuple[int, str, bytes]] | None = None,
+         ) -> int:
+    parser = _Parser(description="Check that each data source still returns current data.")
+    parser.add_argument("--state", type=Path, default=Path("state.json"))
+    parser.add_argument("--sources-json", type=Path, default=Path("staleness/sources.json"))
+    parser.add_argument("--sources-md", type=Path, default=Path("SOURCES.md"))
+    parser.add_argument("--summary", type=Path)
+    parser.add_argument("--pr-body", type=Path)
+    parser.add_argument("--github-output", type=Path)
+    parser.add_argument("--only", action="append", metavar="ID")
+    parser.add_argument("--today", type=_iso_date, default=None)
+    args = parser.parse_args(argv)
+    today = args.today or date.today()
+
+    if registry is None:
+        try:
+            registry = _load_registry()
+        except ImportError as exc:
+            print(f"can't import the source registry (scripts/source_registry): {exc}",
+                  file=sys.stderr)
+            return 1
+    try:
+        committed = load_committed(args.sources_json)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    state = load_state(args.state)
+
+    try:
+        observations = run_checks(
+            registry, today=today, state=state, geo_fenced=frozenset(committed["geo_fenced"]),
+            control=control, fetch_document=fetch_document, only=args.only)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+
+    hosts = {s.id: s.host for s in registry}
+    for sid, obs in observations.items():
+        if obs.outcome == GEO_FENCED:
+            obs.reason = _manual_reason(committed, hosts[sid])
+
+    inconclusive = inconclusive_reason(observations)
+    if inconclusive:
+        print(f"inconclusive: {inconclusive}", file=sys.stderr)
+        if args.summary:
+            _write_if_changed(args.summary, render_summary(observations, [], state))
+        return 2
+
+    new_committed, new_state, transitions, pending = resolve(
+        observations, committed=committed, state=state,
+        registry_ids={s.id for s in registry}, today=today)
+    _write_if_changed(args.sources_json, render_committed(new_committed))
+    _write_if_changed(args.sources_md, render_sources_md(new_committed, registry))
+    _write_if_changed(args.state, json.dumps(new_state, indent=2, sort_keys=True) + "\n")
+    if args.summary:
+        _write_if_changed(args.summary, render_summary(observations, pending, new_state))
+    if args.pr_body:
+        _write_if_changed(args.pr_body, render_pr_body(transitions))
+    if args.github_output:
+        args.github_output.parent.mkdir(parents=True, exist_ok=True)
+        with args.github_output.open("a", encoding="utf-8") as out:
+            out.write(f"changes={len(transitions)}\n")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

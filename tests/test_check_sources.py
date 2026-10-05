@@ -888,3 +888,453 @@ def test_check_source_passes_when_the_sibling_is_broken():
             freshness=(cs.SiblingLag("ls", 60),))
     obs, _ = check(s, context=sibling_ctx(cs.BROKEN, newest="2026-08-01"))
     assert obs.outcome == cs.FRESH
+
+
+# -- resolve ----------------------------------------------------------------
+
+import os  # noqa: E402
+
+
+def obs(id_, outcome, reason="", newest="", count=None, http_status=None):
+    return cs.Observation(id_, outcome, reason, newest, count, http_status)
+
+
+def committed_with(**entries):
+    return {
+        "geo_fenced": {},
+        "sources": {k: {"status": v[0], "since": v[1], "reason": v[2]} for k, v in entries.items()},
+    }
+
+
+def do_resolve(observations, *, committed=None, state=None, registry_ids=None, today=TODAY):
+    committed = committed if committed is not None else {"geo_fenced": {}, "sources": {}}
+    if registry_ids is None:
+        registry_ids = set(committed["sources"]) | {o.source_id for o in observations}
+    return cs.resolve(
+        {o.source_id: o for o in observations}, committed=committed,
+        state=state if state is not None else {}, registry_ids=registry_ids, today=today)
+
+
+def test_two_run_rule_for_a_committed_source():
+    master = committed_with(a=("fresh", "2026-09-01", ""))
+    # First failure: pending, the committed status holds, and there's no transition.
+    committed, state, transitions, pending = do_resolve(
+        [obs("a", cs.HTTP_ERROR, "HTTP 500")], committed=master)
+    assert committed["sources"]["a"] == master["sources"]["a"]
+    assert transitions == [] and pending == []
+    assert state["sources"]["a"]["fail_count"] == 1
+    # Second failure: down, with a transition against master.
+    committed, state, transitions, pending = do_resolve(
+        [obs("a", cs.HTTP_ERROR, "HTTP 500")], committed=master, state=state)
+    assert committed["sources"]["a"] == {"status": "down", "since": "2026-10-05", "reason": "HTTP 500"}
+    assert transitions == [cs.Transition("a", "fresh", "down", "HTTP 500")]
+    assert state["sources"]["a"]["fail_count"] == 2
+    # A fresh result resets the counter.
+    committed, state, transitions, pending = do_resolve(
+        [obs("a", cs.FRESH)], committed=committed, state=state)
+    assert committed["sources"]["a"]["status"] == "fresh"
+    assert state["sources"]["a"]["fail_count"] == 0
+
+
+def test_two_run_rule_for_a_new_source():
+    committed, state, transitions, pending = do_resolve([obs("n", cs.NO_RESPONSE, "timed out")])
+    assert pending == ["n"]
+    assert "n" not in committed["sources"]
+    assert transitions == []
+    committed, state, transitions, pending = do_resolve(
+        [obs("n", cs.NO_RESPONSE, "timed out")], state=state)
+    assert pending == []
+    assert committed["sources"]["n"] == {
+        "status": "unreachable", "since": "2026-10-05", "reason": "timed out"}
+    assert transitions == [cs.Transition("n", None, "unreachable", "timed out")]
+
+
+def test_stale_since_and_reason_stay_put_while_the_lag_grows():
+    day1, day8 = date(2026, 10, 5), date(2026, 10, 12)
+    c1, s1, _, _ = do_resolve([obs("a", cs.STALE, "lag 61")], today=day1)
+    c2, s2, transitions, _ = do_resolve(
+        [obs("a", cs.STALE, "lag 68")], committed=c1, state=s1, today=day8)
+    assert c2["sources"]["a"] == {"status": "stale", "since": "2026-10-05", "reason": "lag 61"}
+    assert cs.render_committed(c1) == cs.render_committed(c2)
+    assert transitions == []
+
+
+def test_since_comes_from_state_not_master():
+    master = committed_with(a=("fresh", "2026-08-01", ""))
+    state = {"version": 1, "sources": {"a": {
+        "status": "stale", "since": "2026-09-01", "reason": "old lag", "fail_count": 0}}}
+    committed, _, transitions, _ = do_resolve(
+        [obs("a", cs.STALE, "new lag")], committed=master, state=state)
+    assert committed["sources"]["a"] == {"status": "stale", "since": "2026-09-01", "reason": "old lag"}
+    assert transitions == [cs.Transition("a", "fresh", "stale", "old lag")]
+
+
+def test_a_down_then_fresh_flap_keeps_masters_since_and_reason():
+    master = committed_with(a=("fresh", "2026-08-01", ""))
+    state = {"version": 1, "sources": {"a": {
+        "status": "down", "since": "2026-09-20", "reason": "HTTP 500", "fail_count": 3}}}
+    committed, new_state, transitions, _ = do_resolve(
+        [obs("a", cs.FRESH)], committed=master, state=state)
+    assert cs.render_committed(committed) == cs.render_committed(master)
+    assert transitions == []
+    assert new_state["sources"]["a"]["since"] == "2026-08-01"
+    assert new_state["sources"]["a"]["fail_count"] == 0
+
+
+def test_missing_state_keeps_committed_since_and_reason_when_status_matches():
+    master = committed_with(a=("stale", "2026-09-01", "lag 61"))
+    committed, _, transitions, _ = do_resolve(
+        [obs("a", cs.STALE, "lag 90")], committed=master, state={})
+    assert committed["sources"]["a"] == master["sources"]["a"]
+    assert transitions == []
+
+
+def test_removed_ids_drop_out_with_a_transition_and_unobserved_ids_stay():
+    master = committed_with(
+        gone=("stale", "2026-09-01", "r"), kept=("down", "2026-09-02", "HTTP 500"),
+        seen=("fresh", "2026-09-03", ""))
+    state = {"version": 1, "sources": {"kept": {"status": "down", "fail_count": 4}}}
+    committed, new_state, transitions, _ = do_resolve(
+        [obs("seen", cs.FRESH)], committed=master, state=state,
+        registry_ids={"kept", "seen"})
+    assert set(committed["sources"]) == {"kept", "seen"}
+    assert committed["sources"]["kept"] == master["sources"]["kept"]
+    assert new_state["sources"]["kept"] == state["sources"]["kept"]
+    assert transitions == [cs.Transition("gone", "stale", None, "removed from the registry")]
+
+
+def test_geo_fenced_list_passes_through_and_sets_the_manual_reason():
+    master = {"geo_fenced": {"h.example": {"note": "n", "verified": "2026-08-14"}}, "sources": {}}
+    committed, state, transitions, _ = do_resolve(
+        [obs("g", cs.GEO_FENCED, "verify by hand (last verified 2026-08-14)")], committed=master)
+    assert committed["geo_fenced"] == master["geo_fenced"]
+    assert committed["sources"]["g"] == {
+        "status": "geo-fenced", "since": "2026-10-05",
+        "reason": "verify by hand (last verified 2026-08-14)"}
+    assert state["sources"]["g"]["fail_count"] == 0
+
+
+def test_state_tracks_newest_and_the_highest_count():
+    _, state, _, _ = do_resolve([obs("a", cs.FRESH, newest="2026-10-01", count=120)])
+    assert state["sources"]["a"]["newest"] == "2026-10-01"
+    assert state["sources"]["a"]["max_count"] == 120
+    assert state["last_run"] == "2026-10-05"
+    _, state, _, _ = do_resolve([obs("a", cs.FRESH, newest="", count=None)], state=state)
+    assert state["sources"]["a"]["newest"] == "2026-10-01"
+    assert state["sources"]["a"]["max_count"] == 120
+    _, state, _, _ = do_resolve([obs("a", cs.FRESH, count=80)], state=state)
+    assert state["sources"]["a"]["max_count"] == 120
+
+
+def test_resolve_does_not_mutate_its_inputs():
+    master = committed_with(a=("fresh", "2026-09-01", ""))
+    state = {"version": 1, "sources": {"a": {"status": "fresh", "fail_count": 0}}}
+    before = json.dumps([master, state], sort_keys=True)
+    do_resolve([obs("a", cs.HTTP_ERROR, "HTTP 500"), obs("b", cs.STALE, "x")],
+               committed=master, state=state)
+    assert json.dumps([master, state], sort_keys=True) == before
+
+
+# -- inconclusive_reason ----------------------------------------------------
+
+
+def test_inconclusive_when_the_control_failed():
+    reason = cs.inconclusive_reason({"a": obs("a", cs.CONTROL_FAILED), "b": obs("b", cs.FRESH)})
+    assert reason == "the positive control failed: this runner's network is broken"
+
+
+def test_inconclusive_when_more_than_80_percent_gave_no_response():
+    observations = {f"s{i}": obs(f"s{i}", cs.NO_RESPONSE) for i in range(5)}
+    observations["ok"] = obs("ok", cs.FRESH)
+    assert cs.inconclusive_reason(observations) == "5 of 6 sources gave no response"
+
+
+def test_not_inconclusive_below_five_sources():
+    observations = {f"s{i}": obs(f"s{i}", cs.NO_RESPONSE) for i in range(4)}
+    assert cs.inconclusive_reason(observations) is None
+
+
+def test_not_inconclusive_at_exactly_80_percent():
+    observations = {f"s{i}": obs(f"s{i}", cs.NO_RESPONSE) for i in range(4)}
+    observations["ok"] = obs("ok", cs.FRESH)
+    assert cs.inconclusive_reason(observations) is None
+
+
+def test_geo_fenced_observations_are_left_out_of_the_ratio():
+    observations = {f"s{i}": obs(f"s{i}", cs.NO_RESPONSE) for i in range(4)}
+    for i in range(10):
+        observations[f"g{i}"] = obs(f"g{i}", cs.GEO_FENCED)
+    assert cs.inconclusive_reason(observations) is None  # 4 non-geo-fenced sources
+    observations["s4"] = obs("s4", cs.NO_RESPONSE)
+    assert cs.inconclusive_reason(observations) == "5 of 5 sources gave no response"
+
+
+# -- load_committed, load_state, rendering ----------------------------------
+
+
+def test_load_committed_missing_file_is_empty(tmp_path):
+    assert cs.load_committed(tmp_path / "nope.json") == {"geo_fenced": {}, "sources": {}}
+
+
+@pytest.mark.parametrize("text", ["{not json", "[]", '{"sources": {}}', '{"geo_fenced": {}}',
+                                  '{"sources": [], "geo_fenced": {}}'])
+def test_load_committed_rejects_malformed_files(tmp_path, text):
+    path = tmp_path / "sources.json"
+    path.write_text(text)
+    with pytest.raises(ValueError, match="sources.json"):
+        cs.load_committed(path)
+
+
+def test_load_committed_reads_a_valid_file(tmp_path):
+    data = committed_with(a=("fresh", "2026-09-01", ""))
+    path = tmp_path / "sources.json"
+    path.write_text(cs.render_committed(data))
+    assert cs.load_committed(path) == data
+
+
+def test_load_state_missing_or_unreadable_is_empty(tmp_path):
+    assert cs.load_state(tmp_path / "nope.json") == {}
+    bad = tmp_path / "state.json"
+    bad.write_text("{oops")
+    assert cs.load_state(bad) == {}
+    bad.write_text("[1]")
+    assert cs.load_state(bad) == {}
+
+
+def test_render_committed_is_sorted_indented_and_keeps_unicode():
+    text = cs.render_committed({"sources": {"b": {"reason": "→"}}, "geo_fenced": {}})
+    assert text == '{\n  "geo_fenced": {},\n  "sources": {\n    "b": {\n      "reason": "→"\n    }\n  }\n}\n'
+
+
+def test_render_sources_md_sorts_by_status_then_label_and_escapes_pipes():
+    sources = [
+        cs.Source(id="f", label="Zed fresh", host="f.example", fetch=list, required=()),
+        cs.Source(id="s2", label="Beta stale", host="s2.example", fetch=list, required=()),
+        cs.Source(id="s1", label="Alpha stale", host="s1.example", fetch=list, required=()),
+        cs.Source(id="b", label="Broken one", host="b.example", fetch=list, required=()),
+        cs.Source(id="g", label="Geo", host="g.example", fetch=list, required=()),
+    ]
+    committed = {
+        "geo_fenced": {"g.example": {"note": "No response outside India", "verified": "2026-08-14"}},
+        "sources": {
+            "f": {"status": "fresh", "since": "2026-10-01", "reason": ""},
+            "s2": {"status": "stale", "since": "2026-10-02", "reason": "a | b"},
+            "s1": {"status": "stale", "since": "2026-10-03", "reason": "r"},
+            "b": {"status": "broken", "since": "2026-10-04", "reason": "bad"},
+            "g": {"status": "geo-fenced", "since": "2026-10-05", "reason": "verify"},
+            "orphan": {"status": "down", "since": "2026-10-06", "reason": "HTTP 500"},
+        },
+    }
+    text = cs.render_sources_md(committed, sources)
+    assert text.startswith("<!-- Generated by scripts/check_sources.py. ")
+    rows = [line for line in text.splitlines() if line.startswith("| ") and "`" in line]
+    assert [row.split("|")[1].strip() for row in rows] == [
+        "Broken one", "Alpha stale", "Beta stale", "orphan", "Geo", "Zed fresh"]
+    assert "a \\| b" in text
+    assert "| orphan |  | `down` |" in text
+    assert "## Geo-fenced hosts" in text
+    assert "| g.example | No response outside India | 2026-08-14 |" in text
+    assert cs.render_sources_md(committed, sources) == text
+
+
+def test_render_sources_md_omits_the_geo_fenced_section_when_empty():
+    text = cs.render_sources_md({"geo_fenced": {}, "sources": {}}, [])
+    assert "Geo-fenced hosts" not in text
+    assert text.endswith("|---|---|---|---|---|\n")
+
+
+def test_render_summary_lists_every_observation_and_the_pending_sources():
+    text = cs.render_summary(
+        {"a": obs("a", cs.FRESH, newest="2026-10-01", count=7),
+         "b": obs("b", cs.HTTP_ERROR, "HTTP 500 | x", http_status=500)},
+        ["b"], {"sources": {"b": {"fail_count": 1}}})
+    assert "| `a` | fresh | 2026-10-01 | 7 |" in text
+    assert "HTTP 500 \\| x" in text
+    assert "Pending (first failure)" in text
+
+
+def test_render_pr_body_lists_each_transition():
+    text = cs.render_pr_body([
+        cs.Transition("a", "fresh", "stale", "newest 2026-03-18"),
+        cs.Transition("b", None, "down", "HTTP 500"),
+        cs.Transition("c", "stale", None, "removed from the registry"),
+    ])
+    assert text.startswith("## Status changes\n")
+    assert "- `a`: fresh → stale (newest 2026-03-18)" in text
+    assert "- `b`: (new) → down (HTTP 500)" in text
+    assert "- `c`: stale → (removed)" in text
+    assert "SOURCES.md" in text and "manual verification" in text
+
+
+# -- main -------------------------------------------------------------------
+
+
+def paths(tmp_path):
+    return {
+        "state": tmp_path / "state.json",
+        "json": tmp_path / "staleness" / "sources.json",
+        "md": tmp_path / "SOURCES.md",
+        "summary": tmp_path / "summary.md",
+        "pr": tmp_path / "pr.md",
+        "out": tmp_path / "gh_output",
+    }
+
+
+def argv(p, *extra, today="2026-10-05"):
+    return ["--state", str(p["state"]), "--sources-json", str(p["json"]),
+            "--sources-md", str(p["md"]), "--summary", str(p["summary"]),
+            "--pr-body", str(p["pr"]), "--github-output", str(p["out"]),
+            "--today", today, *extra]
+
+
+def simple_registry(calls=None):
+    def fetch_for(id_):
+        def fetch():
+            if calls is not None:
+                calls.append(id_)
+            return [{"title": id_}]
+        return fetch
+
+    return [
+        cs.Source(id="ok", label="Fine source", host="ok.example", fetch=fetch_for("ok"),
+                  required=("title",)),
+        cs.Source(id="old", label="Old source", host="old.example", fetch=fetch_for("old"),
+                  required=("title",), freshness=(FakeRule(ok=False, reason="lag 61"),)),
+    ]
+
+
+def run_main(p, *extra, registry=None, today="2026-10-05"):
+    return cs.main(argv(p, *extra, today=today), registry=registry or simple_registry(),
+                   control=lambda: True, fetch_document=PDF)
+
+
+def test_main_normal_run_writes_every_file(tmp_path):
+    p = paths(tmp_path)
+    assert run_main(p) == 0
+    committed = json.loads(p["json"].read_text())
+    assert committed["sources"]["ok"]["status"] == "fresh"
+    assert committed["sources"]["old"] == {"status": "stale", "since": "2026-10-05", "reason": "lag 61"}
+    assert "Old source" in p["md"].read_text()
+    assert json.loads(p["state"].read_text())["version"] == 1
+    assert "`old`" in p["summary"].read_text()
+    assert "`old`: (new) → stale (lag 61)" in p["pr"].read_text()
+    assert p["out"].read_text() == "changes=2\n"
+
+
+def test_main_second_identical_run_changes_nothing(tmp_path):
+    p = paths(tmp_path)
+    run_main(p)
+    tracked = [p["json"], p["md"]]
+    for path in tracked:
+        os.utime(path, ns=(1_000_000_000, 1_000_000_000))
+    before = [(path.read_bytes(), path.stat().st_mtime_ns) for path in tracked]
+    p["out"].unlink()
+    assert run_main(p, today="2026-10-12") == 0
+    assert [(path.read_bytes(), path.stat().st_mtime_ns) for path in tracked] == before
+    assert p["out"].read_text() == "changes=0\n"
+
+
+def test_main_missing_state_with_unchanged_statuses_writes_identical_files(tmp_path):
+    p = paths(tmp_path)
+    run_main(p)
+    first = (p["json"].read_bytes(), p["md"].read_bytes())
+    p["state"].unlink()
+    assert run_main(p, today="2026-10-19") == 0
+    assert (p["json"].read_bytes(), p["md"].read_bytes()) == first
+
+
+def test_main_malformed_sources_json_returns_1_and_leaves_it_alone(tmp_path, capsys):
+    p = paths(tmp_path)
+    p["json"].parent.mkdir()
+    p["json"].write_text("{not json")
+    assert run_main(p) == 1
+    assert p["json"].read_text() == "{not json"
+    assert not p["md"].exists() and not p["state"].exists()
+    assert "sources.json" in capsys.readouterr().err
+
+
+def test_main_duplicate_registry_ids_return_1_before_any_fetch(tmp_path):
+    p = paths(tmp_path)
+    calls = []
+    registry = simple_registry(calls) + simple_registry(calls)
+    assert run_main(p, registry=registry) == 1
+    assert calls == []
+    assert not p["json"].exists()
+
+
+def test_main_unknown_only_id_returns_1(tmp_path, capsys):
+    p = paths(tmp_path)
+    assert run_main(p, "--only", "nope") == 1
+    assert "nope" in capsys.readouterr().err
+    assert not p["json"].exists()
+
+
+def test_main_only_checks_a_subset_and_keeps_the_rest(tmp_path):
+    p = paths(tmp_path)
+    run_main(p)
+    calls = []
+    assert run_main(p, "--only", "ok", registry=simple_registry(calls), today="2026-10-12") == 0
+    assert calls == ["ok"]
+    assert json.loads(p["json"].read_text())["sources"]["old"]["status"] == "stale"
+
+
+def test_main_inconclusive_run_returns_2_and_writes_no_committed_files(tmp_path, capsys):
+    p = paths(tmp_path)
+
+    def down():
+        raise ConnectionError("no route")
+
+    registry = [cs.Source(id=f"s{i}", label=f"S{i}", host=f"h{i}.example", fetch=down,
+                          required=("title",)) for i in range(5)]
+    assert run_main(p, registry=registry) == 2
+    assert not p["json"].exists() and not p["md"].exists() and not p["state"].exists()
+    assert not p["pr"].exists() and not p["out"].exists()
+    assert "5 of 5 sources gave no response" in capsys.readouterr().err
+    assert p["summary"].exists()
+
+
+def test_main_geo_fenced_host_is_skipped_with_the_manual_reason(tmp_path):
+    p = paths(tmp_path)
+    p["json"].parent.mkdir()
+    p["json"].write_text(cs.render_committed(
+        {"geo_fenced": {"old.example": {"note": "n", "verified": "2026-08-14"}}, "sources": {}}))
+    calls = []
+    assert run_main(p, registry=simple_registry(calls)) == 0
+    assert calls == ["ok"]
+    committed = json.loads(p["json"].read_text())
+    assert committed["sources"]["old"]["status"] == "geo-fenced"
+    assert committed["sources"]["old"]["reason"] == "verify by hand (last verified 2026-08-14)"
+    assert committed["geo_fenced"]["old.example"]["verified"] == "2026-08-14"
+
+
+def test_main_passes_the_whole_state_dict_so_count_floor_sees_max_count(tmp_path):
+    p = paths(tmp_path)
+    p["state"].write_text(json.dumps(
+        {"version": 1, "sources": {"floor": {"status": "fresh", "max_count": 100}}}))
+    registry = [cs.Source(id="floor", label="Floor", host="f.example",
+                          fetch=lambda: [{"title": "t"}], required=("title",),
+                          total=lambda: 90, freshness=(cs.CountFloor(),))]
+    assert run_main(p, registry=registry) == 0
+    committed = json.loads(p["json"].read_text())
+    assert committed["sources"]["floor"]["status"] == "stale"
+    assert "below 95%" in committed["sources"]["floor"]["reason"]
+    assert json.loads(p["state"].read_text())["sources"]["floor"]["max_count"] == 100
+
+
+def test_main_creates_the_staleness_directory(tmp_path):
+    p = paths(tmp_path)
+    assert not p["json"].parent.exists()
+    run_main(p)
+    assert p["json"].parent.is_dir()
+
+
+def test_main_reports_a_missing_registry_package(tmp_path, capsys, monkeypatch):
+    p = paths(tmp_path)
+
+    def missing(name):
+        raise ImportError(f"No module named {name!r}")
+
+    monkeypatch.setattr(cs.importlib, "import_module", missing)
+    code = cs.main(argv(p), control=lambda: True, fetch_document=PDF)
+    assert code == 1
+    assert "source_registry" in capsys.readouterr().err
