@@ -5,26 +5,19 @@ Every test uses fakes; none touches the network.
 
 from __future__ import annotations
 
-import importlib.util
 import json
-import sys
 import urllib.error
 from dataclasses import dataclass
 from datetime import date
-from pathlib import Path
 
 import pytest
 import requests
 
 from commoner_probe.http_client import ChallengeDetected
+from tests.conftest import load_script
 
 # Load the script as a module without requiring it on PYTHONPATH.
-_SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "check_sources.py"
-_spec = importlib.util.spec_from_file_location("check_sources", _SCRIPT)
-assert _spec and _spec.loader
-cs = importlib.util.module_from_spec(_spec)
-sys.modules["check_sources"] = cs
-_spec.loader.exec_module(cs)
+cs = load_script("check_sources")
 
 TODAY = date(2026, 10, 5)
 
