@@ -60,6 +60,7 @@ class Source:
     document: Callable[[dict], str] | None = None  # returns a URL
     document_kind: str = "pdf"  # "pdf" | "spreadsheet" | "zip" | "any-non-html"
     document_headers: Mapping[str, str] = field(default_factory=dict)
+    document_respect_robots: bool = True  # False skips robots.txt for the document fetch
     total: Callable[[], int] | None = None  # total count, for CountFloor
     freshness: tuple[Rule, ...] = ()
 
@@ -459,7 +460,9 @@ def _fetch_and_check_document(source: Source, valid: list[dict], newest: str,
         rec = next(
             (r for r in valid if _safe_date(source.record_date, r) == newest), valid[0])
     try:
-        status, content_type, head = fetch_document(source.document(rec), source.document_headers)
+        robots = {} if source.document_respect_robots else {"respect_robots": False}
+        status, content_type, head = fetch_document(
+            source.document(rec), source.document_headers, **robots)
         if status >= 400:
             return f"HTTP {status}"
         return _document_problem(source.document_kind, content_type or "", head)
@@ -489,9 +492,11 @@ def default_control() -> bool:
             close()
 
 
-def default_fetch_document(url: str, headers: Mapping[str, str]) -> tuple[int, str, bytes]:
+def default_fetch_document(url: str, headers: Mapping[str, str], *,
+                           respect_robots: bool = True) -> tuple[int, str, bytes]:
     """Return (status, content_type, first ≤2048 bytes) without downloading the whole file."""
-    resp = make_session().get(url, headers=dict(headers), timeout=60, stream=True)
+    resp = make_session().get(url, headers=dict(headers), timeout=60, stream=True,
+                              respect_robots=respect_robots)
     try:
         head = next(resp.iter_content(_DOCUMENT_HEAD_BYTES), b"")
         content_type = resp.headers.get("Content-Type", "")

@@ -530,6 +530,45 @@ def test_run_checks_defaults_state_to_empty_sources():
 # -- default_* --------------------------------------------------------------
 
 
+def test_document_robots_opt_out_is_forwarded_only_when_set():
+    seen = []
+
+    def fetch_document(url, headers, **kw):
+        seen.append(kw)
+        return (200, "application/pdf", b"%PDF")
+
+    recs = [{"title": "t", "u": "a.pdf"}]
+    check(src(lambda: recs, document=lambda r: r["u"]), fetch_document=fetch_document)
+    check(src(lambda: recs, document=lambda r: r["u"], document_respect_robots=False),
+          fetch_document=fetch_document)
+    assert seen == [{}, {"respect_robots": False}]
+
+
+def test_default_fetch_document_forwards_respect_robots(monkeypatch):
+    seen = {}
+
+    class Resp:
+        status_code = 200
+        headers = {"Content-Type": "application/pdf"}
+
+        def iter_content(self, chunk_size):
+            yield b"%PDF"
+
+        def close(self):
+            pass
+
+    class Session:
+        def get(self, url, **kw):
+            seen.update(kw)
+            return Resp()
+
+    monkeypatch.setattr(cs, "make_session", lambda: Session())
+    cs.default_fetch_document("https://x/a.pdf", {})
+    assert seen["respect_robots"] is True
+    cs.default_fetch_document("https://x/a.pdf", {}, respect_robots=False)
+    assert seen["respect_robots"] is False
+
+
 def test_default_fetch_document_reads_only_the_first_chunk(monkeypatch):
     class Resp:
         status_code = 200

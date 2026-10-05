@@ -76,6 +76,18 @@ class FakeSession:
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def _rs_envelope(*records: dict, total_pages: int = 1) -> dict:
+    """Wrap RS records the way integration.rajyasabha.digital returns them."""
+    return {
+        "success": True,
+        "data": {"_metadata": {"totalPages": total_pages}, "records": list(records)},
+        "message": None,
+    }
+
+
+RS_ROUTE = "committee-integration/api/v1/web/committee-reports"
+
+
 def _ls_record(report_no: int, **overrides) -> dict:
     rec = {
         "url": f"https://sansad.in/getFile/x/{report_no}.pdf",
@@ -297,12 +309,9 @@ class CrawlIntegrationTests(unittest.TestCase):
             self.assertTrue(r["run_id"])  # non-empty
 
     def test_probe_rs_emits_records_with_rs_only_presented_via(self):
-        page1 = {
-            "_metadata": {"totalPages": 1},
-            "records": [_rs_record(174), _rs_record(173)],
-        }
+        page1 = _rs_envelope(_rs_record(174), _rs_record(173))
         with tempfile.TemporaryDirectory() as tmp:
-            probe = self._probe(tmp, {"api_rs/committee": page1})
+            probe = self._probe(tmp, {RS_ROUTE: page1})
             added = probe.probe_rs(
                 set(),
                 committees=["health"],
@@ -321,6 +330,40 @@ class CrawlIntegrationTests(unittest.TestCase):
             self.assertEqual(r["committee_name"], "Health and Family Welfare")
             self.assertEqual(r["language_classified"], ["en"])
             self.assertEqual(r["date"], "2026-03-18")
+
+    def test_rs_page_unwraps_the_envelope_and_requests_the_new_endpoint(self):
+        rec = _rs_record(177)
+        with tempfile.TemporaryDirectory() as tmp:
+            probe = self._probe(tmp, {RS_ROUTE: _rs_envelope(rec)})
+            page = probe.rs_page(14, 1)
+        self.assertEqual(page["records"], [rec])
+        self.assertEqual(page["_metadata"]["totalPages"], 1)
+        self.assertTrue(
+            probe.session.calls[0].startswith(
+                "https://integration.rajyasabha.digital/committee-integration/api/v1/web/committee-reports?"
+            )
+        )
+
+    def test_rs_page_raises_when_success_is_false(self):
+        payload = {"success": False, "data": None, "message": "boom"}
+        with tempfile.TemporaryDirectory() as tmp:
+            probe = self._probe(tmp, {RS_ROUTE: payload})
+            with self.assertRaises(ValueError):
+                probe.rs_page(14, 1)
+
+    def test_rs_page_raises_when_data_is_missing(self):
+        payload = {"success": True, "message": None}
+        with tempfile.TemporaryDirectory() as tmp:
+            probe = self._probe(tmp, {RS_ROUTE: payload})
+            with self.assertRaises(ValueError):
+                probe.rs_page(14, 1)
+
+    def test_rs_page_raises_when_payload_is_not_an_object(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            probe = self._probe(tmp, {RS_ROUTE: {}})
+            probe.session.routes[RS_ROUTE] = ["not", "an", "object"]
+            with self.assertRaises(ValueError):
+                probe.rs_page(14, 1)
 
     def test_dedup_on_rerun_against_seen_keys(self):
         page1 = {"_metadata": {"totalPages": 1}, "records": [_ls_record(35)]}
@@ -376,13 +419,16 @@ class PdfDownloadHeaderTests(unittest.TestCase):
         self.topic = load_topic(ROOT / "examples" / "topics" / "libraries.json")
         self.profile_path = ROOT / "examples" / "topics" / "libraries.json"
         self.captured: list[tuple[str, dict]] = []
+        self.robots: list[tuple[str, bool]] = []
 
     def _capture_probe(self, tmp: str, routes: dict[str, dict]) -> CommitteeProbe:
         captured = self.captured
+        robots = self.robots
 
         class HeaderCaptureSession(FakeSession):
             def get(self, url, **kwargs):
                 captured.append((url, kwargs.get("headers") or {}))
+                robots.append((url, kwargs.get("respect_robots", True)))
                 return super().get(url, **kwargs)
 
         probe = CommitteeProbe(
@@ -410,9 +456,9 @@ class PdfDownloadHeaderTests(unittest.TestCase):
             self.assertNotIn("Accept", h)
 
     def test_rs_pdf_download_drops_json_accept_keeps_referer(self):
-        page1 = {"_metadata": {"totalPages": 1}, "records": [_rs_record(174)]}
+        page1 = _rs_envelope(_rs_record(174))
         with tempfile.TemporaryDirectory() as tmp:
-            probe = self._capture_probe(tmp, {"api_rs/committee": page1, "getFile": {}})
+            probe = self._capture_probe(tmp, {RS_ROUTE: page1, "getFile": {}})
             probe.probe_rs(set(), committees=["health"], from_date=None, to_date=None,
                            max_records=None, download=True)
         pdf_headers = [h for url, h in self.captured if "getFile" in url]
@@ -420,6 +466,24 @@ class PdfDownloadHeaderTests(unittest.TestCase):
         for h in pdf_headers:
             self.assertNotIn("Accept", h)
             self.assertEqual(h.get("Referer"), "https://sansad.in/rs/committees")
+
+    def test_only_rs_pdf_download_skips_robots(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            probe = self._capture_probe(tmp, {RS_ROUTE: _rs_envelope(_rs_record(174)),
+                                              "getFile": {}})
+            probe.probe_rs(set(), committees=["health"], from_date=None, to_date=None,
+                           max_records=None, download=True)
+        rs_pdf = [flag for url, flag in self.robots if "getFile" in url]
+        self.assertEqual(rs_pdf, [False])
+
+        self.robots.clear()
+        page1 = {"_metadata": {"totalPages": 1}, "records": [_ls_record(35)]}
+        with tempfile.TemporaryDirectory() as tmp:
+            probe = self._capture_probe(tmp, {"api_ls/committee": page1, "getFile": {}})
+            probe.probe_ls(set(), committees=["finance"], from_date=None, to_date=None,
+                           max_records=None, download=True)
+        ls_pdf = [flag for url, flag in self.robots if "getFile" in url]
+        self.assertEqual(ls_pdf, [True])
 
 
 if __name__ == "__main__":

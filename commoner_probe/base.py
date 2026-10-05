@@ -121,7 +121,7 @@ def note_text_layer(record: dict, dest: Path, body: bytes, *, min_chars: int) ->
 
 
 def download_file(session, url: str, dest_path: Path, headers: dict,
-                  *, log=None, timeout: int = 60) -> bool:
+                  *, log=None, timeout: int = 60, respect_robots: bool = True) -> bool:
     """Download to a temp file, then rename into place.
 
     The rename is what makes the size check below trustworthy. Writing
@@ -136,6 +136,9 @@ def download_file(session, url: str, dest_path: Path, headers: dict,
     A function rather than a method, because a probe that does not extend
     :class:`BaseProbe` needs the same guarantee. ``BillsProbe`` is one: it
     holds its own session and carries eight document URLs per bill.
+
+    ``respect_robots=False`` is forwarded to the session only when set, for a
+    caller that has a documented reason to skip the robots.txt check.
     """
     if dest_path.exists() and dest_path.stat().st_size > 1000:
         return True
@@ -146,7 +149,8 @@ def download_file(session, url: str, dest_path: Path, headers: dict,
         # stream=True or requests buffers the whole body before iter_capped
         # sees a chunk, and the ceiling fires after the allocation it exists
         # to prevent.
-        r = session.get(encoded_url, headers=headers, timeout=timeout, stream=True)
+        robots = {} if respect_robots else {"respect_robots": False}
+        r = session.get(encoded_url, headers=headers, timeout=timeout, stream=True, **robots)
         r.raise_for_status()
         with tmp_path.open("wb") as f:
             for chunk in iter_capped(r):
@@ -258,6 +262,8 @@ class BaseProbe:
         with path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(rec, ensure_ascii=False) + "\n")
 
-    def write_pdf(self, url: str, dest_path: Path, headers: dict) -> bool:
+    def write_pdf(self, url: str, dest_path: Path, headers: dict,
+                  *, respect_robots: bool = True) -> bool:
         """As :func:`download_file`, using this probe's session and log."""
-        return download_file(self.session, url, dest_path, headers, log=self.log)
+        return download_file(self.session, url, dest_path, headers, log=self.log,
+                             respect_robots=respect_robots)

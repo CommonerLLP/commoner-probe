@@ -34,6 +34,11 @@ def test_parliament_entries_sort_calendar_first():
     assert order.index("sessions-ls") < order.index("committees-ls") < order.index("committees-rs")
 
 
+def test_only_committees_rs_skips_robots_for_its_document():
+    assert BY_ID["committees-rs"].document_respect_robots is False
+    assert all(s.document_respect_robots for s in SOURCES if s.id != "committees-rs")
+
+
 def test_ls_date_falls_back_in_order():
     assert parliament._ls_date({"dateOfPresentation": "17-Mar-2026"}) == "2026-03-17"
     both = {"PresentedInLS": "18-Mar-2026", "dateOfPresentation": "17-Mar-2026"}

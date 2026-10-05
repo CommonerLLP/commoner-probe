@@ -27,7 +27,7 @@ curl -sS \
 curl -sS \
   -H 'User-Agent: Mozilla/5.0 commoner-probe' \
   -H 'Referer: https://sansad.in/rs/committees' \
-  'https://sansad.in/api_rs/committee/committee-reports?mstCommId=14&departmentId=&presentationYear=&search=&page=1&size=2&sortOn=reportNo&sortBy=desc&locale=en' \
+  'https://integration.rajyasabha.digital/committee-integration/api/v1/web/committee-reports?mstCommId=14&departmentId=&presentationYear=&search=&page=1&size=2&sortOn=reportNo&sortBy=desc&locale=en' \
   -o examples/corpora/committees-smoke/raw/rs_health_p1.json
 
 # 2. Regenerate the canonical manifest.

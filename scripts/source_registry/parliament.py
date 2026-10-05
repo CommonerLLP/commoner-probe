@@ -59,5 +59,7 @@ SOURCES = [
            fetch=_committees_rs, required=("reportNo", "subjectOfTheReport", "url"),
            record_date=_rs_date,
            document=lambda r: r["url"], document_headers=RS_PDF_HEADERS,
+           # The PDF host's robots.txt returns 403; see probe_rs in committee_report_api.py.
+           document_respect_robots=False,
            freshness=(SessionAware(), SiblingLag("committees-ls", max_days=60))),
 ]
