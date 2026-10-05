@@ -121,11 +121,22 @@ def test_committee_membership_expects_the_new_edition_after_the_grace_period():
     records = [{"committeeFormationDate": "2025-09-26"}]
     kwargs = {"source_id": "committees-members-ls", "records": records, "newest": "2025-09-26",
               "count": None}
-    # Before the end of November 2026 the 2025 committees are still current.
+    # Until the end of November 2026 the 2025 committees are still current.
     assert rule.evaluate(ctx=_ctx(date(2026, 10, 5)), **kwargs).ok
-    # After it, the 2026 committees are overdue.
-    result = rule.evaluate(ctx=_ctx(date(2026, 12, 15)), **kwargs)
+    assert rule.evaluate(ctx=_ctx(date(2026, 11, 30)), **kwargs).ok
+    # From 1 December, the 2026 committees are overdue.
+    result = rule.evaluate(ctx=_ctx(date(2026, 12, 1)), **kwargs)
     assert not result.ok and "2026" in result.reason
+
+
+def test_committee_membership_accepts_committees_reconstituted_before_the_deadline():
+    # The API returns only the current composition, so after reconstitution in
+    # late September only the new year's records exist.
+    rule = BY_ID["committees-members-ls"].freshness[0]
+    records = [{"committeeFormationDate": "2026-09-26"}]
+    for day in (date(2026, 9, 28), date(2026, 10, 5), date(2026, 11, 29)):
+        assert rule.evaluate(ctx=_ctx(day), source_id="committees-members-ls", records=records,
+                             newest="2026-09-26", count=None).ok
 
 
 def test_attendance_dates_each_row_by_the_sessions_last_past_sitting(monkeypatch):

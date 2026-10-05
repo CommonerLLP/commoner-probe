@@ -34,9 +34,13 @@ def test_parliament_entries_sort_calendar_first():
     assert order.index("sessions-ls") < order.index("committees-ls") < order.index("committees-rs")
 
 
-def test_only_committees_rs_skips_robots_for_its_document():
-    assert BY_ID["committees-rs"].document_respect_robots is False
-    assert all(s.document_respect_robots for s in SOURCES if s.id != "committees-rs")
+def test_only_committees_rs_skips_robots_and_only_on_the_rs_bucket():
+    respect = BY_ID["committees-rs"].document_respect_robots
+    assert respect("https://bucketapi.rajyasabha.digital/rsdocs/174.pdf") is False
+    assert respect("https://BUCKETAPI.rajyasabha.digital:443/rsdocs/174.pdf") is False
+    assert respect("https://sansad.in/getFile/rs/174.pdf") is True
+    assert respect("https://bucketapi.rajyasabha.digital.evil.example/x.pdf") is True
+    assert all(s.document_respect_robots is True for s in SOURCES if s.id != "committees-rs")
 
 
 def test_ls_date_falls_back_in_order():

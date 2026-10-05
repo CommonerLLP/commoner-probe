@@ -196,6 +196,8 @@ def test_cag_rule_expects_fy_2023_24_on_2026_10_05():
 
 def test_cag_rule_expects_fy_2024_25_from_april_2027():
     assert _cag_result(date(2027, 3, 30), ["2023-24"]).ok
+    assert _cag_result(date(2027, 3, 31), ["2023-24"]).ok  # allowed until 1 April
+    assert not _cag_result(date(2027, 4, 1), ["2023-24"]).ok
     assert _cag_result(date(2027, 4, 2), ["2024-25", "2023-24"]).ok
     late = _cag_result(date(2027, 4, 2), ["2023-24"])
     assert not late.ok and "2024-25" in late.reason

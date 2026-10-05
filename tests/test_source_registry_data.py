@@ -140,7 +140,16 @@ def test_union_budget_goes_stale_when_the_table_lacks_the_new_budget():
     (None, ""),
 ])
 def test_rbi_release_date_reads_only_a_date_heading(section, expected):
-    assert dp._rbi_release_date({"section": section}) == expected
+    assert dp._rbi_release_date({"section": section, "url": "https://x/main.pdf"}) == expected
+
+
+def test_rbi_release_date_skips_the_main_report_xls():
+    # The main report's row links an XLS file before its PDF. The document check
+    # fetches the first record with the newest date and expects a PDF.
+    heading = "Jan 23, 2026"
+    assert dp._rbi_release_date({"section": heading, "url": "https://x/main.xlsx"}) == ""
+    assert dp._rbi_release_date({"section": heading, "url": "https://x/MAIN.PDF"}) == "2026-01-23"
+    assert dp._rbi_release_date({"section": heading}) == ""
 
 
 _RBI_RELEASE_HTML = _RBI_HTML.replace(

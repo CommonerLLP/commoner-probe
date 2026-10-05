@@ -308,7 +308,7 @@ SOURCES = [
            # year ends in March, so the rule expects its Vol-II about 24 months later and
            # allows until 1 April: in 2026 that is FY 2023-24, and from April 2027,
            # FY 2024-25.
-           freshness=(ExpectedEdition(release_month=3, grace_days=30, edition=_cag_edition,
+           freshness=(ExpectedEdition(release_month=3, grace_days=31, edition=_cag_edition,
                                       edition_of=lambda r: r["year"]),)),
     Source(id="myneta-ls2024", label="MyNeta Lok Sabha 2024 candidate affidavits", host="myneta.info",
            fetch=_myneta_records, required=("key", "name", "party", "source_url"),

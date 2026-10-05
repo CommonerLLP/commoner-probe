@@ -2,6 +2,7 @@
 import functools
 import re
 from datetime import date
+from urllib.parse import urlparse
 
 from check_sources import (
     CountFloor,
@@ -18,6 +19,7 @@ from commoner_probe.attendance_json_api import AttendanceProbe
 from commoner_probe.bill_catalog_api import BillsProbe
 from commoner_probe.committee_report_api import (
     LS_PDF_HEADERS,
+    RS_PDF_BUCKET_HOST,
     RS_PDF_HEADERS,
     CommitteeProbe,
     parse_ls_date,
@@ -66,6 +68,11 @@ def _ls_date(r: dict) -> str:  # mirrors CommitteeProbe.probe_ls's fallback orde
 
 def _rs_date(r: dict) -> str:
     return parse_rs_date(r.get("dateOfPresentation")) or parse_rs_date(r.get("dateOfAdoption"))
+
+
+def _off_the_rs_bucket(url: str) -> bool:
+    """Respect robots.txt for an RS committee PDF unless it's on the RS bucket."""
+    return urlparse(url).hostname != RS_PDF_BUCKET_HOST
 
 
 # -- Shared helpers for the calendar-driven entries -------------------------
@@ -312,8 +319,8 @@ def _mptrack(house: str) -> list[dict]:
 
 
 # Committees are reconstituted each year in late September (formation date
-# 2025-09-26 on the live API). Allow until the end of November before the new
-# year's committees count as overdue.
+# 2025-09-26 on the live API). Allow until 1 December before the new year's
+# committees count as overdue.
 def _committee_edition(rec: dict) -> str:
     return (rec.get("committeeFormationDate") or "")[:4]
 
@@ -331,8 +338,9 @@ SOURCES = [
            fetch=_committees_rs, required=("reportNo", "subjectOfTheReport", "url"),
            record_date=_rs_date,
            document=lambda r: r["url"], document_headers=RS_PDF_HEADERS,
-           # The PDF host's robots.txt returns 403; see probe_rs in committee_report_api.py.
-           document_respect_robots=False,
+           # The PDF bucket's robots.txt returns 403; see probe_rs in
+           # committee_report_api.py. A PDF on any other host keeps the check.
+           document_respect_robots=_off_the_rs_bucket,
            freshness=(SessionAware(), SiblingLag("committees-ls", max_days=60))),
     Source(id="sessions-rs", label="Rajya Sabha session calendar", host="sansad.in",
            fetch=_sessions_rs, required=("first_sitting", "last_sitting"),
@@ -390,7 +398,7 @@ SOURCES = [
     Source(id="committees-members-ls", label="Lok Sabha committee membership", host="sansad.in",
            fetch=_committee_members_ls, required=("committeeCode", "memberName", "committeeFormationDate"),
            record_date=lambda r: r["committeeFormationDate"],
-           freshness=(ExpectedEdition(release_month=10, grace_days=60, edition=str,
+           freshness=(ExpectedEdition(release_month=10, grace_days=61, edition=str,
                                       edition_of=_committee_edition),)),
     Source(id="prs-report-summaries", label="PRS report summaries", host="prsindia.org",
            fetch=lambda: _prs_publications("report-summaries"), required=("slug", "title", "pdf_url"),

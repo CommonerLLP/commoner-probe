@@ -65,10 +65,14 @@ def _rbi_release_date(r: dict) -> str:
 
     The publication page prints the release date as the heading of the edition's
     main report, for example "Jan 23, 2026". Every other row sits under a heading
-    such as "Chapters" and has no date.
+    such as "Chapters" and has no date. Only the main report's PDF carries the
+    date: its row also links an XLS file, and the document check, which fetches
+    the newest record's file, expects a PDF.
     """
     section = (r.get("section") or "").strip()
     if not _RBI_RELEASE.fullmatch(section):
+        return ""
+    if not urlparse(r.get("url") or "").path.lower().endswith(".pdf"):
         return ""
     try:
         return datetime.strptime(section, "%b %d, %Y").date().isoformat()
