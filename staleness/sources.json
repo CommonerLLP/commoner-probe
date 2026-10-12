@@ -77,9 +77,9 @@
       "status": "broken"
     },
     "cag-finance-accounts": {
-      "reason": "ConnectTimeout: HTTPSConnectionPool(host='cag.gov.in', port=443): Max retries exceeded with url: /en/state-accounts-report?defuat_state_id=71 (Caused by ConnectTimeoutError(<HTTPSConnection(host='cag.",
-      "since": "2026-10-05",
-      "status": "unreachable"
+      "reason": "",
+      "since": "2026-10-12",
+      "status": "fresh"
     },
     "committees-ls": {
       "reason": "",
@@ -152,9 +152,9 @@
       "status": "fresh"
     },
     "mines-dmft-odisha": {
-      "reason": "document: SSLError: HTTPSConnectionPool(host='dmf.odisha.gov.in', port=443): Max retries exceeded with url: /assets/cron_files/state_summary_data.json (Caused by SSLError(SSLCertVerificationError(1, '",
+      "reason": "URLError: <urlopen error timed out>",
       "since": "2026-10-05",
-      "status": "broken"
+      "status": "unreachable"
     },
     "ministry-ddg-dea": {
       "reason": "document: TLS handshake failed: SSLError: HTTPSConnectionPool(host='dea.gov.in', port=443): Max retries exceeded with url: /files/detail_demands_grants_documents/Final%20DDG%20%282026-27%29%20MoF-1.pd",
@@ -162,9 +162,9 @@
       "status": "broken"
     },
     "ministry-ddg-dst": {
-      "reason": "",
-      "since": "2026-10-05",
-      "status": "fresh"
+      "reason": "no record has all required fields: key, title, year, url",
+      "since": "2026-10-12",
+      "status": "broken"
     },
     "ministry-ddg-mha": {
       "reason": "document: PermissionError: Disallowed by robots.txt: https://www.mha.gov.in/sites/default/files/2026-02/DDGVOL12026-27_11022026.pdf",
@@ -182,12 +182,12 @@
       "status": "fresh"
     },
     "nada": {
-      "reason": "TLS handshake failed: SSLError: HTTPSConnectionPool(host='microdata.gov.in', port=443): Max retries exceeded with url: /NADA/index.php/api/catalog/search?ps=3&page=1 (Caused by SSLError(SSLCertVerific",
-      "since": "2026-10-05",
-      "status": "broken"
+      "reason": "",
+      "since": "2026-10-12",
+      "status": "fresh"
     },
     "niti-annual-report": {
-      "reason": "PermissionError: Disallowed by robots.txt: https://www.niti.gov.in/publication/annual-report",
+      "reason": "document: PermissionError: Disallowed by robots.txt: https://www.niti.gov.in/sites/default/files/2026-05/Annual%20Report%20of%20NITI%20Aayog%202025-26%20%28English%29.pdf",
       "since": "2026-10-05",
       "status": "broken"
     },
@@ -222,9 +222,9 @@
       "status": "fresh"
     },
     "questions-list-rs": {
-      "reason": "HTTP 500",
-      "since": "2026-10-05",
-      "status": "down"
+      "reason": "",
+      "since": "2026-10-12",
+      "status": "fresh"
     },
     "sansad-ls": {
       "reason": "",
