@@ -13,6 +13,7 @@ from datetime import date
 from pathlib import Path
 
 import pytest
+import requests
 
 from commoner_probe.academia.parsers import PARSERS
 from commoner_probe.annual_report_index import NitiAnnualReportProbe, parse_listing
@@ -380,6 +381,61 @@ def test_udise_docs_record_has_no_hash_when_the_body_is_not_a_pdf(monkeypatch):
     records = BY_ID["udise-docs"].fetch()
     assert records[0]["fetch_status"] == "not_pdf"
     assert not _complete(BY_ID["udise-docs"], records[0])
+
+
+class _FailingPortal:
+    """Raises on every get, as a host that doesn't answer does."""
+
+    def __init__(self, exc):
+        self.exc = exc
+
+    def get(self, url, **kwargs):
+        raise self.exc
+
+
+class _StatusPortal:
+    """Answers every get with `status` and an error page."""
+
+    def __init__(self, status):
+        self.status = status
+
+    def get(self, url, **kwargs):
+        from tests.test_udise_documents import _Response
+
+        return _Response(b"<html>Error</html>", self.status, "text/html")
+
+
+def _check_udise(monkeypatch, session, *, control=lambda: True):
+    monkeypatch.setattr(dp, "UdiseDocumentProbe", functools.partial(UdiseDocumentProbe, session=session))
+    context = cs.Context(today=date(2026, 10, 18), results={}, records={}, state={},
+                         geo_fenced=frozenset())
+    obs, _ = cs.check_source(BY_ID["udise-docs"], context, control=control,
+                             fetch_document=lambda url, headers: (200, "application/pdf", b"%PDF-"))
+    return obs
+
+
+def test_udise_docs_reports_a_connection_failure_as_no_response(monkeypatch):
+    portal = _FailingPortal(requests.exceptions.ConnectTimeout("api.udiseplus.gov.in timed out"))
+    obs = _check_udise(monkeypatch, portal)
+    assert obs.outcome == cs.NO_RESPONSE
+
+
+def test_udise_docs_reports_a_failed_control_as_control_failed(monkeypatch):
+    portal = _FailingPortal(requests.exceptions.ConnectTimeout("api.udiseplus.gov.in timed out"))
+    obs = _check_udise(monkeypatch, portal, control=lambda: False)
+    assert obs.outcome == cs.CONTROL_FAILED
+
+
+@pytest.mark.parametrize("status", [404, 503])
+def test_udise_docs_reports_an_http_error_status_as_http_error(monkeypatch, status):
+    obs = _check_udise(monkeypatch, _StatusPortal(status))
+    assert obs.outcome == cs.HTTP_ERROR
+    assert obs.http_status == status
+
+
+def test_udise_docs_still_reports_a_200_without_a_pdf_as_broken(monkeypatch):
+    obs = _check_udise(monkeypatch, UdisePortal(gone={"DCF0112"}))
+    assert obs.outcome == cs.BROKEN
 
 
 def test_koha_items_carry_the_biblio_title_and_the_portal_total(monkeypatch):

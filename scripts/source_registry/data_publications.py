@@ -232,10 +232,49 @@ def _mca_export() -> list[dict]:
 # -- UDISE+ public documents ---------------------------------------------------
 
 
+class _RecordingSession:
+    """Wraps a session and keeps the last exception that `get` raised.
+
+    The probe catches a failed fetch and records it as `fetch_status: "error"`,
+    so the checker never sees the exception. This wrapper keeps the original
+    object, so the checker can classify it.
+    """
+
+    def __init__(self, session):
+        self._session = session
+        self.last_error: BaseException | None = None
+
+    def get(self, *args, **kwargs):
+        try:
+            return self._session.get(*args, **kwargs)
+        except Exception as exc:
+            self.last_error = exc
+            raise
+
+    def __getattr__(self, name):
+        return getattr(self._session, name)
+
+
 def _udise_documents() -> list[dict]:
-    """Fetch the first document of the `UploadedFiles` folder through the adapter's own probe."""
-    return UdiseDocumentProbe(SCRATCH / "udise-docs", sleep=0).probe(
-        folders=["UploadedFiles"], max_records=1)
+    """Fetch the first document of the `UploadedFiles` folder through the adapter's own probe.
+
+    The probe turns a failed fetch into a record, and a 4xx or 5xx answer into a
+    `not_pdf` record, and neither has a hash. Without a hash, the checker reads
+    both as a broken contract. This function re-raises the original connection
+    error, or raises `HTTP <status> <url>`, so the checker reports a host that
+    doesn't answer as no response or an HTTP error.
+    """
+    probe = UdiseDocumentProbe(SCRATCH / "udise-docs", sleep=0)
+    session = probe.session = _RecordingSession(probe.session)
+    records = probe.probe(folders=["UploadedFiles"], max_records=1)
+    if records and session.last_error is not None and all(
+            r.get("fetch_status") == "error" for r in records):
+        raise session.last_error
+    for record in records:
+        status = record.get("http_status")
+        if isinstance(status, int) and status >= 400:
+            raise RuntimeError(f"HTTP {status} {record.get('url')}")
+    return records
 
 
 # -- Koha (NITI Aayog library) -------------------------------------------------
