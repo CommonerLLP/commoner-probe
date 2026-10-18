@@ -222,7 +222,7 @@ def _niti_reports() -> list[dict]:
 
 
 def _dpe_date(r: dict) -> str:
-    """The ISO date of a DPE media upload, from the WordPress `date` field, or ""."""
+    """The ISO date of a DPE Document Repository post, from the WordPress `date` field, or ""."""
     return (r.get("date") or "")[:10]
 
 
@@ -521,10 +521,13 @@ SOURCES = [
            # allows until 1 July for the report of the fiscal year that ended in March.
            freshness=(ExpectedEdition(release_month=6, grace_days=30, edition=_niti_edition,
                                       edition_of=lambda r: r["report_year"]),)),
-    Source(id="dpe-csr", label="DPE CPSE CSR documents (WordPress media)", host="dpe.gov.in",
+    Source(id="dpe-csr", label="DPE CPSE CSR documents (Document Repository)", host="www.dpe.gov.in",
            fetch=_dpe_documents, required=("key", "id", "title", "url"),
            record_date=_dpe_date,
-           document=lambda r: r["url"], document_kind="any-non-html",
+           # www.dpe.gov.in answers 403 to the default user agent, on robots.txt too.
+           # Verified live 18 October 2026.
+           document=lambda r: r["url"], document_headers={"User-Agent": SCHEME_FREE_USER_AGENT},
+           document_kind="any-non-html",
            # Nothing documents how often DPE uploads CSR files. A year is the longest
            # gap an annual publication allows.
            freshness=(MaxAge(365),)),

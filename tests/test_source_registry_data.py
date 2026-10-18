@@ -338,11 +338,12 @@ def test_dpe_date_is_the_day_part_of_the_wordpress_timestamp(record, expected):
     assert dp._dpe_date(record) == expected
 
 
-def test_dpe_documents_map_media_items_and_skip_empty_ones(monkeypatch):
+def test_dpe_documents_map_repository_posts_and_skip_empty_ones(monkeypatch):
     items = [
         {"id": 456, "date": "2026-01-01T00:00:00", "title": {"rendered": "CSR Document 2025"},
-         "source_url": "https://dpe.gov.in/wp-content/uploads/2026/01/doc.pdf"},
-        {"id": 457, "date": "2025-01-01T00:00:00", "title": {"rendered": "No file"}},
+         "source_url": "https://www.dpe.gov.in/static/uploads/2026/01/doc.pdf"},
+        {"id": 457, "date": "2025-01-01T00:00:00", "title": {"rendered": "No file"},
+         "guid": {"rendered": "https://cms-dpe.digifootprint.gov.in/?post_type=central_documents&p=457"}},
     ]
     monkeypatch.setattr(DpeCsrProbe, "fetch_page", lambda self, page, per_page=100, search="csr": items)
     source = BY_ID["dpe-csr"]
@@ -350,6 +351,12 @@ def test_dpe_documents_map_media_items_and_skip_empty_ones(monkeypatch):
     assert [r["key"] for r in records] == ["DPE_CSR|456"]
     assert _complete(source, records[0])
     assert cs.newest_date(records, source.record_date, date(2026, 10, 5)) == "2026-01-01"
+
+
+def test_dpe_source_uses_the_www_host_and_the_scheme_free_user_agent():
+    source = BY_ID["dpe-csr"]
+    assert source.host == "www.dpe.gov.in"
+    assert source.document_headers == {"User-Agent": dp.SCHEME_FREE_USER_AGENT}
 
 
 def test_mca_csr_exports_the_year_the_adapter_documents(monkeypatch):

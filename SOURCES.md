@@ -20,7 +20,7 @@ The weekly source freshness check writes this table. For what each status means,
 | SHRUG table catalogue (Development Data Lab): no date, can't see new tables | www.devdatalab.org | `broken` | 2026-10-05 | no record has all required fields: table_label, filetype, url |
 | UDISE+ public documents: pinned catalogue, can't see new documents | api.udiseplus.gov.in | `broken` | 2026-10-05 | no record has all required fields: key, url, sha256 |
 | Union Budget Demand for Grants (static URL table) | indiabudget.gov.in | `broken` | 2026-10-05 | document: PermissionError: Disallowed by robots.txt: https://www.indiabudget.gov.in/doc/eb/sbe101.xlsx |
-| DPE CPSE CSR documents (WordPress media) | dpe.gov.in | `down` | 2026-10-05 | HTTP 403 |
+| DPE CPSE CSR documents (Document Repository) | www.dpe.gov.in | `down` | 2026-10-05 | HTTP 403 |
 | MCA CSR company spend, FY 2022-23: no date, can't see new years | mcacdm.nic.in | `down` | 2026-10-05 | HTTP 400 |
 | Rajya Sabha daily question lists | sansad.in | `down` | 2026-10-05 | HTTP 500 |
 | CAG State Finance Accounts Vol-II (Gujarat) | cag.gov.in | `unreachable` | 2026-10-05 | ConnectTimeout: HTTPSConnectionPool(host='cag.gov.in', port=443): Max retries exceeded with url: /en/state-accounts-report?defuat_state_id=71 (Caused by ConnectTimeoutError(<HTTPSConnection(host='cag. |

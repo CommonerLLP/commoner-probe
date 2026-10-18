@@ -49,7 +49,7 @@ parseable data. For what each status means, see
 | ❌ broken | SHRUG table catalogue (Development Data Lab): no date, can't see new tables | www.devdatalab.org | 2026-10-05 |
 | ❌ broken | UDISE+ public documents: pinned catalogue, can't see new documents | api.udiseplus.gov.in | 2026-10-05 |
 | ❌ broken | Union Budget Demand for Grants (static URL table) | indiabudget.gov.in | 2026-10-05 |
-| 🔴 down | DPE CPSE CSR documents (WordPress media) | dpe.gov.in | 2026-10-05 |
+| 🔴 down | DPE CPSE CSR documents (Document Repository) | www.dpe.gov.in | 2026-10-05 |
 | 🔴 down | MCA CSR company spend, FY 2022-23: no date, can't see new years | mcacdm.nic.in | 2026-10-05 |
 | 🔴 down | Rajya Sabha daily question lists | sansad.in | 2026-10-05 |
 | ❓ unreachable | CAG State Finance Accounts Vol-II (Gujarat) | cag.gov.in | 2026-10-05 |
