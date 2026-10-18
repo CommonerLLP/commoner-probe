@@ -26,6 +26,8 @@ from commoner_probe.ministry_pdf_index import (
     parse_ddg_listing_card,
     parse_ddg_listing_list,
     parse_ddg_listing_table,
+    parse_ddg_wp_posts,
+    wp_json_file_ids,
 )
 
 LISTING_HTML = """
@@ -142,7 +144,8 @@ def test_registry_codes_are_unique():
 def test_every_registry_template_has_a_parser():
     from commoner_probe.ministry_pdf_index import _PARSERS
 
-    assert {p.template for p in MINISTRY_DDG_PORTALS} <= set(_PARSERS)
+    # "wp_json" has no HTML parser: discover() reads a JSON API instead.
+    assert {p.template for p in MINISTRY_DDG_PORTALS} - {"wp_json"} <= set(_PARSERS)
 
 
 def test_get_portal_unknown_code_raises():
@@ -662,3 +665,110 @@ def test_wayback_fields_validate_against_the_ddg_schema(tmp_path, monkeypatch):
     assert list(validator.iter_errors(record)) == []
     bad = dict(record, wayback_status="maybe")
     assert list(validator.iter_errors(bad)) != []
+
+
+DST_FIXTURES = Path(__file__).parent / "fixtures" / "dst"
+DST_PORTAL = get_portal("dst")
+DST_WP_POST_URL = "https://www.dst.gov.in/cms/wp-json/post-page/post"
+
+
+def _dst_listing() -> dict:
+    return json.loads((DST_FIXTURES / "orders_and_notices_trimmed.json").read_text(encoding="utf-8"))
+
+
+def _dst_files() -> dict:
+    return json.loads((DST_FIXTURES / "budget_files.json").read_text(encoding="utf-8"))
+
+
+class DstApiSession(FakeSession):
+    """Routes the two DST API requests to the saved responses."""
+
+    def __init__(self, *, listing_pages=None, files=None):
+        super().__init__()
+        self.listing_pages = listing_pages or [_dst_listing()]
+        self.files = files or _dst_files()
+
+    def get(self, url, **kwargs):
+        self.calls.append(url)
+        if url.startswith(DST_PORTAL.listing_url + "&page="):
+            page = int(url.rsplit("=", 1)[1])
+            return FakeResponse(text=json.dumps(self.listing_pages[page - 1]))
+        if url.startswith(DST_WP_POST_URL + "?id="):
+            return FakeResponse(text=json.dumps(self.files))
+        raise AssertionError(f"unrouted url: {url}")
+
+
+def test_dst_portal_reads_the_wordpress_json_api_on_the_www_host():
+    assert DST_PORTAL.template == "wp_json"
+    assert DST_PORTAL.wp_json_post_name == "budget"
+    assert DST_PORTAL.listing_url.startswith("https://www.dst.gov.in/cms/wp-json/")
+
+
+def test_wp_json_file_ids_finds_the_budget_post_and_skips_link_entries():
+    ids = wp_json_file_ids(_dst_listing(), "budget")
+    assert ids is not None and len(ids) == 18
+    assert ids[:3] == [38255, 10757, 10760]
+    assert wp_json_file_ids(_dst_listing(), "no-such-post") is None
+
+
+def test_parse_ddg_wp_posts_reads_every_edition_back_to_2009_10():
+    docs = parse_ddg_wp_posts(_dst_files())
+    assert [d["year"] for d in docs] == [
+        "2026-27", "2025-26", "2024-25", "2023-24", "2022-23", "2021-22", "2020-21",
+        "2019-20", "2018-19", "2017-18", "2016-17", "2015-16", "2014-15", "2013-14",
+        "2012-13", "2011-12", "2010-11", "2009-10",
+    ]
+    assert docs[0] == {
+        "title": "Detailed Demands for Grants 2026-27",
+        "year": "2026-27",
+        "url": "https://www.dst.gov.in/static/uploads/2026/04/8377f334e91ca001cc519e0bdd972670.pdf",
+    }
+    # Older titles are only the year; they are still editions.
+    assert docs[3]["title"] == "2023-2024"
+
+
+def test_parse_ddg_wp_posts_skips_entries_without_a_year_or_a_pdf_and_accepts_one_post():
+    pdf = {"url": "https://www.dst.gov.in/static/uploads/x.pdf"}
+    assert parse_ddg_wp_posts({"posts": [
+        {"post_title": "List of Grantee Institutions", "acf_data": {"pdf": pdf}},
+        {"post_title": "2022-23", "acf_data": {"pdf": None}},
+    ]}) == []
+    # A single ID comes back as an object, not a list.
+    one = parse_ddg_wp_posts({"posts": {"post_title": "2022-23", "acf_data": {"pdf": pdf}}})
+    assert [d["year"] for d in one] == ["2022-23"]
+
+
+def test_dst_discover_makes_the_two_requests_and_returns_the_series(tmp_path):
+    probe = MinistryDDGProbe(tmp_path, portal=DST_PORTAL, sleep=0)
+    probe.session = DstApiSession()
+    docs = probe.discover()
+    assert len(docs) == 18
+    assert probe.session.calls[0] == DST_PORTAL.listing_url + "&page=1"
+    assert probe.session.calls[1].startswith(DST_WP_POST_URL + "?id=38255,10757,10760,")
+    assert len(probe.session.calls) == 2
+
+
+def test_dst_discover_follows_list_pages_until_it_finds_the_budget_post(tmp_path):
+    other_page = {"posts": [], "total_items": 0, "total_pages": 2, "current_page": 1}
+    page_two = dict(_dst_listing(), total_pages=2, current_page=2)
+    probe = MinistryDDGProbe(tmp_path, portal=DST_PORTAL, sleep=0)
+    probe.session = DstApiSession(listing_pages=[other_page, page_two])
+    assert len(probe.discover()) == 18
+    assert probe.session.calls[1] == DST_PORTAL.listing_url + "&page=2"
+
+
+def test_dst_discover_returns_nothing_when_the_budget_post_is_gone(tmp_path):
+    empty = {"posts": [], "total_items": 0, "total_pages": 1, "current_page": 1}
+    probe = MinistryDDGProbe(tmp_path, portal=DST_PORTAL, sleep=0)
+    probe.session = DstApiSession(listing_pages=[empty])
+    assert probe.discover() == []
+    assert len(probe.session.calls) == 1
+
+
+def test_dst_records_carry_a_normalised_year_and_a_unique_key(tmp_path):
+    probe = MinistryDDGProbe(tmp_path, portal=DST_PORTAL, sleep=0)
+    probe.session = DstApiSession()
+    records = probe.probe(dry_run=True)
+    assert len({r["key"] for r in records}) == 18
+    assert records[0]["year"] == "2026-27"
+    assert records[0]["key"].startswith("MINISTRY_DDG|dst|2026-27|")

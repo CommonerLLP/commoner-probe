@@ -32,7 +32,7 @@ The weekly source freshness check writes this table. For what each status means,
 | Academic job ads (iit_hyderabad parser, IIT Hyderabad): no posting date, can't see stale ads | www.iith.ac.in | `fresh` | 2026-10-05 |  |
 | Academic job ads (iit_kanpur parser, IIT Kanpur): no posting date, can't see stale ads | iitk.ac.in | `fresh` | 2026-10-05 |  |
 | Academic job ads (private_university parser, Ashoka University): no posting date, can't see stale ads | careers.ashoka.edu.in | `fresh` | 2026-10-05 |  |
-| Detailed Demands for Grants (DST, list template) | dst.gov.in | `fresh` | 2026-10-05 |  |
+| Detailed Demands for Grants (DST, WordPress JSON API) | www.dst.gov.in | `fresh` | 2026-10-05 |  |
 | DoE Pay and Allowances annual reports: no date, can't see new years | doe.gov.in | `fresh` | 2026-10-05 |  |
 | Legacy DSpace (Assam Legislative Assembly Library) | aladigitallibrary.in | `fresh` | 2026-10-05 |  |
 | Lok Sabha attendance (register present for latest session) | sansad.in | `fresh` | 2026-10-05 |  |

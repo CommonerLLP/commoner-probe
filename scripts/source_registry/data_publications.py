@@ -503,12 +503,13 @@ SOURCES = [
            # so the document check fetches a DDG volume.
            freshness=(ExpectedEdition(release_month=3, grace_days=31, edition=_budget_edition,
                                       edition_of=lambda r: r["year"]),)),
-    Source(id="ministry-ddg-dst", label="Detailed Demands for Grants (DST, list template)",
-           host="dst.gov.in",
+    Source(id="ministry-ddg-dst", label="Detailed Demands for Grants (DST, WordPress JSON API)",
+           host="www.dst.gov.in",
            fetch=lambda: _ddg("dst"), required=("key", "title", "year", "url"),
            document=lambda r: r["url"],
-           # The adapter's docstring lists ten editions through 2026-27 on 9 July 2026.
-           # No earlier release date is known, so the rule allows until 1 July.
+           # The 2026-27 edition was posted on 23 April 2026 and the 2025-26 edition on
+           # 9 October 2025, so the rule allows until 1 July. The API serves editions
+           # back to 2009-10.
            freshness=(ExpectedEdition(release_month=6, grace_days=30, edition=_budget_edition,
                                       edition_of=lambda r: r["year"]),)),
     Source(id="niti-annual-report", label="NITI Aayog Annual Reports (English)", host="www.niti.gov.in",
