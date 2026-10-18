@@ -16,12 +16,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+from pathlib import Path
 
 from commoner_probe.ministry_pdf_index import (
     MINISTRY_DDG_PORTALS,
     MinistryDDGPortal,
     MinistryDDGProbe,
     get_portal,
+    parse_ddg_listing_card,
     parse_ddg_listing_list,
     parse_ddg_listing_table,
 )
@@ -269,36 +271,96 @@ def test_parse_listing_table_matches_title_cell_and_skips_non_ddg_rows():
     assert not any("AnnualReport" in d["url"] for d in docs)
 
 
+MHA_FIXTURE = Path(__file__).parent / "fixtures" / "mha" / "finance_division_trimmed.html"
+MHA_CARD_LISTING_URL = "https://www.mha.gov.in/finance-division"
+MHA_FILES = "https://www.mha.gov.in/files/documents/"
+MHA_OOMF_URL = MHA_FILES + "OOMF2026-27_11022026.pdf"
+
+
+def test_mha_portal_uses_the_card_template_on_the_rebuilt_finance_division_page():
+    portal = get_portal("mha")
+    assert portal.listing_url == MHA_CARD_LISTING_URL
+    assert portal.template == "card"
+    assert portal.demand_grant_titles_only
+
+
+def test_parse_listing_card_reads_the_saved_mha_page():
+    """The saved page has no <table>; its commented-out <tr> markup must not
+    leak into the result. The card parser alone also returns the OOMF card."""
+
+    docs = parse_ddg_listing_card(MHA_FIXTURE.read_text(encoding="utf-8"), MHA_CARD_LISTING_URL)
+    assert len(docs) == 15
+    assert docs[0] == {"title": "Budget Division", "year": "2026-27", "url": MHA_OOMF_URL}
+    titles = [d["title"] for d in docs[1:]]
+    assert all(t.startswith("Detailed Demands for Grants") for t in titles)
+    assert {d["year"] for d in docs} == {
+        "2021-22", "2022-23", "2023-24", "2024-25", "2025-26", "2026-27"}
+
+
+def test_mha_discover_drops_the_oomf_card_and_keeps_every_ddg_volume(tmp_path):
+    portal = get_portal("mha")
+    probe = MinistryDDGProbe(tmp_path, portal=portal, sleep=0)
+
+    class MhaSession(FakeSession):
+        def get(self, url, **kwargs):
+            self.calls.append(url)
+            if url == portal.listing_url:
+                return FakeResponse(text=MHA_FIXTURE.read_text(encoding="utf-8"))
+            raise AssertionError(f"unrouted url: {url}")
+
+    probe.session = MhaSession()
+    docs = probe.discover()
+    assert len(docs) == 14
+    assert MHA_OOMF_URL not in {d["url"] for d in docs}
+    assert all("demand" in d["title"].lower() for d in docs)
+    # The first document is what the freshness check fetches when a portal has
+    # no record date: it must be a DDG volume, not the OOMF.
+    assert "DDG" in docs[0]["url"]
+
+
+def test_title_filter_is_off_for_portals_that_do_not_ask_for_it(tmp_path):
+    """dea parsing is unchanged: an untitled-as-DDG card still comes through."""
+
+    html = LISTING_HTML.replace("Detailed Demands for Grants 2026-27", "Budget Division 2026-27")
+    probe = _probe(tmp_path)
+    probe.session = type("S", (FakeSession,), {
+        "get": lambda self, url, **kw: FakeResponse(text=html)})()
+    assert not DEA_PORTAL.demand_grant_titles_only
+    assert [d["title"] for d in probe.discover()][0] == "Budget Division 2026-27"
+
+
 def test_multi_volume_per_year_does_not_collide(tmp_path, monkeypatch):
     """mha.gov.in publishes two volumes for the same fiscal year — the
     fixed key must disambiguate them instead of colliding (2026-07-09 bug
     caught while expanding the registry beyond dea.gov.in's one-doc-per-year
-    shape)."""
+    shape). Fed from the saved copy of the rebuilt page (18 October 2026)."""
 
     from commoner_probe import base as base_mod
     monkeypatch.setattr(base_mod, "extract_pdf_text", lambda p: "")
     mha_portal = get_portal("mha")
     probe = MinistryDDGProbe(tmp_path, portal=mha_portal, sleep=0)
 
-    vol1_url = "https://www.mha.gov.in/sites/default/files/2026-02/DDGVOL12026-27_11022026.pdf"
-    vol2_url = "https://www.mha.gov.in/sites/default/files/2026-02/DDGVol2A2026-27_11022026.pdf"
+    vol1_url = MHA_FILES + "DDGVOL12026-27_11022026.pdf"
+    vol2_url = MHA_FILES + "DDGVol2A2026-27_11022026.pdf"
+    vol2b_url = MHA_FILES + "DDGVol2B2026-27_11022026.pdf"
 
     class MhaSession(FakeSession):
         def get(self, url, **kwargs):
             self.calls.append(url)
             if url == mha_portal.listing_url:
-                return FakeResponse(text=TABLE_LISTING_HTML)
-            if url in (vol1_url, vol2_url):
+                return FakeResponse(text=MHA_FIXTURE.read_text(encoding="utf-8"))
+            if url in (vol1_url, vol2_url, vol2b_url):
                 return FakeResponse(content=PDF_WITH_TEXT, content_type="application/pdf")
             raise AssertionError(f"unrouted url: {url}")
 
     probe.session = MhaSession()
     records = probe.probe(years=["2026-27"])
-    assert [r["status"] for r in records] == ["downloaded", "downloaded"]
+    assert [r["status"] for r in records] == ["downloaded"] * 3
     keys = [r["key"] for r in records]
     assert len(keys) == len(set(keys)), f"colliding keys: {keys}"
     filenames = [r["filename"] for r in records]
     assert len(filenames) == len(set(filenames)), f"colliding filenames: {filenames}"
+    assert MHA_OOMF_URL not in probe.session.calls
 
 
 # moef.gov.in publishes Hindi-only title cells ("विस्तृत मांगें" = "detailed
