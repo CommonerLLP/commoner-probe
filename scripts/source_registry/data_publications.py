@@ -171,6 +171,18 @@ def _shrug_sentinel() -> dict | None:
                 None)
 
 
+SHRUG_BUCKET_HOST = "shrug-assets-ddl.s3.amazonaws.com"
+
+
+def _off_the_shrug_bucket(url: str) -> bool:
+    """Respect robots.txt for a SHRUG file unless it's on the SHRUG bucket.
+
+    The bucket's /robots.txt answers 403 AccessDenied, which RetrySession reads
+    as disallow-all.
+    """
+    return urlparse(url).hostname != SHRUG_BUCKET_HOST
+
+
 # -- DoE Pay and Allowances annual reports -------------------------------------
 
 
@@ -451,11 +463,13 @@ SOURCES = [
     Source(id="shrug", label="SHRUG table catalogue (Development Data Lab): no date, can't see new tables",
            host="www.devdatalab.org",
            # The catalogue carries no date. On 5 October 2026 its download cells hold
-           # bare URLs where the adapter reads an anchor `href`, so `url` is empty and
-           # the contract check fails.
+           # bare presigned URLs, which the adapter reads as well as anchor `href`s.
+           # The S3 bucket's robots.txt answers 403, so the document check skips
+           # robots.txt for that host only, as committees-rs does for its PDF bucket.
            fetch=_shrug_tables, required=("table_label", "filetype", "url"),
            total=lambda: len(_shrug_tables()),
            document=lambda r: r["url"], document_kind="zip",
+           document_respect_robots=_off_the_shrug_bucket,
            # The sentinel only proves that a known table is still listed.
            freshness=(Sentinel(_shrug_sentinel, lambda r: r["table_label"],
                                "2011 Population Census Village Directory"),

@@ -157,6 +157,30 @@ def test_catalogue_refuses_two_rows_under_one_label():
         shrug.catalogue(session=_catalogue_session(rows=rows), min_rows=1)
 
 
+def test_catalogue_reads_a_bare_url_cell():
+    """On 5 October 2026 the download cells hold the URL as text, with no anchor."""
+    row = _row("Census", "SECC Rural", "")
+    row["primary_download"] = VD11
+    row["secondary_download"] = VD01
+    tables = shrug.catalogue(session=_catalogue_session(rows=[row]), min_rows=1)
+    assert tables["SECC Rural"].url == VD11
+    assert tables["SECC Rural"].secondary_url == VD01
+
+
+def test_catalogue_prefers_the_anchor_href_over_other_text_in_the_cell():
+    row = _row("Census", "SECC Rural", VD11)
+    row["primary_download"] += " mirror: https://example.org/other.zip"
+    tables = shrug.catalogue(session=_catalogue_session(rows=[row]), min_rows=1)
+    assert tables["SECC Rural"].url == VD11
+
+
+def test_a_cell_with_only_the_word_download_has_no_url():
+    row = _row("Census", "SECC Rural", "")
+    row["primary_download"] = "Download"
+    tables = shrug.catalogue(session=_catalogue_session(rows=[row]), min_rows=1)
+    assert tables["SECC Rural"].url is None
+
+
 def test_a_row_with_no_anchor_has_no_url():
     rows = [_row("Census", "SECC Rural", "")]
     tables = shrug.catalogue(session=_catalogue_session(rows=rows), min_rows=1)
