@@ -118,22 +118,84 @@ def test_private_university_apu_follows_subpages_via_fetcher():
     assert ad["unit_eligibility"] and "PhD" in ad["unit_eligibility"]
 
 
-def test_iit_indore_associates_title_with_pdf_link():
+# Trimmed from the live https://www.iiti.ac.in/careers/teaching_positions page
+# (18 October 2026): two cards, mixed hosts, an http:// link, and Hindi copies.
+IIT_INDORE_TEACHING_POSITIONS = """
+<div class="tp-listings">
+<div class="tp-card"><div class="tp-card-main"><div class="tp-info">
+<h2 class="tp-job-title">Faculty Recruitment for Special Recruitment Drive (Backlog Vacancies)</h2>
+<div class="tp-value"><ul><li>Civil Engineering</li><li>Physics</li></ul>
+<p><a href="https://iiti.ac.in/uploads/career/2026/Aug/teaching/20260702054720.pdf">Corrigendum</a></p>
+<p><a href="http://iiti.ac.in/uploads/career/2026/Aug/teaching/Notification%20June%209_10%20adv.pdf">Notification</a></p>
+</div></div></div>
+<div class="tp-card-footer"><div class="tp-adv-link">
+<span class="tp-adv-link-label">Advertisement Details:</span>
+<span class="tp-adv-number">IITI/FACREC/SRD/2026/JUNE/10</span>
+<a href="https://www.iiti.ac.in/uploads/career/2026/Jul/3a071baa90bb789a7a5c157aad516b08.pdf" class="btn-view-doc">View</a>
+</div><div class="tp-actions">
+<a href="https://iiti.ac.in/uploads/career/2026/Jul/2026-07-02%20Amended%20Advtt.%20SRD.%20-%20Hindi.pdf">Hindi Version</a>
+<a href="https://ofa.iiti.ac.in/facrec_2026_june/">Apply</a>
+</div></div></div>
+<div class="tp-card"><div class="tp-card-main"><div class="tp-info">
+<h2 class="tp-job-title">Regular Faculty Recruitment</h2>
+<div class="tp-value"><p><a href="https://iiti.ac.in/uploads/career/2026/Aug/teaching/Notification%20June%209_10%20adv.pdf">Notification</a></p></div>
+</div></div>
+<div class="tp-card-footer"><div class="tp-adv-link">
+<span class="tp-adv-number">IITI/FACREC/2026/JUNE/09</span>
+<a href="https://www.iiti.ac.in/uploads/career/2026/Jul/9c141b75ace2fe6e38d7dcaca24203f3.pdf" class="btn-view-doc">View</a>
+</div><div class="tp-actions">
+<a href="https://iiti.ac.in/uploads/career/2026/Jul/Advtt.%20June%202026%20-%20Fac.%20Rec.%20-%20Hindi.pdf">Hindi Version</a>
+</div></div></div>
+</div>
+<a href="https://library.iiti.ac.in/wp-content/uploads/2025/10/Circular-Holidays-2026.pdf">Holiday circular</a>
+"""
+
+IIT_INDORE_URL = "https://www.iiti.ac.in/careers/teaching_positions"
+
+
+def test_iit_indore_parses_teaching_positions_cards():
     pytest.importorskip("bs4")
     from commoner_probe.academia.parsers import get_parser, iit_indore
 
     assert get_parser("iit_indore") is iit_indore.parse
+    ads = iit_indore.parse(IIT_INDORE_TEACHING_POSITIONS, IIT_INDORE_URL, FETCHED)
+    assert [a["ad_number"] for a in ads] == [
+        "IITI/FACREC/SRD/2026/JUNE/10",
+        "IITI/FACREC/2026/JUNE/09",
+    ]
+    assert [a["title"] for a in ads] == [
+        "Faculty Recruitment for Special Recruitment Drive (Backlog Vacancies)",
+        "Regular Faculty Recruitment",
+    ]
+    assert [a["original_url"] for a in ads] == [
+        "https://www.iiti.ac.in/uploads/career/2026/Jul/3a071baa90bb789a7a5c157aad516b08.pdf",
+        "https://www.iiti.ac.in/uploads/career/2026/Jul/9c141b75ace2fe6e38d7dcaca24203f3.pdf",
+    ]
+    for ad in ads:
+        assert ad["post_type"] == "Faculty"
+        assert ad["contract_status"] == "Regular"
+
+
+def test_iit_indore_normalizes_hosts_and_drops_hindi_copies():
+    pytest.importorskip("bs4")
+    from commoner_probe.academia.parsers import iit_indore
+
+    # The same PDF reached through http://, the bare host, and the www host
+    # must collapse to one ad with one ID. Hindi copies and other hosts' PDFs drop.
     html = (
-        "<div><p><strong>Advt. No. IITI/Rectt/Faculty/2026/01 — Faculty Positions</strong></p>"
-        "<p><a href='/public/storage/recruitments/advt2026.pdf'>Download</a></p></div>"
+        "<div><p><strong>Notification for Faculty Positions 2026</strong></p>"
+        "<p><a href='http://iiti.ac.in/uploads/career/2026/Aug/teaching/n.pdf'>Notification</a></p>"
+        "<p><a href='https://iiti.ac.in/uploads/career/2026/Aug/teaching/n.pdf'>Notification</a></p>"
+        "<p><a href='https://www.iiti.ac.in/uploads/career/2026/Aug/teaching/n.pdf'>Notification</a></p>"
+        "<p><a href='https://iiti.ac.in/uploads/career/2026/Jul/Advtt - Hindi.pdf'>Hindi</a></p>"
+        "<p><a href='https://library.iiti.ac.in/wp-content/uploads/2025/10/c.pdf'>Circular</a></p></div>"
     )
-    ads = iit_indore.parse(html, "https://www.iiti.ac.in/recruitments/faculty-positions", FETCHED)
+    ads = iit_indore.parse(html, IIT_INDORE_URL, FETCHED)
     assert len(ads) == 1
-    ad = ads[0]
-    assert ad["post_type"] == "Faculty"
-    assert ad["contract_status"] == "Regular"
-    assert ad["ad_number"] == "IITI/Rectt/Faculty/2026/01"
-    assert ad["original_url"].endswith("advt2026.pdf")
+    assert ads[0]["original_url"] == "https://www.iiti.ac.in/uploads/career/2026/Aug/teaching/n.pdf"
+    assert ads[0]["title"] == "Notification for Faculty Positions 2026"
+    http_only = html.replace("https://www.iiti.ac.in/uploads", "http://iiti.ac.in/uploads")
+    assert iit_indore.parse(http_only, IIT_INDORE_URL, FETCHED)[0]["id"] == ads[0]["id"]
 
 
 def test_iit_rolling_split_into_units():

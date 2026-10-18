@@ -1,10 +1,12 @@
 # SPDX-License-Identifier: MIT
 """Site-specific parser for IIT Indore faculty recruitment.
 
-Target: the recruitments/faculty-positions page — loose
-``<p><strong>Title</strong></p>`` followed by ``<p><a href=".pdf">Download</a></p>``.
-Finds PDF links under /public/storage/recruitments/ and associates the nearest
-preceding bold text as the title.
+Target: the careers/teaching_positions page. Each advertisement is a ``.tp-card``
+with a heading, an advertisement number, and a "View" PDF link under
+/uploads/career/. The parser emits one ad per card, using the card heading as the
+title. Links outside a card fall back to the nearest preceding text as the title.
+Hindi copies are dropped, and the mixed iiti.ac.in hosts and http:// links are
+normalized to https://www.iiti.ac.in so one PDF always gets one ID.
 
 Probe-native port of the origin project's scraper/parsers/iit_indore.py (Pydantic JobAd
 output rewritten to plain dicts via make_ad).
@@ -14,7 +16,7 @@ from __future__ import annotations
 
 import re
 from typing import Any, Callable
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit, urlunsplit
 
 from ..ad_factory import make_ad, stable_id
 
@@ -24,6 +26,34 @@ SKIP_TEXTS = {
     "download", "advertisement in hindi", "click here", "view", "pdf",
     "notice", "notice: extension of last date", "extension of last date",
 }
+
+CAREER_PATH = "/uploads/career/"
+CANONICAL_HOST = "www.iiti.ac.in"
+
+
+def _normalize(abs_url: str) -> str:
+    """Return abs_url with the iiti.ac.in host and scheme canonicalized."""
+    parts = urlsplit(abs_url)
+    host = (parts.hostname or "").lower()
+    if host == "iiti.ac.in" or host == CANONICAL_HOST:
+        return urlunsplit(("https", CANONICAL_HOST, parts.path, parts.query, parts.fragment))
+    return abs_url
+
+
+def _is_ad_link(href: str) -> bool:
+    href_lower = href.lower()
+    return CAREER_PATH in href_lower and "hindi" not in href_lower and "_hi." not in href_lower
+
+
+def _card_ad_link(card):
+    """Return the anchor that carries a card's advertisement PDF."""
+    preferred = card.select_one(".tp-adv-link a[href]")
+    if preferred is not None and _is_ad_link(preferred["href"].strip()):
+        return preferred
+    for a in card.find_all("a", href=True):
+        if _is_ad_link(a["href"].strip()):
+            return a
+    return None
 
 
 def parse(html: str, url: str, fetched_at: Any, pdf: Callable | None = None) -> list[dict]:
@@ -36,17 +66,28 @@ def parse(html: str, url: str, fetched_at: Any, pdf: Callable | None = None) -> 
 
     for a in soup.find_all("a", href=True):
         href = a["href"].strip()
-        if "public/storage/recruitments" not in href and "public/storage/career/faculty" not in href:
+        if CAREER_PATH not in href.lower():
             continue
-        abs_url = urljoin(url, href)
+        card = a.find_parent(class_="tp-card")
+        if card is not None and a is not _card_ad_link(card):
+            continue
+        abs_url = _normalize(urljoin(url, href))
         if abs_url in seen:
             continue
         seen.add(abs_url)
 
-        # Walk backwards up the DOM for the nearest bold/heading title.
         title = ""
         ad_number = None
-        node = a.parent
+        if card is not None:
+            heading = card.select_one(".tp-job-title")
+            number = card.select_one(".tp-adv-number")
+            title = heading.get_text(" ", strip=True)[:250] if heading else ""
+            m = AD_NUMBER_RE.search(number.get_text(" ", strip=True)) if number else None
+            if m:
+                ad_number = m.group(0)
+
+        # Outside a card, walk backwards up the DOM for the nearest bold/heading title.
+        node = a.parent if card is None else None
         for _ in range(6):
             if node is None:
                 break
