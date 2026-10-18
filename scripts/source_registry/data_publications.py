@@ -493,13 +493,14 @@ SOURCES = [
            # so the rule allows until 1 July.
            freshness=(ExpectedEdition(release_month=6, grace_days=30, edition=_budget_edition,
                                       edition_of=lambda r: r["year"]),)),
-    Source(id="ministry-ddg-mha", label="Detailed Demands for Grants (MHA, table template)",
+    Source(id="ministry-ddg-mha", label="Detailed Demands for Grants (MHA, card template)",
            host="www.mha.gov.in",
            fetch=lambda: _ddg("mha"), required=("key", "title", "year", "url"),
            document=lambda r: r["url"], document_headers={"User-Agent": SCHEME_FREE_USER_AGENT},
-           # The newest two editions' files sit under `2026-02/` and `2025-02/`, and their
-           # names end in 11 February 2026 and 12 February 2025. The rule allows until
-           # 1 April.
+           # The newest two editions' file names end in 11 February 2026 and 12 February
+           # 2025. The listing carries no date, so the rule allows until 1 April. The
+           # portal config drops the listing's non-DDG card (the first one on the page),
+           # so the document check fetches a DDG volume.
            freshness=(ExpectedEdition(release_month=3, grace_days=31, edition=_budget_edition,
                                       edition_of=lambda r: r["year"]),)),
     Source(id="ministry-ddg-dst", label="Detailed Demands for Grants (DST, list template)",

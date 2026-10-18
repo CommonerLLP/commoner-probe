@@ -23,12 +23,13 @@ needed):
 * ``"card"`` — a Bootstrap-grid "documentRecordTitle" card per document.
   Verified against the Department of Economic Affairs (dea.gov.in) — the
   department hosting the Ministry of Finance's own DDG series (10 editions,
-  2017-18 through 2026-27, one flattened-scan edition at 2022-23).
+  2017-18 through 2026-27, one flattened-scan edition at 2022-23) and MHA
+  (mha.gov.in/finance-division, 14 DDG volumes 2021-22 through 2026-27,
+  verified 2026-10-18 after MHA rebuilt its site).
 * ``"table"`` — one ``<tr>`` per document, title in one ``<td>`` and a
   ``.pdf`` href in another (Drupal Views or WordPress "document category"
-  tables both fit). Verified against MHA (32 docs back to 2012-13, two
-  volumes/year), Department of Expenditure (7 docs back to 2006-07),
-  Department of Land Resources (12 docs), MoEFCC (16 docs back to 2008-09,
+  tables both fit). Verified against Department of Expenditure (7 docs back to
+  2006-07), Department of Land Resources (12 docs), MoEFCC (16 docs back to 2008-09,
   Hindi-only titles — see ``_DEMAND_GRANT_RE``), and MoPNG (18 docs back to
   2008-09).
 * ``"list"`` — a flat run of ``<a href="...pdf">title</a>`` anchors with no
@@ -102,6 +103,11 @@ class MinistryDDGPortal:
     card grid) or ``"table"`` (classic Drupal Views table, mha/doe.gov.in-style).
     ``user_agent`` overrides the default commoner-probe UA for portals whose
     WAF blocks it (see ``SCHEME_FREE_USER_AGENT``).
+    ``demand_grant_titles_only`` drops listed documents whose title doesn't
+    mention "demand" or "grant", for a listing that mixes other budget
+    documents in with the DDG series (mha.gov.in lists its Output Outcome
+    Monitoring Framework first). It applies per portal, so other portals' parsing is
+    unchanged.
     """
 
     ministry_code: str
@@ -109,6 +115,7 @@ class MinistryDDGPortal:
     listing_url: str
     template: str = "card"
     user_agent: str | None = None
+    demand_grant_titles_only: bool = False
 
 
 # Seed registry. Each entry verified live (HTTP 200, real document rows
@@ -123,9 +130,10 @@ MINISTRY_DDG_PORTALS: tuple[MinistryDDGPortal, ...] = (
     MinistryDDGPortal(
         ministry_code="mha",
         ministry_name="Ministry of Home Affairs",
-        listing_url="https://www.mha.gov.in/en/divisionofmha/finance-division",
-        template="table",
+        listing_url="https://www.mha.gov.in/finance-division",
+        template="card",
         user_agent=SCHEME_FREE_USER_AGENT,
+        demand_grant_titles_only=True,
     ),
     MinistryDDGPortal(
         ministry_code="doe",
@@ -417,6 +425,8 @@ class MinistryDDGProbe:
             r = self.session.get(url, timeout=60)
             r.raise_for_status()
             for doc in parser(r.text, url):
+                if self.portal.demand_grant_titles_only and not _DEMAND_GRANT_RE.search(doc["title"]):
+                    continue
                 if doc["url"] not in seen:
                     seen.add(doc["url"])
                     documents.append(doc)

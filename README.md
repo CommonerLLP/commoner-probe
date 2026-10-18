@@ -40,7 +40,7 @@ parseable data. For what each status means, see
 | ❌ broken | Andhra Pradesh government orders (School Education) | goir.ap.gov.in | 2026-10-05 |
 | ❌ broken | Census DCHB Town Release, Nagaland: no date, can't see new releases | censusindia.gov.in | 2026-10-05 |
 | ❌ broken | Detailed Demands for Grants (DEA, card template) | dea.gov.in | 2026-10-05 |
-| ❌ broken | Detailed Demands for Grants (MHA, table template) | www.mha.gov.in | 2026-10-05 |
+| ❌ broken | Detailed Demands for Grants (MHA, card template) | www.mha.gov.in | 2026-10-05 |
 | ❌ broken | MoSPI eSankhyiki UDISE dropout rate: no date, can't see new years | api.mospi.gov.in | 2026-10-05 |
 | ❌ broken | NADA catalogue (MoSPI microdata): no date, can't see new studies | microdata.gov.in | 2026-10-05 |
 | ❌ broken | NITI Aayog Annual Reports (English) | www.niti.gov.in | 2026-10-05 |
