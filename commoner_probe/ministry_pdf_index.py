@@ -18,7 +18,8 @@ template.
 
 Three listing-page templates are confirmed live and supported here, all
 classic server-rendered markup (so a plain HTTP GET is enough — no browser
-needed):
+needed). A fourth, ``"wp_json"``, reads a WordPress JSON API for a site that
+renders its lists in the browser (DST, verified 2026-10-18):
 
 * ``"card"`` — a Bootstrap-grid "documentRecordTitle" card per document.
   Verified against the Department of Economic Affairs (dea.gov.in) — the
@@ -100,7 +101,9 @@ class MinistryDDGPortal:
     """One ministry/department's DDG listing page.
 
     ``template`` selects the parser: ``"card"`` (dea.gov.in-style Bootstrap
-    card grid) or ``"table"`` (classic Drupal Views table, mha/doe.gov.in-style).
+    card grid), ``"table"`` (classic Drupal Views table, mha/doe.gov.in-style),
+    ``"list"`` (flat anchor list) or ``"wp_json"`` (a WordPress JSON API; see
+    ``wp_json_post_name``).
     ``user_agent`` overrides the default commoner-probe UA for portals whose
     WAF blocks it (see ``SCHEME_FREE_USER_AGENT``).
     ``demand_grant_titles_only`` drops listed documents whose title doesn't
@@ -108,6 +111,10 @@ class MinistryDDGPortal:
     documents in with the DDG series (mha.gov.in lists its Output Outcome
     Monitoring Framework first). It applies per portal, so other portals' parsing is
     unchanged.
+    ``wp_json_post_name`` is used by the ``"wp_json"`` template only. The
+    ``listing_url`` is then a JSON list endpoint that takes a ``page``
+    parameter, and this is the ``post_name`` of the post, in that list, whose
+    attached files are the DDG editions.
     """
 
     ministry_code: str
@@ -116,6 +123,7 @@ class MinistryDDGPortal:
     template: str = "card"
     user_agent: str | None = None
     demand_grant_titles_only: bool = False
+    wp_json_post_name: str | None = None
 
 
 # Seed registry. Each entry verified live (HTTP 200, real document rows
@@ -162,8 +170,16 @@ MINISTRY_DDG_PORTALS: tuple[MinistryDDGPortal, ...] = (
     MinistryDDGPortal(
         ministry_code="dst",
         ministry_name="Department of Science and Technology",
-        listing_url="https://dst.gov.in/documents/budget",
-        template="list",
+        # www.dst.gov.in is a Next.js app that renders its document lists in the
+        # browser from a WordPress JSON API (verified 2026-10-18). The old
+        # /documents/budget page is gone. The DDG series is now one post named
+        # "budget" in the orders-and-notices category (see wp_json_post_name).
+        listing_url=(
+            "https://www.dst.gov.in/cms/wp-json/document/documents"
+            "?document_category=orders-and-notices&limit=100"
+        ),
+        template="wp_json",
+        wp_json_post_name="budget",
     ),
     MinistryDDGPortal(
         ministry_code="mopsw",
@@ -353,6 +369,55 @@ def parse_ddg_listing_list(html: str, listing_url: str) -> list[dict[str, Any]]:
     return documents
 
 
+# The post-page endpoint resolves attachment IDs to the posts that hold the
+# PDF URLs. The IDs go in one comma-separated query value, in batches.
+_WP_POST_URL = "https://www.dst.gov.in/cms/wp-json/post-page/post"
+_WP_ID_BATCH = 50
+
+
+def wp_json_file_ids(listing: dict[str, Any], post_name: str) -> list[int] | None:
+    """The attachment IDs of the post named *post_name* in a document list.
+
+    Pure function. Returns ``None`` when the list does not contain the post,
+    so the caller can try the next page. Link entries carry no ID and are
+    skipped.
+    """
+    for post in listing.get("posts") or []:
+        if (post.get("post_name") or post.get("post_slug")) != post_name:
+            continue
+        ids: list[int] = []
+        for item in (post.get("acf_data") or {}).get("file") or []:
+            files = item.get("file") if isinstance(item, dict) else None
+            if isinstance(files, list):
+                ids.extend(f for f in files if isinstance(f, int) and f not in ids)
+        return ids
+    return None
+
+
+def parse_ddg_wp_posts(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    """Map resolved attachment posts to DDG records.
+
+    Pure function. Every entry in the DDG post is an edition, titled either
+    "Detailed Demands for Grants 2026-27" or just "2023-2024", so the year
+    comes from the title and an entry with no year or no PDF URL is skipped.
+    Verified against www.dst.gov.in 2026-10-18.
+    """
+    posts = payload.get("posts") or []
+    if isinstance(posts, dict):
+        posts = [posts]
+    documents: list[dict[str, Any]] = []
+    seen_urls: set[str] = set()
+    for post in posts:
+        title = _clean(post.get("post_title") or "")
+        url = ((post.get("acf_data") or {}).get("pdf") or {}).get("url")
+        year_m = _YEAR_RE.search(title)
+        if not (url and year_m) or url in seen_urls:
+            continue
+        seen_urls.add(url)
+        documents.append({"title": title, "year": f"{year_m.group(1)}-{year_m.group(2)}", "url": url})
+    return documents
+
+
 _PARSERS = {
     "card": parse_ddg_listing_card,
     "list": parse_ddg_listing_list,
@@ -403,7 +468,41 @@ class MinistryDDGProbe:
         self.manifest = out_dir / "manifest.jsonl"
         self.session = make_session(rate_limit_sec=sleep, user_agent=portal.user_agent)
 
+    def _get_json(self, url: str) -> dict[str, Any]:
+        r = self.session.get(url, timeout=60)
+        r.raise_for_status()
+        return json.loads(r.text)
+
+    def _discover_wp_json(self) -> list[dict[str, Any]]:
+        """Two requests that a listing page would have answered in one.
+
+        The list endpoint names the DDG post and its attachment IDs, and the
+        post-page endpoint turns those IDs into titles and PDF URLs.
+        """
+        post_name = self.portal.wp_json_post_name
+        if not post_name:
+            raise ValueError(f"portal {self.portal.ministry_code!r} needs wp_json_post_name")
+        ids: list[int] | None = None
+        page = 1
+        while ids is None and page <= MAX_LISTING_PAGES:
+            listing = self._get_json(f"{self.portal.listing_url}&page={page}")
+            ids = wp_json_file_ids(listing, post_name)
+            if page >= int(listing.get("total_pages") or 0):
+                break
+            page += 1
+        documents: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for i in range(0, len(ids or []), _WP_ID_BATCH):
+            batch = ",".join(str(n) for n in ids[i : i + _WP_ID_BATCH])
+            for doc in parse_ddg_wp_posts(self._get_json(f"{_WP_POST_URL}?id={batch}")):
+                if doc["url"] not in seen:
+                    seen.add(doc["url"])
+                    documents.append(doc)
+        return documents
+
     def discover(self) -> list[dict[str, Any]]:
+        if self.portal.template == "wp_json":
+            return self._discover_wp_json()
         try:
             parser = _PARSERS[self.portal.template]
         except KeyError as exc:

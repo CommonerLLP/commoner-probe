@@ -61,7 +61,7 @@ parseable data. For what each status means, see
 | ✅ fresh | Academic job ads (iit_hyderabad parser, IIT Hyderabad): no posting date, can't see stale ads | www.iith.ac.in | 2026-10-05 |
 | ✅ fresh | Academic job ads (iit_kanpur parser, IIT Kanpur): no posting date, can't see stale ads | iitk.ac.in | 2026-10-05 |
 | ✅ fresh | Academic job ads (private_university parser, Ashoka University): no posting date, can't see stale ads | careers.ashoka.edu.in | 2026-10-05 |
-| ✅ fresh | Detailed Demands for Grants (DST, list template) | dst.gov.in | 2026-10-05 |
+| ✅ fresh | Detailed Demands for Grants (DST, WordPress JSON API) | www.dst.gov.in | 2026-10-05 |
 | ✅ fresh | DoE Pay and Allowances annual reports: no date, can't see new years | doe.gov.in | 2026-10-05 |
 | ✅ fresh | Legacy DSpace (Assam Legislative Assembly Library) | aladigitallibrary.in | 2026-10-05 |
 | ✅ fresh | Lok Sabha attendance (register present for latest session) | sansad.in | 2026-10-05 |
