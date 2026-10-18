@@ -26,14 +26,28 @@ few months old.
 | `dolr` | Department of Land Resources (Rural Dev.) | dolr.gov.in/document-category/detailed-demand-for-grants/ | table | 12 (2020-21→2026-27, some dup. accessible-version PDFs) | 2026-07-09 |
 | `moefcc` | Environment, Forest and Climate Change | moef.gov.in/detailed-demand-for-grants | table | 16 (2008-09→2023-24, Hindi-only titles) | 2026-07-09 |
 | `mopng` | Petroleum and Natural Gas | mopng.gov.in/en/accounts/demands-grants | table | 18 (2008-09→2026-27) | 2026-07-09 |
-| `dst` | Department of Science and Technology | dst.gov.in/documents/budget | list | 10 (2017-18→2026-27) | 2026-07-09 |
+| `dst` | Department of Science and Technology | www.dst.gov.in/cms/wp-json/document/documents?document_category=orders-and-notices (the post named `budget`) | wp_json | 18 (2009-10→2026-27) | 2026-10-18 |
 | `mopsw` | Ports, Shipping and Waterways | shipmin.gov.in/en/division/budgets | table | 17 (2010-11→2026-27, unbroken) | 2026-07-26 |
 
-**Three site templates** are supported (`commoner_probe/ddg.py` docstring has
+**Four site templates** are supported (`commoner_probe/ddg.py` docstring has
 the full markup detail): `card` (Bootstrap grid), `table` (`<tr>/<td>`,
 Drupal Views or WordPress document-category), `list` (flat run of
-`<a href="...pdf">` anchors, no wrapping structure). All three are plain
-server-rendered HTML — no browser needed.
+`<a href="...pdf">` anchors, no wrapping structure), and `wp_json` (a
+WordPress JSON API behind a site that renders its lists in the browser). The
+first three read server-rendered HTML; `wp_json` reads JSON. None needs a
+browser.
+
+**DST (checked 18 October 2026).** DST moved to `www.dst.gov.in`, a Next.js
+site whose pages render their document lists in the browser, and
+`/documents/budget` is gone. The page code loads its lists from a WordPress
+JSON API under `/cms/wp-json/`. The Detailed Demands for Grants are one post,
+with `post_name` `budget`, in the `orders-and-notices` document category. Its
+`acf_data.file` field holds attachment IDs, and
+`/cms/wp-json/post-page/post?id=<comma-separated IDs>` turns them into titles
+and PDF URLs under `/static/uploads/`. The 2026-27, 2025-26, and 2024-25
+editions have full titles, and older ones are titled by year alone, for
+example `2023-2024`. Every year-titled file in that post counts as an
+edition.
 
 ## Verified working, deliberately NOT registered — needs a human decision
 
@@ -57,8 +71,14 @@ routing-params-only `__NEXT_DATA__`/`__N_SSP` payload — the real document
 list is fetched client-side after JavaScript executes. **No amount of
 User-Agent tuning, retrying, or India-based network egress fixes this** — it
 needs either a headless-browser fetch (Playwright) or reverse-engineering the
-underlying JSON API each app calls, neither of which was attempted this
-session (out of scope for a regex-based adapter).
+underlying JSON API each app calls. Neither was attempted in the July 2026
+sessions.
+
+**Update, 18 October 2026:** reading the JSON API worked for DST after it
+migrated to Next.js (see the registered table and the `wp_json` template).
+DST's PDFs sit under `/static/uploads/`, the same path that Power and Labour
+use, which suggests a shared platform. Their `/cms/wp-json/` endpoints
+haven't been checked.
 
 | Ministry/department | Domain(s) checked | Platform | Notes |
 |---|---|---|---|
@@ -158,7 +178,9 @@ there's a specific data need that justifies the per-site research cost.
    group (Housing, MoRTH, MoHFW, Mines, Textiles, Jal Shakti, Rural
    Development's main dept., Commerce) — real research time, not
    infrastructure. Housing and MoRTH's specific failure modes are now
-   documented above as a starting point.
+   documented above as a starting point. For a Next.js site, first look for a
+   WordPress JSON API in the page's JavaScript, as with DST, before you reach
+   for a headless browser.
 4. **The Akamai-fronted group (MeitY, Power, Labour, MCA, and likely
    Agriculture)** is the hardest tier — fingerprint-evasion is a real
    technique with real dual-use weight to it, not something to reach for by
