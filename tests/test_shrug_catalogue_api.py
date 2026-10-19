@@ -1,10 +1,12 @@
 # SPDX-License-Identifier: MIT
 """Offline tests for the SHRUG / Devdatalab catalogue client.
 
-No network. The live grammar these fixtures copy was measured on 2026-08-14
-against www.devdatalab.org: the catalogue endpoint returned 52 rows, each
+No network. The live grammar these fixtures copy was measured against
+www.devdatalab.org. On 2026-08-14 the catalogue endpoint returned 52 rows, each
 download field held an HTML anchor, and a ranged GET reported 79,180,800 bytes
-for a file whose HEAD answered 403.
+for a file whose HEAD answered 403. On 2026-10-05 the download fields held bare
+presigned URLs instead of anchors. ``_download_link`` reads both forms and
+prefers the anchor.
 """
 from __future__ import annotations
 
