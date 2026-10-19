@@ -21,7 +21,7 @@ few months old.
 | Code | Ministry/department | Listing URL | Template | Docs | Checked |
 |---|---|---|---|---|---|
 | `dea` | Department of Economic Affairs (MoF) | dea.gov.in/reports-detail-demands-grants | card | 10 (2017-18→2026-27) | 2026-07-08 |
-| `mha` | Ministry of Home Affairs | mha.gov.in/en/divisionofmha/finance-division | table | 32 (2012-13→2026-27, 2 vols/yr) | 2026-07-09 |
+| `mha` | Ministry of Home Affairs | www.mha.gov.in/finance-division | card | 14 DDG volumes (2021-22→2026-27); the listing also has an Output Outcome Monitoring Framework document, which the `demand_grant_titles_only` filter drops | 2026-10-18 |
 | `doe` | Department of Expenditure (MoF) | doe.gov.in/detailed-demands-for-grants | table | 7 (2006-07→2021-22) | 2026-07-09 |
 | `dolr` | Department of Land Resources (Rural Dev.) | dolr.gov.in/document-category/detailed-demand-for-grants/ | table | 12 (2020-21→2026-27, some dup. accessible-version PDFs) | 2026-07-09 |
 | `moefcc` | Environment, Forest and Climate Change | moef.gov.in/detailed-demand-for-grants | table | 16 (2008-09→2023-24, Hindi-only titles) | 2026-07-09 |
