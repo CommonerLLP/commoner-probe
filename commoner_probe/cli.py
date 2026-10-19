@@ -1690,7 +1690,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Download DPE CPSE CSR documents via WordPress REST API.",
     )
     dpe_csr.add_argument("--out", required=True, help="Output directory")
-    dpe_csr.add_argument("--search", default="csr", help="Search query for the media endpoint (default: 'csr').")
+    dpe_csr.add_argument("--search", default="csr", help="Search query for the Document Repository endpoint (default: 'csr').")
     dpe_csr.add_argument("--max-pages", type=int, default=10, help="Max pages to fetch (default: 10).")
     dpe_csr.add_argument("--sleep", type=float, default=1.0)
     dpe_csr.add_argument(

@@ -13,6 +13,7 @@ from datetime import date
 from pathlib import Path
 
 import pytest
+import requests
 
 from commoner_probe.academia.parsers import PARSERS
 from commoner_probe.annual_report_index import NitiAnnualReportProbe, parse_listing
@@ -337,11 +338,12 @@ def test_dpe_date_is_the_day_part_of_the_wordpress_timestamp(record, expected):
     assert dp._dpe_date(record) == expected
 
 
-def test_dpe_documents_map_media_items_and_skip_empty_ones(monkeypatch):
+def test_dpe_documents_map_repository_posts_and_skip_empty_ones(monkeypatch):
     items = [
         {"id": 456, "date": "2026-01-01T00:00:00", "title": {"rendered": "CSR Document 2025"},
-         "source_url": "https://dpe.gov.in/wp-content/uploads/2026/01/doc.pdf"},
-        {"id": 457, "date": "2025-01-01T00:00:00", "title": {"rendered": "No file"}},
+         "source_url": "https://www.dpe.gov.in/static/uploads/2026/01/doc.pdf"},
+        {"id": 457, "date": "2025-01-01T00:00:00", "title": {"rendered": "No file"},
+         "guid": {"rendered": "https://cms-dpe.digifootprint.gov.in/?post_type=central_documents&p=457"}},
     ]
     monkeypatch.setattr(DpeCsrProbe, "fetch_page", lambda self, page, per_page=100, search="csr": items)
     source = BY_ID["dpe-csr"]
@@ -349,6 +351,12 @@ def test_dpe_documents_map_media_items_and_skip_empty_ones(monkeypatch):
     assert [r["key"] for r in records] == ["DPE_CSR|456"]
     assert _complete(source, records[0])
     assert cs.newest_date(records, source.record_date, date(2026, 10, 5)) == "2026-01-01"
+
+
+def test_dpe_source_uses_the_www_host_and_the_scheme_free_user_agent():
+    source = BY_ID["dpe-csr"]
+    assert source.host == "www.dpe.gov.in"
+    assert source.document_headers == {"User-Agent": dp.SCHEME_FREE_USER_AGENT}
 
 
 def test_mca_csr_exports_the_year_the_adapter_documents(monkeypatch):
@@ -380,6 +388,61 @@ def test_udise_docs_record_has_no_hash_when_the_body_is_not_a_pdf(monkeypatch):
     records = BY_ID["udise-docs"].fetch()
     assert records[0]["fetch_status"] == "not_pdf"
     assert not _complete(BY_ID["udise-docs"], records[0])
+
+
+class _FailingPortal:
+    """Raises on every get, as a host that doesn't answer does."""
+
+    def __init__(self, exc):
+        self.exc = exc
+
+    def get(self, url, **kwargs):
+        raise self.exc
+
+
+class _StatusPortal:
+    """Answers every get with `status` and an error page."""
+
+    def __init__(self, status):
+        self.status = status
+
+    def get(self, url, **kwargs):
+        from tests.test_udise_documents import _Response
+
+        return _Response(b"<html>Error</html>", self.status, "text/html")
+
+
+def _check_udise(monkeypatch, session, *, control=lambda: True):
+    monkeypatch.setattr(dp, "UdiseDocumentProbe", functools.partial(UdiseDocumentProbe, session=session))
+    context = cs.Context(today=date(2026, 10, 18), results={}, records={}, state={},
+                         geo_fenced=frozenset())
+    obs, _ = cs.check_source(BY_ID["udise-docs"], context, control=control,
+                             fetch_document=lambda url, headers: (200, "application/pdf", b"%PDF-"))
+    return obs
+
+
+def test_udise_docs_reports_a_connection_failure_as_no_response(monkeypatch):
+    portal = _FailingPortal(requests.exceptions.ConnectTimeout("api.udiseplus.gov.in timed out"))
+    obs = _check_udise(monkeypatch, portal)
+    assert obs.outcome == cs.NO_RESPONSE
+
+
+def test_udise_docs_reports_a_failed_control_as_control_failed(monkeypatch):
+    portal = _FailingPortal(requests.exceptions.ConnectTimeout("api.udiseplus.gov.in timed out"))
+    obs = _check_udise(monkeypatch, portal, control=lambda: False)
+    assert obs.outcome == cs.CONTROL_FAILED
+
+
+@pytest.mark.parametrize("status", [404, 503])
+def test_udise_docs_reports_an_http_error_status_as_http_error(monkeypatch, status):
+    obs = _check_udise(monkeypatch, _StatusPortal(status))
+    assert obs.outcome == cs.HTTP_ERROR
+    assert obs.http_status == status
+
+
+def test_udise_docs_still_reports_a_200_without_a_pdf_as_broken(monkeypatch):
+    obs = _check_udise(monkeypatch, UdisePortal(gone={"DCF0112"}))
+    assert obs.outcome == cs.BROKEN
 
 
 def test_koha_items_carry_the_biblio_title_and_the_portal_total(monkeypatch):

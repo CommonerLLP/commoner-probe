@@ -171,6 +171,18 @@ def _shrug_sentinel() -> dict | None:
                 None)
 
 
+SHRUG_BUCKET_HOST = "shrug-assets-ddl.s3.amazonaws.com"
+
+
+def _off_the_shrug_bucket(url: str) -> bool:
+    """Respect robots.txt for a SHRUG file unless it's on the SHRUG bucket.
+
+    The bucket's /robots.txt answers 403 AccessDenied, which RetrySession reads
+    as disallow-all.
+    """
+    return urlparse(url).hostname != SHRUG_BUCKET_HOST
+
+
 # -- DoE Pay and Allowances annual reports -------------------------------------
 
 
@@ -210,7 +222,7 @@ def _niti_reports() -> list[dict]:
 
 
 def _dpe_date(r: dict) -> str:
-    """The ISO date of a DPE media upload, from the WordPress `date` field, or ""."""
+    """The ISO date of a DPE Document Repository post, from the WordPress `date` field, or ""."""
     return (r.get("date") or "")[:10]
 
 
@@ -232,10 +244,49 @@ def _mca_export() -> list[dict]:
 # -- UDISE+ public documents ---------------------------------------------------
 
 
+class _RecordingSession:
+    """Wraps a session and keeps the last exception that `get` raised.
+
+    The probe catches a failed fetch and records it as `fetch_status: "error"`,
+    so the checker never sees the exception. This wrapper keeps the original
+    object, so the checker can classify it.
+    """
+
+    def __init__(self, session):
+        self._session = session
+        self.last_error: BaseException | None = None
+
+    def get(self, *args, **kwargs):
+        try:
+            return self._session.get(*args, **kwargs)
+        except Exception as exc:
+            self.last_error = exc
+            raise
+
+    def __getattr__(self, name):
+        return getattr(self._session, name)
+
+
 def _udise_documents() -> list[dict]:
-    """Fetch the first document of the `UploadedFiles` folder through the adapter's own probe."""
-    return UdiseDocumentProbe(SCRATCH / "udise-docs", sleep=0).probe(
-        folders=["UploadedFiles"], max_records=1)
+    """Fetch the first document of the `UploadedFiles` folder through the adapter's own probe.
+
+    The probe turns a failed fetch into a record, and a 4xx or 5xx answer into a
+    `not_pdf` record, and neither has a hash. Without a hash, the checker reads
+    both as a broken contract. This function re-raises the original connection
+    error, or raises `HTTP <status> <url>`, so the checker reports a host that
+    doesn't answer as no response or an HTTP error.
+    """
+    probe = UdiseDocumentProbe(SCRATCH / "udise-docs", sleep=0)
+    session = probe.session = _RecordingSession(probe.session)
+    records = probe.probe(folders=["UploadedFiles"], max_records=1)
+    if records and session.last_error is not None and all(
+            r.get("fetch_status") == "error" for r in records):
+        raise session.last_error
+    for record in records:
+        status = record.get("http_status")
+        if isinstance(status, int) and status >= 400:
+            raise RuntimeError(f"HTTP {status} {record.get('url')}")
+    return records
 
 
 # -- Koha (NITI Aayog library) -------------------------------------------------
@@ -412,11 +463,13 @@ SOURCES = [
     Source(id="shrug", label="SHRUG table catalogue (Development Data Lab): no date, can't see new tables",
            host="www.devdatalab.org",
            # The catalogue carries no date. On 5 October 2026 its download cells hold
-           # bare URLs where the adapter reads an anchor `href`, so `url` is empty and
-           # the contract check fails.
+           # bare presigned URLs, which the adapter reads as well as anchor `href`s.
+           # The S3 bucket's robots.txt answers 403, so the document check skips
+           # robots.txt for that host only, as committees-rs does for its PDF bucket.
            fetch=_shrug_tables, required=("table_label", "filetype", "url"),
            total=lambda: len(_shrug_tables()),
            document=lambda r: r["url"], document_kind="zip",
+           document_respect_robots=_off_the_shrug_bucket,
            # The sentinel only proves that a known table is still listed.
            freshness=(Sentinel(_shrug_sentinel, lambda r: r["table_label"],
                                "2011 Population Census Village Directory"),
@@ -440,21 +493,23 @@ SOURCES = [
            # so the rule allows until 1 July.
            freshness=(ExpectedEdition(release_month=6, grace_days=30, edition=_budget_edition,
                                       edition_of=lambda r: r["year"]),)),
-    Source(id="ministry-ddg-mha", label="Detailed Demands for Grants (MHA, table template)",
+    Source(id="ministry-ddg-mha", label="Detailed Demands for Grants (MHA, card template)",
            host="www.mha.gov.in",
            fetch=lambda: _ddg("mha"), required=("key", "title", "year", "url"),
            document=lambda r: r["url"], document_headers={"User-Agent": SCHEME_FREE_USER_AGENT},
-           # The newest two editions' files sit under `2026-02/` and `2025-02/`, and their
-           # names end in 11 February 2026 and 12 February 2025. The rule allows until
-           # 1 April.
+           # The newest two editions' file names end in 11 February 2026 and 12 February
+           # 2025. The listing carries no date, so the rule allows until 1 April. The
+           # portal config drops the listing's non-DDG card (the first one on the page),
+           # so the document check fetches a DDG volume.
            freshness=(ExpectedEdition(release_month=3, grace_days=31, edition=_budget_edition,
                                       edition_of=lambda r: r["year"]),)),
-    Source(id="ministry-ddg-dst", label="Detailed Demands for Grants (DST, list template)",
-           host="dst.gov.in",
+    Source(id="ministry-ddg-dst", label="Detailed Demands for Grants (DST, WordPress JSON API)",
+           host="www.dst.gov.in",
            fetch=lambda: _ddg("dst"), required=("key", "title", "year", "url"),
            document=lambda r: r["url"],
-           # The adapter's docstring lists ten editions through 2026-27 on 9 July 2026.
-           # No earlier release date is known, so the rule allows until 1 July.
+           # The 2026-27 edition was posted on 23 April 2026 and the 2025-26 edition on
+           # 9 October 2025, so the rule allows until 1 July. The API serves editions
+           # back to 2009-10.
            freshness=(ExpectedEdition(release_month=6, grace_days=30, edition=_budget_edition,
                                       edition_of=lambda r: r["year"]),)),
     Source(id="niti-annual-report", label="NITI Aayog Annual Reports (English)", host="www.niti.gov.in",
@@ -467,10 +522,13 @@ SOURCES = [
            # allows until 1 July for the report of the fiscal year that ended in March.
            freshness=(ExpectedEdition(release_month=6, grace_days=30, edition=_niti_edition,
                                       edition_of=lambda r: r["report_year"]),)),
-    Source(id="dpe-csr", label="DPE CPSE CSR documents (WordPress media)", host="dpe.gov.in",
+    Source(id="dpe-csr", label="DPE CPSE CSR documents (Document Repository)", host="www.dpe.gov.in",
            fetch=_dpe_documents, required=("key", "id", "title", "url"),
            record_date=_dpe_date,
-           document=lambda r: r["url"], document_kind="any-non-html",
+           # www.dpe.gov.in answers 403 to the default user agent, on robots.txt too.
+           # Verified live 18 October 2026.
+           document=lambda r: r["url"], document_headers={"User-Agent": SCHEME_FREE_USER_AGENT},
+           document_kind="any-non-html",
            # Nothing documents how often DPE uploads CSR files. A year is the longest
            # gap an annual publication allows.
            freshness=(MaxAge(365),)),

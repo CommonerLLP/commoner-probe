@@ -250,7 +250,7 @@ scope for this adapter (state statutory instruments only).
 ### Shape G — DPE CPSE CSR document (`kind = "dpe_csr_document"`)
 
 One record per CSR disclosure document produced by `commoner-probe dpe-csr`.
-Sourced from `dpe.gov.in/cms/wp-json`.
+Sourced from `www.dpe.gov.in/cms/wp-json` (Document Repository posts).
 
 | Field | Type | Required | Enum / format | Provenance |
 |---|---|---|---|---|

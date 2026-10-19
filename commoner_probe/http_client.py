@@ -539,8 +539,16 @@ if requests is not None:
             # public-interest official sources (e.g. a recruitment portal that
             # blanket-disallows crawlers); callers gate it on registry config.
             if respect_robots:
-                rp = _get_robot_parser(url, user_agent=self._user_agent)
-                if not rp.can_fetch(self._user_agent, url):
+                # Ask permission as the identity we will actually send, as
+                # StdlibSession does. A per-request User-Agent made the robots
+                # check answer for the session default, and a WAF that answers
+                # the default with 403 turned that into "disallow all". Merge
+                # case-insensitively so a lowercase ``user-agent`` key counts.
+                merged = requests.structures.CaseInsensitiveDict(self._session.headers)
+                merged.update(kwargs.get("headers") or {})
+                user_agent = merged.get("User-Agent") or self._user_agent
+                rp = _get_robot_parser(url, user_agent=user_agent)
+                if not rp.can_fetch(user_agent, url):
                     raise PermissionError(f"Disallowed by robots.txt: {url}")
             domain = urlparse(url).netloc
             _rate_limit(domain, self.rate_limit_sec)

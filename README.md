@@ -40,7 +40,7 @@ parseable data. For what each status means, see
 | ❌ broken | Andhra Pradesh government orders (School Education) | goir.ap.gov.in | 2026-10-05 |
 | ❌ broken | Census DCHB Town Release, Nagaland: no date, can't see new releases | censusindia.gov.in | 2026-10-05 |
 | ❌ broken | Detailed Demands for Grants (DEA, card template) | dea.gov.in | 2026-10-05 |
-| ❌ broken | Detailed Demands for Grants (MHA, table template) | www.mha.gov.in | 2026-10-05 |
+| ❌ broken | Detailed Demands for Grants (MHA, card template) | www.mha.gov.in | 2026-10-05 |
 | ❌ broken | MoSPI eSankhyiki UDISE dropout rate: no date, can't see new years | api.mospi.gov.in | 2026-10-05 |
 | ❌ broken | NADA catalogue (MoSPI microdata): no date, can't see new studies | microdata.gov.in | 2026-10-05 |
 | ❌ broken | NITI Aayog Annual Reports (English) | www.niti.gov.in | 2026-10-05 |
@@ -49,7 +49,7 @@ parseable data. For what each status means, see
 | ❌ broken | SHRUG table catalogue (Development Data Lab): no date, can't see new tables | www.devdatalab.org | 2026-10-05 |
 | ❌ broken | UDISE+ public documents: pinned catalogue, can't see new documents | api.udiseplus.gov.in | 2026-10-05 |
 | ❌ broken | Union Budget Demand for Grants (static URL table) | indiabudget.gov.in | 2026-10-05 |
-| 🔴 down | DPE CPSE CSR documents (WordPress media) | dpe.gov.in | 2026-10-05 |
+| 🔴 down | DPE CPSE CSR documents (Document Repository) | www.dpe.gov.in | 2026-10-05 |
 | 🔴 down | MCA CSR company spend, FY 2022-23: no date, can't see new years | mcacdm.nic.in | 2026-10-05 |
 | 🔴 down | Rajya Sabha daily question lists | sansad.in | 2026-10-05 |
 | ❓ unreachable | CAG State Finance Accounts Vol-II (Gujarat) | cag.gov.in | 2026-10-05 |
@@ -61,7 +61,7 @@ parseable data. For what each status means, see
 | ✅ fresh | Academic job ads (iit_hyderabad parser, IIT Hyderabad): no posting date, can't see stale ads | www.iith.ac.in | 2026-10-05 |
 | ✅ fresh | Academic job ads (iit_kanpur parser, IIT Kanpur): no posting date, can't see stale ads | iitk.ac.in | 2026-10-05 |
 | ✅ fresh | Academic job ads (private_university parser, Ashoka University): no posting date, can't see stale ads | careers.ashoka.edu.in | 2026-10-05 |
-| ✅ fresh | Detailed Demands for Grants (DST, list template) | dst.gov.in | 2026-10-05 |
+| ✅ fresh | Detailed Demands for Grants (DST, WordPress JSON API) | www.dst.gov.in | 2026-10-05 |
 | ✅ fresh | DoE Pay and Allowances annual reports: no date, can't see new years | doe.gov.in | 2026-10-05 |
 | ✅ fresh | Legacy DSpace (Assam Legislative Assembly Library) | aladigitallibrary.in | 2026-10-05 |
 | ✅ fresh | Lok Sabha attendance (register present for latest session) | sansad.in | 2026-10-05 |

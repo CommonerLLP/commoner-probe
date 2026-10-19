@@ -1,0 +1,301 @@
+{
+ "posts": [
+  {
+   "ID": 38593,
+   "post_author": "77",
+   "post_date": "2026-04-30 14:19:48",
+   "post_date_gmt": "2026-04-30 08:49:48",
+   "post_content": "",
+   "post_title": "OM dated 09.03.2026",
+   "post_excerpt": "",
+   "post_status": "publish",
+   "comment_status": "closed",
+   "ping_status": "closed",
+   "post_password": "",
+   "post_name": "om-dated-09-03-2026",
+   "to_ping": "",
+   "pinged": "",
+   "post_modified": "2026-04-30 14:19:48",
+   "post_modified_gmt": "2026-04-30 08:49:48",
+   "post_content_filtered": "",
+   "post_parent": 0,
+   "guid": "https://cms-dst.digifootprint.gov.in/?post_type=documents&#038;p=38593",
+   "menu_order": 0,
+   "post_type": "documents",
+   "post_mime_type": "",
+   "comment_count": "0",
+   "filter": "raw",
+   "post_slug": "om-dated-09-03-2026",
+   "acf_data": {
+    "persona": [
+     "For Students/ Research Fellows",
+     "For Citizens"
+    ],
+    "title": "OM dated 09.03.2026",
+    "date": "09/03/2026",
+    "file": [
+     {
+      "type": "PDF",
+      "title": "",
+      "external_link": "",
+      "content": "",
+      "file": [
+       38579
+      ]
+     }
+    ]
+   },
+   "tags": [],
+   "documents_category": [
+    {
+     "term_id": 423,
+     "name": "OMs and Guidelines",
+     "slug": "oms-and-guidelines",
+     "term_group": 0,
+     "term_taxonomy_id": 423,
+     "taxonomy": "documents_category",
+     "description": "",
+     "parent": 140,
+     "count": 11,
+     "filter": "raw"
+    },
+    {
+     "term_id": 140,
+     "name": "Orders and Notices",
+     "slug": "orders-and-notices",
+     "term_group": 0,
+     "term_taxonomy_id": 140,
+     "taxonomy": "documents_category",
+     "description": "",
+     "parent": 0,
+     "count": 39,
+     "filter": "raw"
+    }
+   ]
+  },
+  {
+   "ID": 18835,
+   "post_author": "76",
+   "post_date": "2026-02-02 16:54:09",
+   "post_date_gmt": "2026-02-02 11:24:09",
+   "post_content": "",
+   "post_title": "Budget",
+   "post_excerpt": "",
+   "post_status": "publish",
+   "comment_status": "closed",
+   "ping_status": "closed",
+   "post_password": "",
+   "post_name": "budget",
+   "to_ping": "",
+   "pinged": "",
+   "post_modified": "2026-04-23 15:07:27",
+   "post_modified_gmt": "2026-04-23 09:37:27",
+   "post_content_filtered": "",
+   "post_parent": 0,
+   "guid": "https://cms-dst.digifootprint.gov.in/?post_type=documents&#038;p=18835",
+   "menu_order": 0,
+   "post_type": "documents",
+   "post_mime_type": "",
+   "comment_count": "0",
+   "filter": "raw",
+   "post_slug": "budget",
+   "acf_data": {
+    "persona": [
+     "For Students/ Research Fellows",
+     "For Women"
+    ],
+    "title": "Budget",
+    "date": "20/01/2026",
+    "file": [
+     {
+      "type": "PDF",
+      "title": "",
+      "external_link": "",
+      "content": "",
+      "file": [
+       38255
+      ]
+     },
+     {
+      "type": "PDF",
+      "title": "",
+      "external_link": "",
+      "content": "",
+      "file": [
+       10757
+      ]
+     },
+     {
+      "type": "PDF",
+      "title": "",
+      "external_link": "",
+      "content": "",
+      "file": [
+       10760
+      ]
+     },
+     {
+      "type": "PDF",
+      "title": "",
+      "external_link": "",
+      "content": "",
+      "file": [
+       15501
+      ]
+     },
+     {
+      "type": "PDF",
+      "title": "",
+      "external_link": "",
+      "content": "",
+      "file": [
+       15504
+      ]
+     },
+     {
+      "type": "PDF",
+      "title": "",
+      "external_link": "",
+      "content": "",
+      "file": [
+       15507
+      ]
+     },
+     {
+      "type": "PDF",
+      "title": "",
+      "external_link": "",
+      "content": "",
+      "file": [
+       15510
+      ]
+     },
+     {
+      "type": "PDF",
+      "title": "",
+      "external_link": "",
+      "content": "",
+      "file": [
+       15513
+      ]
+     },
+     {
+      "type": "PDF",
+      "title": "",
+      "external_link": "",
+      "content": "",
+      "file": [
+       15516
+      ]
+     },
+     {
+      "type": "PDF",
+      "title": "",
+      "external_link": "",
+      "content": "",
+      "file": [
+       15519
+      ]
+     },
+     {
+      "type": "PDF",
+      "title": "",
+      "external_link": "",
+      "content": "",
+      "file": [
+       15522
+      ]
+     },
+     {
+      "type": "PDF",
+      "title": "",
+      "external_link": "",
+      "content": "",
+      "file": [
+       18805
+      ]
+     },
+     {
+      "type": "PDF",
+      "title": "",
+      "external_link": "",
+      "content": "",
+      "file": [
+       18806
+      ]
+     },
+     {
+      "type": "PDF",
+      "title": "",
+      "external_link": "",
+      "content": "",
+      "file": [
+       18807
+      ]
+     },
+     {
+      "type": "PDF",
+      "title": "",
+      "external_link": "",
+      "content": "",
+      "file": [
+       18808
+      ]
+     },
+     {
+      "type": "PDF",
+      "title": "",
+      "external_link": "",
+      "content": "",
+      "file": [
+       18809
+      ]
+     },
+     {
+      "type": "PDF",
+      "title": "",
+      "external_link": "",
+      "content": "",
+      "file": [
+       18810
+      ]
+     },
+     {
+      "type": "PDF",
+      "title": "List of Grantee/Autonomous Institutions (2017-2022...",
+      "external_link": "https://public.tableau.com/app/not-found",
+      "content": "",
+      "file": [
+       18811
+      ]
+     },
+     {
+      "type": "Link",
+      "title": "List of Grantee/Autonomous Institutions (2017-2022...",
+      "external_link": "https://public.tableau.com/app/not-found",
+      "content": "",
+      "file": null
+     }
+    ]
+   },
+   "tags": [],
+   "documents_category": [
+    {
+     "term_id": 140,
+     "name": "Orders and Notices",
+     "slug": "orders-and-notices",
+     "term_group": 0,
+     "term_taxonomy_id": 140,
+     "taxonomy": "documents_category",
+     "description": "",
+     "parent": 0,
+     "count": 39,
+     "filter": "raw"
+    }
+   ]
+  }
+ ],
+ "total_items": 39,
+ "total_pages": 1,
+ "current_page": 1
+}

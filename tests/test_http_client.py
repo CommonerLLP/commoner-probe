@@ -712,3 +712,44 @@ def test_stdlib_session_body_read_is_bounded(monkeypatch):
     monkeypatch.setattr(hc, "MAX_RESPONSE_BYTES", 1024)
     with pytest.raises(hc.ResponseTooLarge):
         hc.StdlibSession().get("https://example.gov.in/huge")
+
+
+def _waf_session(monkeypatch):
+    """A RetrySession whose robots.txt answers 403 to the default User-Agent
+    and 404 (no robots.txt, fail open) to any other, like indiabudget.gov.in."""
+    monkeypatch.setattr(hc, "is_safe_url", lambda url: True)
+
+    def waf_urlopen(req, timeout=None):
+        status = 403 if req.headers.get("User-agent") == hc.USER_AGENT else 404
+        raise urllib.error.HTTPError(req.full_url, status, "x", hdrs=None, fp=None)
+
+    monkeypatch.setattr(hc.urllib.request, "urlopen", waf_urlopen)
+    session = hc.RetrySession(rate_limit_sec=0)
+    session._session = _StubTransport([200])
+    session._session.headers = hc.requests.structures.CaseInsensitiveDict(
+        {"User-Agent": hc.USER_AGENT}
+    )
+    return session
+
+
+@requires_requests
+@pytest.mark.parametrize("header_key", ["User-Agent", "user-agent"])
+def test_retry_session_robots_check_uses_the_request_user_agent(monkeypatch, header_key):
+    """The requests-backed session checked robots.txt as the session default
+    and ignored a per-request User-Agent, so a WAF that 403s the default
+    (budget-union) turned into "disallow all" for a request that sends its own
+    identity. A lowercase key must count too."""
+    _clear_cache()
+    session = _waf_session(monkeypatch)
+    resp = session.get(
+        "https://waf.example/doc.xlsx", headers={header_key: "scheme-free-agent/1.0"}
+    )
+    assert resp.status_code == 200
+
+
+@requires_requests
+def test_retry_session_robots_check_still_blocks_the_default_user_agent(monkeypatch):
+    _clear_cache()
+    session = _waf_session(monkeypatch)
+    with pytest.raises(PermissionError, match="robots.txt"):
+        session.get("https://waf.example/doc.xlsx")
