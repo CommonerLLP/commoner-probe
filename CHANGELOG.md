@@ -2,7 +2,25 @@
 
 ## Unreleased
 
+**`document_class` changes on re-run for every `generic`-parsed institution.**
+Menu, header and footer links now carry `navigation`, so a consumer that drops
+non-openings by name shows fewer records. Re-run `academic-jobs`, then add
+`navigation` and `admission_notice` to the consumer's drop list. Record IDs do
+not change.
+
+### Added
+
+- **Two `document_class` values: `navigation` and `admission_notice`.** The
+  `generic` parser labels a link `navigation` when it sits in `<nav>`,
+  `<header>`, `<footer>`, `<marquee>`, `role="navigation"` or a menu or
+  dropdown class. It also labels a bare section heading such as "Project Jobs"
+  when it links an HTML page. `admission_notice` marks admissions rounds that a
+  careers page lists beside its jobs. Both are labels. No record is dropped.
+
 ### Fixed
+
+- **"Result Notification for the Post of …" is now `results_notice`.** The
+  pattern matched only "Notification of … results".
 
 - **Rajya Sabha committee reports stopped at March 2026.** `committees --house rs`
   now reads the Rajya Sabha Secretariat's current endpoint on

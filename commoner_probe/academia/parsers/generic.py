@@ -18,7 +18,7 @@ from typing import Any, Callable
 from urllib.parse import urljoin
 
 from .._common import PLACEHOLDER_INSTITUTION_ID, iso, stable_id
-from .parser_utils import classify_document
+from .parser_utils import DOCUMENT_CLASS_NAVIGATION, classify_document
 
 RECRUITMENT_KEYWORDS = [
     r"recruit", r"vacanc", r"advert", r"non[- ]?teaching", r"ministerial",
@@ -53,6 +53,28 @@ CAREERS_JOB_URL_RE = re.compile(
     r"/(career|careers|jobs?)/(staff/)?[^/]*\.(pdf|docx?)$|/(career|careers|jobs?)/jobs?/\d+", re.I
 )
 
+# Site chrome repeats the careers links on every page. Only the TAG marks a
+# header: BITS wraps its real advertisements in `class="header-…"`.
+_CHROME_TAGS = frozenset({"nav", "header", "footer", "marquee"})
+_CHROME_CLASS_PARTS = frozenset({
+    "nav", "navbar", "navigation", "menu", "menubar", "megamenu", "submenu",
+    "dropdown", "breadcrumb", "breadcrumbs",
+})
+# A heading names a section, not a post: "Project Jobs", "Teaching Positions".
+# One word outside this set ("Assistant", "Professors", "2026") makes it specific.
+_HEADING_WORDS = frozenset({
+    "faculty", "teaching", "non", "nonteaching", "position", "positions", "job",
+    "jobs", "opening", "openings", "other", "project", "projects", "research",
+    "staff", "recruitment", "recruitments", "career", "careers", "vacancy",
+    "vacancies", "fellowship", "fellowships", "guest", "visiting", "and", "jrf",
+    "srf", "post", "doctoral", "postdoctoral", "opportunities", "current",
+    "archived", "announcements", "role", "roles", "open", "examination", "for",
+    "at", "policies", "policy", "temporary", "contractual", "regular",
+    "academic", "administrative", "technical", "scientific", "with", "us",
+    "work", "join",
+})
+_DOCUMENT_HREF_RE = re.compile(r"\.(pdf|docx?|xlsx?)(?:$|[?#])", re.I)
+
 _MONTHS = {m: i for i, m in enumerate(
     ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"], start=1)}
 
@@ -71,6 +93,23 @@ def _is_recruitment_link(link_text: str, href: str, surrounding_text: str) -> bo
         re.search(k, context_hay, re.IGNORECASE)
         for k in ("advert", "recruit", "vacanc", "fellow", "position")
     )
+
+
+def _in_site_chrome(a: Any) -> bool:
+    for el in a.parents:
+        if el.name in _CHROME_TAGS or el.get("role") == "navigation":
+            return True
+        for token in [*(el.get("class") or []), el.get("id") or ""]:
+            if _CHROME_CLASS_PARTS & set(re.split(r"[-_:\s]+", token.lower())):
+                return True
+    return False
+
+
+def _is_section_heading(title: str, href: str) -> bool:
+    if _DOCUMENT_HREF_RE.search(href):
+        return False
+    words = re.findall(r"[a-z]+", title.lower())
+    return 0 < len(words) <= 6 and set(words) <= _HEADING_WORDS
 
 
 def _extract_ad_number(text: str) -> str | None:
@@ -182,6 +221,11 @@ def parse(html: str, url: str, fetched_at: Any, pdf: Callable | None = None) -> 
         else:
             title = link_text
 
+        if _in_site_chrome(a) or (not ad_number and _is_section_heading(title, abs_url)):
+            document_class = DOCUMENT_CLASS_NAVIGATION
+        else:
+            document_class = classify_document(title, abs_url)
+
         ad_number_or_title = ad_number or title
         ads.append({
             "id": stable_id("pending-inst-id", ad_number_or_title, pub or close or ""),
@@ -204,7 +248,7 @@ def parse(html: str, url: str, fetched_at: Any, pdf: Callable | None = None) -> 
             # `context` is NOT passed. It holds every sibling anchor's text, so
             # an advertisement sharing a cell with its corrigendum was labelled
             # `corrigendum` and vanished from any consumer filtering non-ads.
-            "document_class": classify_document(title, abs_url),
+            "document_class": document_class,
             "original_url": abs_url,
             "snapshot_fetched_at": iso(fetched_at),
             "parse_confidence": 0.5 if RECRUITMENT_LINK_RE.search(f"{link_text} {href}") else 0.4,

@@ -891,3 +891,102 @@ def test_classify_document_ignores_a_query_string():
     from commoner_probe.academia.parsers.parser_utils import classify_document
 
     assert classify_document("Advertisement for Professor", "/apply?doc=corrigendum") == "advertisement"
+
+
+def test_generic_parser_labels_site_chrome_as_navigation():
+    """Menus, headers and footers repeat the careers links on every page.
+
+    BITS, Plaksha, UoH, TISS and ISB each produced menu items as ads on
+    2026-10-31: "Jobs", "Research Positions", "Teaching Positions". They are
+    labelled, never dropped, so a wrong label stays visible.
+    """
+    pytest.importorskip("bs4")
+    from commoner_probe.academia.parsers import generic
+
+    html = (
+        '<header><a href="/careers">Careers @ UoH Job Postings & Recruitment</a></header>'
+        '<nav><ul class="dropdown-menu"><li><a href="/jobs/teaching/">Teaching Positions</a></li></ul></nav>'
+        '<div class="main-menu"><a href="/recruitment/research">Research Positions</a></div>'
+        '<div role="navigation"><a href="/jobs">Jobs</a></div>'
+        '<footer><a href="/careers/jobs/non-faculty">Non-Faculty Roles</a></footer>'
+        '<main><a href="/advt/2026-02.pdf">Faculty Positions: Professors, Associate &amp; '
+        'Assistant Professors (37 posts)</a></main>'
+    )
+    ads = generic.parse(html, "https://demo.example.ac.in/careers", FETCHED_GENERIC)
+
+    by_title = {a["title"]: a["document_class"] for a in ads}
+    assert by_title["Careers @ UoH Job Postings & Recruitment"] == "navigation"
+    assert by_title["Teaching Positions"] == "navigation"
+    assert by_title["Research Positions"] == "navigation"
+    assert by_title["Jobs"] == "navigation"
+    assert by_title["Non-Faculty Roles"] == "navigation"
+    assert by_title[
+        "Faculty Positions: Professors, Associate & Assistant Professors (37 posts)"
+    ] == "advertisement"
+
+
+def test_a_header_css_class_does_not_mark_navigation():
+    """BITS wraps its real advertisements in `class="header-…"`. Only the tag counts."""
+    pytest.importorskip("bs4")
+    from commoner_probe.academia.parsers import generic
+
+    html = (
+        '<div class="page-header"><a href="/lead-pop">Inviting Applications For LEAD '
+        'Centre - Professor of Practice - Hyderabad Campus</a></div>'
+    )
+    ads = generic.parse(html, "https://demo.example.ac.in/careers", FETCHED_GENERIC)
+    assert ads[0]["document_class"] == "advertisement"
+
+
+def test_a_category_heading_outside_a_menu_is_navigation():
+    """IIT Roorkee lists its sections as plain links: "Project Jobs", "Faculty Positions"."""
+    pytest.importorskip("bs4")
+    from commoner_probe.academia.parsers import generic
+
+    html = (
+        '<ul><li><a href="/careers/project-jobs/index.html">Project Jobs</a></li>'
+        '<li><a href="/recruitment/faculty/index.html">Faculty Positions</a></li>'
+        '<li><a href="/recruit/assistant-professors">Recruitment of Assistant Professors</a></li>'
+        '<li><a href="/advt/fp.pdf">Faculty Positions</a></li></ul>'
+    )
+    ads = generic.parse(html, "https://demo.example.ac.in/careers", FETCHED_GENERIC)
+
+    by_url = {a["original_url"].rsplit("/", 2)[-2] + "/" + a["original_url"].rsplit("/", 1)[-1]: a["document_class"] for a in ads}
+    assert by_url["project-jobs/index.html"] == "navigation"
+    assert by_url["faculty/index.html"] == "navigation"
+    # Specific words make it an advertisement.
+    assert by_url["recruit/assistant-professors"] == "advertisement"
+    # A document is never a heading, whatever its link text.
+    assert by_url["advt/fp.pdf"] == "advertisement"
+
+
+def test_classify_document_labels_admissions_and_result_notifications():
+    """IIT Bhubaneswar's marquee and DU's result list, both seen 2026-10-31."""
+    from commoner_probe.academia.parsers.parser_utils import classify_document
+
+    assert classify_document(
+        "M.Tech Spot Round Admission 2026-27 [Tentative Vacancy Updated]"
+    ) == "admission_notice"
+    assert classify_document(
+        "Ph.D Round the Year Admission Now Open, Click to Apply!"
+    ) == "admission_notice"
+    assert classify_document(
+        "Result Notification for the Post of Assistant Professor in the Department of GRS"
+    ) == "results_notice"
+
+
+def test_schema_enum_matches_document_classes():
+    """A value the code emits and the schema rejects fails every validating consumer."""
+    import json
+    from importlib import resources
+
+    from commoner_probe.academia.parsers.parser_utils import DOCUMENT_CLASSES
+
+    schema = json.loads(
+        resources.files("commoner_probe.schemas")
+        .joinpath("manifest_academic_job.schema.json").read_text(encoding="utf-8")
+    )
+    assert set(schema["properties"]["document_class"]["enum"]) == set(DOCUMENT_CLASSES)
+
+
+FETCHED_GENERIC = datetime(2026, 10, 31)
