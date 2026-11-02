@@ -25,12 +25,12 @@ record; this file says what ships next and what is deliberately deferred.
 | 0.17.0 | 2026-08-23 | A per-institution `user_agent` for `academic-jobs` |
 | 0.18.0 | 2026-08-23 | `closing_date_status` on `academic_job_posting`; `iit_hyderabad` reads the advertisement PDF; `textparse.term_pattern` |
 | 0.19.0 | 2026-08-24 | `document_class` on `academic_job_posting`; the generic parser had no filter and `iit_hyderabad` dropped records silently |
+| 0.20.0 | 2026-09-05 | `koha`: public REST API acquisition for held items, with optional MARC deepening |
+| 0.21.0 | 2026-11-02 | `document_class` gains `navigation` and `admission_notice`; `iim_recruit` reads ads on HTML pages; Rajya Sabha committees read the current endpoint |
 
 ## On master, unreleased
 
-- `koha`: public REST API acquisition for held items, with optional MARC
-  deepening for distinct held biblios. This adds a public subcommand and two
-  public manifest kinds, so the next release is a minor.
+Nothing.
 
 **Next gate: 1.0.0 — deferred deliberately, and gated on Phase 2.** Declaring
 1.0 promises interface stability, and the package rename to `probe`/`compose`

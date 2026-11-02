@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.21.0 — 2026-11-02
+
+**This release is a MINOR, and it moves published numbers.** `document_class`
+gains two values. Re-run `academic-jobs` for every institution on `generic`,
+`iim_recruit` and `iit_rolling`, and re-run `committees --house rs`.
 
 **`document_class` changes on re-run for every `generic`-parsed institution.**
 Menu, header and footer links now carry `navigation`, so a consumer that drops
