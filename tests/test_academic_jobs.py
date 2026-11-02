@@ -140,6 +140,62 @@ def test_iim_recruit_emits_rolling_stub_when_no_pdfs():
     assert ads[0]["apply_url"] == "https://iimdemo.example.ac.in/faculty"
 
 
+def test_iim_recruit_reads_faculty_ads_on_html_detail_pages():
+    """IIM Indore links each advertisement to an HTML page, never a PDF.
+
+    Both anchors are verbatim from iimidr.ac.in/careers on 2026-10-31. The
+    parser read only `.pdf` links, emitted the rolling stub, and missed a
+    special recruitment drive for reserved categories.
+    """
+    pytest.importorskip("bs4")
+    from commoner_probe.academia.parsers import iim_recruit
+
+    html = (
+        '<a href="https://iimidr.ac.in/careers/advertisement-for-faculty-positions-special-'
+        'recruitment-drive-for-nc-obc-sc-st-ews-pwd-2/">Advertisement for Faculty Positions '
+        '\u2013 Special Recruitment Drive For NC-OBC/SC/ST/EWS/PWD</a>'
+        '<a href="https://iimidr.ac.in/careers/faculty-positions-at-indian-institute-of-'
+        'management-indore/">Faculty Positions at Indian Institute of Management Indore</a>'
+    )
+    ads = iim_recruit.parse(html, "https://www.iimidr.ac.in/careers", datetime(2026, 10, 31), None)
+
+    assert [a["title"] for a in ads] == [
+        "Advertisement for Faculty Positions \u2013 Special Recruitment Drive For NC-OBC/SC/ST/EWS/PWD",
+        "Faculty Positions at Indian Institute of Management Indore",
+    ]
+    assert not any(a.get("rolling_stub") for a in ads)
+    assert all(a["document_class"] == "advertisement" for a in ads)
+    assert ads[0]["original_url"].endswith("-pwd-2/")
+
+
+def test_iim_recruit_ignores_menu_links_and_href_only_matches():
+    """Every IIM menu carries "Faculty Recruitment". That is not an advertisement.
+
+    IIM Bangalore links the word "online" to a faculty-recruitment URL. Only
+    the link's text decides, so a bare href never makes an ad.
+    """
+    pytest.importorskip("bs4")
+    from commoner_probe.academia.parsers import iim_recruit
+
+    html = (
+        '<nav><a href="/faculty-recruitment">Faculty Recruitment</a></nav>'
+        '<p>Apply <a href="/faculty-recruitment/apply">online</a></p>'
+    )
+    ads = iim_recruit.parse(html, "https://iimdemo.example.ac.in/careers", datetime(2026, 10, 31), None)
+    assert len(ads) == 1
+    assert ads[0]["rolling_stub"] is True
+
+
+def test_iim_recruit_skips_html_links_to_other_sites():
+    """A careers page links job boards and partner institutes."""
+    pytest.importorskip("bs4")
+    from commoner_probe.academia.parsers import iim_recruit
+
+    html = '<a href="https://jobs.example.com/x">Call for Faculty Positions at Another Institute</a>'
+    ads = iim_recruit.parse(html, "https://iimdemo.example.ac.in/careers", datetime(2026, 10, 31), None)
+    assert ads[0]["rolling_stub"] is True
+
+
 # --------------------------------------------------------------------------- #
 # AcademicJobsProbe                                                           #
 # --------------------------------------------------------------------------- #

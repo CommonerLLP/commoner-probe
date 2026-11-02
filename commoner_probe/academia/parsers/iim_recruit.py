@@ -4,8 +4,9 @@
 Most IIMs post one PDF per discrete faculty call (or keep a permanent "apply
 year-round" page). We treat each faculty-recruitment-tagged PDF on the careers
 page as one ad, pulling deadline / publications / reservation counts from the
-PDF text. If no relevant PDF is found, emit one rolling-stub so the IIM is still
-visible.
+PDF text. Some sites link each advertisement to an HTML page instead; each such
+same-site, non-menu link is one ad too, without PDF fields. If neither is found,
+emit one rolling-stub so the IIM is still visible.
 
 Probe-native port of the origin project's scraper/parsers/iim_recruit.py. PDF fetching
 + text extraction is injected via the ``pdf`` callable (provided by the probe in
@@ -16,7 +17,7 @@ from __future__ import annotations
 
 import re
 from typing import Any, Callable
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit
 
 from .._common import PLACEHOLDER_INSTITUTION_ID, iso, stable_id
 from ..pdf_text import (
@@ -25,6 +26,7 @@ from ..pdf_text import (
     find_publications,
     parse_deadline_iso,
 )
+from .parser_utils import classify_document, in_site_chrome
 
 RECRUIT_RE = re.compile(
     r"\bfaculty[\s/_-]+(?:recruit|position|opening|hiring|advert|search|job|vacanc|appointment)\w*"
@@ -37,6 +39,15 @@ SKIP_RE = re.compile(
     r"(recruiters?\s+guide|placement|brochure|prospectus|hr\s+policy|admission|"
     r"non[- _]teaching|non[- _]faculty|technical\s+staff|administrative\s+staff|"
     r"research\s+assistant|field\s+investigator)",
+    re.I,
+)
+
+# An HTML detail page is matched on its link TEXT only, and more strictly than
+# a PDF: IIM sites link faculty profiles ("Professor of Marketing") and the
+# word "online" to recruitment URLs.
+HTML_AD_RE = re.compile(
+    r"\bfaculty[\s/_-]+(?:recruit|position|opening|hiring|advert|search|vacanc)\w*"
+    r"|\b(?:assistant|associate)\s+professors?\b",
     re.I,
 )
 
@@ -113,6 +124,51 @@ def parse(html: str, url: str, fetched_at: Any, pdf: Callable | None = None) -> 
             "pdf_parsed": pdf_parsed,
         })
 
+    site = _site(url)
+    seen_html: set[str] = set()
+    for a in soup.find_all("a", href=True):
+        href = a["href"].strip()
+        if ".pdf" in href.lower() or href.startswith(("#", "javascript:", "mailto:")):
+            continue
+        text = re.sub(r"\s+", " ", a.get_text(" ", strip=True))
+        page_url = urljoin(url, href)
+        if (
+            not HTML_AD_RE.search(text)
+            or SKIP_RE.search(text)
+            or _site(page_url) != site
+            or page_url in seen_html
+            or in_site_chrome(a)
+        ):
+            continue
+        seen_html.add(page_url)
+        title = text[:160]
+        out.append({
+            "id": stable_id("iim-html", url, page_url),
+            "institution_id": PLACEHOLDER_INSTITUTION_ID,
+            "ad_number": None,
+            "title": title,
+            "department": None,
+            "discipline": None,
+            "post_type": "Faculty",
+            "contract_status": "Unknown",
+            "category_breakdown": None,
+            "number_of_posts": None,
+            "pay_scale": None,
+            "publication_date": None,
+            "closing_date": None,
+            "document_class": classify_document(title, page_url),
+            "original_url": page_url,
+            "snapshot_fetched_at": iso(fetched_at),
+            "parse_confidence": 0.5,
+            "raw_text_excerpt": None,
+            "apply_url": page_url,
+            "info_url": url,
+            "publications_required": None,
+            "unit_eligibility": None,
+            "pdf_path": None,
+            "pdf_parsed": False,
+        })
+
     if not out:
         out.append({
             "id": stable_id("iim-stub", url),
@@ -144,3 +200,7 @@ def parse(html: str, url: str, fetched_at: Any, pdf: Callable | None = None) -> 
             "rolling_stub": True,
         })
     return out
+
+
+def _site(url: str) -> str:
+    return urlsplit(url).netloc.lower().removeprefix("www.")

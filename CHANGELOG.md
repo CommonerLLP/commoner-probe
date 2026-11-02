@@ -8,6 +8,9 @@ non-openings by name shows fewer records. Re-run `academic-jobs`, then add
 `navigation` and `admission_notice` to the consumer's drop list. Record IDs do
 not change.
 
+**`iim_recruit` emits more records on re-run.** Institutions that link ads to
+HTML pages stop getting the rolling stub. Re-run `academic-jobs` for them.
+
 ### Added
 
 - **Two `document_class` values: `navigation` and `admission_notice`.** The
@@ -18,6 +21,12 @@ not change.
   careers page lists beside its jobs. Both are labels. No record is dropped.
 
 ### Fixed
+
+- **`iim_recruit` missed advertisements on HTML pages.** It read only `.pdf`
+  links, so a site that links each ad to an HTML page got the rolling stub.
+  A same-site link outside the menus whose text names a faculty position is now
+  one ad. These records carry no PDF fields: no deadline, no reservation counts.
+  On 2026-10-31 this moved 9 of 26 institutions off the stub.
 
 - **"Result Notification for the Post of …" is now `results_notice`.** The
   pattern matched only "Notification of … results".
