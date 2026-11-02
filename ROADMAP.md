@@ -27,6 +27,7 @@ record; this file says what ships next and what is deliberately deferred.
 | 0.19.0 | 2026-08-24 | `document_class` on `academic_job_posting`; the generic parser had no filter and `iit_hyderabad` dropped records silently |
 | 0.20.0 | 2026-09-05 | `koha`: public REST API acquisition for held items, with optional MARC deepening |
 | 0.21.0 | 2026-11-02 | `document_class` gains `navigation` and `admission_notice`; `iim_recruit` reads ads on HTML pages; Rajya Sabha committees read the current endpoint |
+| 0.21.1 | 2026-11-02 | `iim_recruit` HTML ads carry the date printed in their row |
 
 ## On master, unreleased
 
