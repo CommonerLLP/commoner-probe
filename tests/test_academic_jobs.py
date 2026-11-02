@@ -168,6 +168,34 @@ def test_iim_recruit_reads_faculty_ads_on_html_detail_pages():
     assert ads[0]["original_url"].endswith("-pwd-2/")
 
 
+def test_iim_recruit_dates_an_html_ad_from_its_row():
+    """IIM Ranchi's table prints the posting date beside each link.
+
+    Rows are from iimranchi.ac.in/careers on 2026-10-31. Undated, a 2024 drive
+    read as open for good. A date with no deadline wording is a posting date,
+    because "7 Sep 2026" sits beside a link still marked New.
+    """
+    pytest.importorskip("bs4")
+    from commoner_probe.academia.parsers import iim_recruit
+
+    html = (
+        "<table>"
+        '<tr><td><a href="/career/2024/12/13037/">Special Recruitment Drive for '
+        "SC/ST/NC-OBC/EWS/PWD for Faculty Positions</a></td><td>19 Dec 2024</td><td>Close</td></tr>"
+        '<tr><td><a href="/career/2026/09/21871/">Notice for Faculty Recruitment</a></td>'
+        "<td>7 Sep 2026</td><td>New</td></tr>"
+        '<tr><td><a href="/career/2026/10/1/">Faculty Positions in Finance</a></td>'
+        "<td>Last date: 30 Nov 2026</td></tr>"
+        "</table>"
+    )
+    ads = iim_recruit.parse(html, "https://iimranchi.ac.in/careers", datetime(2026, 10, 31), None)
+    dates = {a["title"]: (a["publication_date"], a["closing_date"]) for a in ads}
+
+    assert dates["Special Recruitment Drive for SC/ST/NC-OBC/EWS/PWD for Faculty Positions"] == ("2024-12-19", None)
+    assert dates["Notice for Faculty Recruitment"] == ("2026-09-07", None)
+    assert dates["Faculty Positions in Finance"] == (None, "2026-11-30")
+
+
 def test_iim_recruit_ignores_menu_links_and_href_only_matches():
     """Every IIM menu carries "Faculty Recruitment". That is not an advertisement.
 

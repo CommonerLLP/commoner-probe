@@ -26,6 +26,7 @@ from ..pdf_text import (
     find_publications,
     parse_deadline_iso,
 )
+from .generic import CLOSING_HINTS, DATE_RE, _to_iso
 from .parser_utils import classify_document, in_site_chrome
 
 RECRUIT_RE = re.compile(
@@ -142,6 +143,7 @@ def parse(html: str, url: str, fetched_at: Any, pdf: Callable | None = None) -> 
             continue
         seen_html.add(page_url)
         title = text[:160]
+        publication_date, closing_date = _row_dates(a)
         out.append({
             "id": stable_id("iim-html", url, page_url),
             "institution_id": PLACEHOLDER_INSTITUTION_ID,
@@ -154,8 +156,8 @@ def parse(html: str, url: str, fetched_at: Any, pdf: Callable | None = None) -> 
             "category_breakdown": None,
             "number_of_posts": None,
             "pay_scale": None,
-            "publication_date": None,
-            "closing_date": None,
+            "publication_date": publication_date,
+            "closing_date": closing_date,
             "document_class": classify_document(title, page_url),
             "original_url": page_url,
             "snapshot_fetched_at": iso(fetched_at),
@@ -204,3 +206,27 @@ def parse(html: str, url: str, fetched_at: Any, pdf: Callable | None = None) -> 
 
 def _site(url: str) -> str:
     return urlsplit(url).netloc.lower().removeprefix("www.")
+
+
+def _row_dates(a: Any) -> tuple[str | None, str | None]:
+    """(publication, closing) from the table row or list item holding the link.
+
+    A date after deadline wording ("Last date") closes the ad. Any other date
+    is when it was posted: IIM Ranchi prints "7 Sep 2026" beside a link it
+    still marks New. A row longer than a few lines is a page section, not a
+    row, so it is not read.
+    """
+    row = a.find_parent(["tr", "li"])
+    text = re.sub(r"\s+", " ", row.get_text(" ", strip=True)) if row else ""
+    if len(text) > 400:
+        return None, None
+    published = closing = None
+    for m in DATE_RE.finditer(text):
+        iso_date = _to_iso(*m.groups())
+        if iso_date is None:
+            continue
+        if CLOSING_HINTS.search(text[max(0, m.start() - 60): m.start()]):
+            closing = closing or iso_date
+        else:
+            published = published or iso_date
+    return published, closing

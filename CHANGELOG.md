@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+**`publication_date` and `closing_date` change on re-run for `iim_recruit`
+HTML ads.** Re-run `academic-jobs` for institutions on `iim_recruit`.
+
+### Fixed
+
+- **`iim_recruit` HTML ads carried no date.** A consumer that ages ads by date
+  read a 2024 recruitment drive as open. The parser now reads the date in the
+  link's table row or list item. A date after deadline wording ("Last date")
+  is `closing_date`. Any other date is `publication_date`. On 2026-10-31 this
+  dated all 20 IIM Ranchi ads.
+
 ## 0.21.0 — 2026-11-02
 
 **This release is a MINOR, and it moves published numbers.** `document_class`
