@@ -18,7 +18,7 @@ from typing import Any, Callable
 from urllib.parse import urljoin
 
 from .._common import PLACEHOLDER_INSTITUTION_ID, iso, stable_id
-from .parser_utils import DOCUMENT_CLASS_NAVIGATION, classify_document
+from .parser_utils import DOCUMENT_CLASS_NAVIGATION, classify_document, in_site_chrome
 
 RECRUITMENT_KEYWORDS = [
     r"recruit", r"vacanc", r"advert", r"non[- ]?teaching", r"ministerial",
@@ -53,13 +53,6 @@ CAREERS_JOB_URL_RE = re.compile(
     r"/(career|careers|jobs?)/(staff/)?[^/]*\.(pdf|docx?)$|/(career|careers|jobs?)/jobs?/\d+", re.I
 )
 
-# Site chrome repeats the careers links on every page. Only the TAG marks a
-# header: BITS wraps its real advertisements in `class="header-…"`.
-_CHROME_TAGS = frozenset({"nav", "header", "footer", "marquee"})
-_CHROME_CLASS_PARTS = frozenset({
-    "nav", "navbar", "navigation", "menu", "menubar", "megamenu", "submenu",
-    "dropdown", "breadcrumb", "breadcrumbs",
-})
 # A heading names a section, not a post: "Project Jobs", "Teaching Positions".
 # One word outside this set ("Assistant", "Professors", "2026") makes it specific.
 _HEADING_WORDS = frozenset({
@@ -93,16 +86,6 @@ def _is_recruitment_link(link_text: str, href: str, surrounding_text: str) -> bo
         re.search(k, context_hay, re.IGNORECASE)
         for k in ("advert", "recruit", "vacanc", "fellow", "position")
     )
-
-
-def _in_site_chrome(a: Any) -> bool:
-    for el in a.parents:
-        if el.name in _CHROME_TAGS or el.get("role") == "navigation":
-            return True
-        for token in [*(el.get("class") or []), el.get("id") or ""]:
-            if _CHROME_CLASS_PARTS & set(re.split(r"[-_:\s]+", token.lower())):
-                return True
-    return False
 
 
 def _is_section_heading(title: str, href: str) -> bool:
@@ -221,7 +204,7 @@ def parse(html: str, url: str, fetched_at: Any, pdf: Callable | None = None) -> 
         else:
             title = link_text
 
-        if _in_site_chrome(a) or (not ad_number and _is_section_heading(title, abs_url)):
+        if in_site_chrome(a) or (not ad_number and _is_section_heading(title, abs_url)):
             document_class = DOCUMENT_CLASS_NAVIGATION
         else:
             document_class = classify_document(title, abs_url)

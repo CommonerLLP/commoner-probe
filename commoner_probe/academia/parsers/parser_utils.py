@@ -380,3 +380,23 @@ def classify_document(title: str, href: str = "") -> str:
             if pattern.search(path):
                 return name
     return DOCUMENT_CLASS_DEFAULT
+
+
+# Site chrome repeats the careers links on every page. Only the TAG marks a
+# header: one site wraps its real advertisements in `class="header-…"`.
+_CHROME_TAGS = frozenset({"nav", "header", "footer", "marquee"})
+_CHROME_CLASS_PARTS = frozenset({
+    "nav", "navbar", "navigation", "menu", "menubar", "megamenu", "submenu",
+    "dropdown", "breadcrumb", "breadcrumbs",
+})
+
+
+def in_site_chrome(anchor) -> bool:
+    """True when a BeautifulSoup anchor sits in a menu, header, footer or ticker."""
+    for el in anchor.parents:
+        if el.name in _CHROME_TAGS or el.get("role") == "navigation":
+            return True
+        for token in [*(el.get("class") or []), el.get("id") or ""]:
+            if _CHROME_CLASS_PARTS & set(re.split(r"[-_:\s]+", token.lower())):
+                return True
+    return False
