@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.21.1 — 2026-11-02
 
 **`publication_date` and `closing_date` change on re-run for `iim_recruit`
 HTML ads.** Re-run `academic-jobs` for institutions on `iim_recruit`.
