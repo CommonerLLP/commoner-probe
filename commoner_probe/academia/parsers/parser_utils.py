@@ -299,7 +299,8 @@ _DOCUMENT_CLASSES: tuple[tuple[str, "re.Pattern[str]"], ...] = (
         r"|\b" + _lig("provisionally") + r"\s+selected\b"
         r"|\bresults?\s+of\s+the\s+recruitment\b"
         r"|\b(?:select|merit|wai" + _lig("ting") + r")\s+list\b"
-        r"|\blist\s+of\s+candidates\s+selected\b",
+        r"|\blist\s+of\s+candidates\s+selected\b"
+        r"|\bresults?\s+" + _lig("notification") + r"\b",
         re.I)),
     ("cancellation", re.compile(
         r"\b" + _lig("cancellation") + r"\s+of\s+advertisement\b"
@@ -328,6 +329,9 @@ _DOCUMENT_CLASSES: tuple[tuple[str, "re.Pattern[str]"], ...] = (
         r"|\b" + _lig("sanctioned") + r"\s+strength\b"
         r"|\bcadre\s+strength\b",
         re.I)),
+    # A careers page links the admissions round beside the jobs, often with
+    # "vacancy" in the title: "M.Tech Spot Round Admission [Tentative Vacancy]".
+    ("admission_notice", re.compile(r"\badmissions?\b", re.I)),
 )
 
 #: The value every other record carries. A parser that classifies nothing still
@@ -335,7 +339,16 @@ _DOCUMENT_CLASSES: tuple[tuple[str, "re.Pattern[str]"], ...] = (
 #: are the same fact for a consumer: the row is offered as an advertisement.
 DOCUMENT_CLASS_DEFAULT = "advertisement"
 
-DOCUMENT_CLASSES = (DOCUMENT_CLASS_DEFAULT,) + tuple(k for k, _ in _DOCUMENT_CLASSES)
+#: A link in the site's own menus, header or footer, or a bare section heading.
+#: Only a parser that sees the page structure can set it, so
+#: :func:`classify_document` never returns it.
+DOCUMENT_CLASS_NAVIGATION = "navigation"
+
+DOCUMENT_CLASSES = (
+    (DOCUMENT_CLASS_DEFAULT,)
+    + tuple(k for k, _ in _DOCUMENT_CLASSES)
+    + (DOCUMENT_CLASS_NAVIGATION,)
+)
 
 
 def classify_document(title: str, href: str = "") -> str:
