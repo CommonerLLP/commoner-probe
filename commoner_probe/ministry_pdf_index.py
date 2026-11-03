@@ -25,8 +25,8 @@ renders its lists in the browser (DST, verified 2026-10-18):
   Verified against the Department of Economic Affairs (dea.gov.in) — the
   department hosting the Ministry of Finance's own DDG series (10 editions,
   2017-18 through 2026-27, one flattened-scan edition at 2022-23) and MHA
-  (mha.gov.in/finance-division, 14 DDG volumes 2021-22 through 2026-27,
-  verified 2026-10-18 after MHA rebuilt its site).
+  (mha.gov.in/finance-division-inner, 14 DDG volumes 2021-22 through 2026-27,
+  verified 2026-11-03 after MHA moved the volumes to its Budget Division page).
 * ``"table"`` — one ``<tr>`` per document, title in one ``<td>`` and a
   ``.pdf`` href in another (Drupal Views or WordPress "document category"
   tables both fit). Verified against Department of Expenditure (7 docs back to
@@ -138,7 +138,7 @@ MINISTRY_DDG_PORTALS: tuple[MinistryDDGPortal, ...] = (
     MinistryDDGPortal(
         ministry_code="mha",
         ministry_name="Ministry of Home Affairs",
-        listing_url="https://www.mha.gov.in/finance-division",
+        listing_url="https://www.mha.gov.in/finance-division-inner",
         template="card",
         user_agent=SCHEME_FREE_USER_AGENT,
         demand_grant_titles_only=True,

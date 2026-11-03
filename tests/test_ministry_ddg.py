@@ -275,13 +275,27 @@ def test_parse_listing_table_matches_title_cell_and_skips_non_ddg_rows():
     assert not any("AnnualReport" in d["url"] for d in docs)
 
 
-MHA_FIXTURE = Path(__file__).parent / "fixtures" / "mha" / "finance_division_trimmed.html"
-MHA_CARD_LISTING_URL = "https://www.mha.gov.in/finance-division"
+MHA_FIXTURE = Path(__file__).parent / "fixtures" / "mha" / "budget_division_trimmed.html"
+MHA_CARD_LISTING_URL = "https://www.mha.gov.in/finance-division-inner"
 MHA_FILES = "https://www.mha.gov.in/files/documents/"
 MHA_OOMF_URL = MHA_FILES + "OOMF2026-27_11022026.pdf"
+# The Budget Division page lists only DDG volumes. The old finance-division page
+# also listed an Output Outcome Monitoring Framework card, so the tests inject
+# one to keep exercising the demand_grant_titles_only filter.
+MHA_OOMF_CARD = (
+    '<div class="documentRecordTitle">\n\t\tBudget Division\n\t</div>\n'
+    '<a href="/files/documents/OOMF2026-27_11022026.pdf" class="viewBtn">VIEW</a>\n'
+)
 
 
-def test_mha_portal_uses_the_card_template_on_the_rebuilt_finance_division_page():
+def _mha_html_with_oomf_card() -> str:
+    html = MHA_FIXTURE.read_text(encoding="utf-8")
+    marker = '<div class="documentRecordTitle">'
+    assert marker in html
+    return html.replace(marker, MHA_OOMF_CARD + marker, 1)
+
+
+def test_mha_portal_uses_the_card_template_on_the_budget_division_page():
     portal = get_portal("mha")
     assert portal.listing_url == MHA_CARD_LISTING_URL
     assert portal.template == "card"
@@ -290,15 +304,22 @@ def test_mha_portal_uses_the_card_template_on_the_rebuilt_finance_division_page(
 
 def test_parse_listing_card_reads_the_saved_mha_page():
     """The saved page has no <table>; its commented-out <tr> markup must not
-    leak into the result. The card parser alone also returns the OOMF card."""
+    leak into the result. The page lists 14 DDG volumes and no other document."""
 
     docs = parse_ddg_listing_card(MHA_FIXTURE.read_text(encoding="utf-8"), MHA_CARD_LISTING_URL)
-    assert len(docs) == 15
-    assert docs[0] == {"title": "Budget Division", "year": "2026-27", "url": MHA_OOMF_URL}
-    titles = [d["title"] for d in docs[1:]]
-    assert all(t.startswith("Detailed Demands for Grants") for t in titles)
+    assert len(docs) == 14
+    assert all(d["title"].startswith("Detailed Demands for Grants") for d in docs)
+    assert MHA_OOMF_URL not in {d["url"] for d in docs}
     assert {d["year"] for d in docs} == {
         "2021-22", "2022-23", "2023-24", "2024-25", "2025-26", "2026-27"}
+
+
+def test_parse_listing_card_returns_an_injected_oomf_card_before_filtering():
+    """The card parser alone returns every card; the portal filter drops the OOMF."""
+
+    docs = parse_ddg_listing_card(_mha_html_with_oomf_card(), MHA_CARD_LISTING_URL)
+    assert len(docs) == 15
+    assert docs[0] == {"title": "Budget Division", "year": "2026-27", "url": MHA_OOMF_URL}
 
 
 def test_mha_discover_drops_the_oomf_card_and_keeps_every_ddg_volume(tmp_path):
@@ -309,7 +330,7 @@ def test_mha_discover_drops_the_oomf_card_and_keeps_every_ddg_volume(tmp_path):
         def get(self, url, **kwargs):
             self.calls.append(url)
             if url == portal.listing_url:
-                return FakeResponse(text=MHA_FIXTURE.read_text(encoding="utf-8"))
+                return FakeResponse(text=_mha_html_with_oomf_card())
             raise AssertionError(f"unrouted url: {url}")
 
     probe.session = MhaSession()
@@ -337,7 +358,7 @@ def test_multi_volume_per_year_does_not_collide(tmp_path, monkeypatch):
     """mha.gov.in publishes two volumes for the same fiscal year — the
     fixed key must disambiguate them instead of colliding (2026-07-09 bug
     caught while expanding the registry beyond dea.gov.in's one-doc-per-year
-    shape). Fed from the saved copy of the rebuilt page (18 October 2026)."""
+    shape). Fed from the saved copy of the Budget Division page (3 November 2026)."""
 
     from commoner_probe import base as base_mod
     monkeypatch.setattr(base_mod, "extract_pdf_text", lambda p: "")
@@ -352,7 +373,7 @@ def test_multi_volume_per_year_does_not_collide(tmp_path, monkeypatch):
         def get(self, url, **kwargs):
             self.calls.append(url)
             if url == mha_portal.listing_url:
-                return FakeResponse(text=MHA_FIXTURE.read_text(encoding="utf-8"))
+                return FakeResponse(text=_mha_html_with_oomf_card())
             if url in (vol1_url, vol2_url, vol2b_url):
                 return FakeResponse(content=PDF_WITH_TEXT, content_type="application/pdf")
             raise AssertionError(f"unrouted url: {url}")
