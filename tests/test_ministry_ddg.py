@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from pathlib import Path
 
 from commoner_probe.ministry_pdf_index import (
@@ -772,3 +773,43 @@ def test_dst_records_carry_a_normalised_year_and_a_unique_key(tmp_path):
     assert len({r["key"] for r in records}) == 18
     assert records[0]["year"] == "2026-27"
     assert records[0]["key"].startswith("MINISTRY_DDG|dst|2026-27|")
+
+
+def test_dst_key_and_filename_do_not_depend_on_the_hashed_url(tmp_path):
+    probe = MinistryDDGProbe(tmp_path, portal=DST_PORTAL, sleep=0)
+    doc = {
+        "title": "Detailed Demands for Grants 2026-27",
+        "year": "2026-27",
+        "url": "https://www.dst.gov.in/static/uploads/2026/04/8377f334e91ca001cc519e0bdd972670.pdf",
+    }
+    reuploaded = dict(doc, url="https://www.dst.gov.in/static/uploads/2026/06/0123456789abcdef0123456789abcdef.pdf")
+    first, second = probe._record(doc, status="dry_run"), probe._record(reuploaded, status="dry_run")
+    assert first["key"] == second["key"] == "MINISTRY_DDG|dst|2026-27|detailed-demands-for-grants-2026-27"
+    assert first["filename"] == second["filename"] == "dst_2026-27_detailed-demands-for-grants-2026-27.pdf"
+    assert first["dest"] == str(tmp_path / "dst" / first["filename"])
+    assert "8377f334" not in first["key"] + first["filename"]
+
+
+def test_dst_documents_sharing_a_year_keep_distinct_keys_and_filenames(tmp_path):
+    probe = MinistryDDGProbe(tmp_path, portal=DST_PORTAL, sleep=0)
+    base = "https://www.dst.gov.in/static/uploads/2026/04/"
+    a = probe._record({"title": "Detailed Demands for Grants 2026-27", "year": "2026-27", "url": base + "a.pdf"}, status="dry_run")
+    b = probe._record({"title": "Detailed Demands for Grants 2026-27 (Revised)", "year": "2026-27", "url": base + "b.pdf"}, status="dry_run")
+    assert a["key"] != b["key"]
+    assert a["filename"] != b["filename"]
+
+
+def test_dst_fixture_keys_and_filenames_are_unique_and_hash_free(tmp_path):
+    probe = MinistryDDGProbe(tmp_path, portal=DST_PORTAL, sleep=0)
+    probe.session = DstApiSession()
+    records = probe.probe(dry_run=True)
+    assert len({r["key"] for r in records}) == len({r["filename"] for r in records}) == 18
+    assert all(not re.search(r"[0-9a-f]{32}", r["key"] + r["filename"]) for r in records)
+
+
+def test_card_template_portal_key_and_filename_still_use_the_url_basename(tmp_path):
+    probe = _probe(tmp_path)
+    doc = {"title": "Detailed Demands for Grants 2026-27", "year": "2026-27", "url": URL_2627}
+    record = probe._record(doc, status="dry_run")
+    assert record["key"] == "MINISTRY_DDG|dea|2026-27|final-ddg-2026-27-mof-1"
+    assert record["filename"] == "dea_2026-27_Final_DDG__2026-27__MoF-1.pdf"

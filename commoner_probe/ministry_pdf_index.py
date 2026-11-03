@@ -542,6 +542,13 @@ class MinistryDDGProbe:
         # filename into the key so those don't collide.
         doc_slug = re.sub(r"[^a-z0-9]+", "-", Path(basename).stem.lower()).strip("-")
         filename = f"{self.portal.ministry_code}_{doc['year']}_" + safe_filename_segment(basename)
+        if self.portal.template == "wp_json":
+            # The wp_json site (DST) stores each PDF under a hash that can
+            # change on any re-upload, so key and name the record from the
+            # document's own title. A year-only title and a longer one for
+            # the same year still get different slugs.
+            doc_slug = re.sub(r"[^a-z0-9]+", "-", doc["title"].lower()).strip("-") or doc_slug
+            filename = f"{self.portal.ministry_code}_{doc['year']}_{doc_slug}.pdf"
         dest = self.out_dir / self.portal.ministry_code / filename
         return {
             "key": f"MINISTRY_DDG|{self.portal.ministry_code}|{doc['year']}|{doc_slug}",
