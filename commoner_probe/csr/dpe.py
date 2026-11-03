@@ -9,7 +9,7 @@ import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
 from commoner_probe.ministry_pdf_index import SCHEME_FREE_USER_AGENT
 
@@ -31,6 +31,20 @@ POSTS_PATH = "central_documents"
 _FILE_FIELDS = ("pdf", "pdf_both", "pdf_hindi")
 # WordPress caps `per_page` at 100, which is also the most IDs one `include` returns.
 _MAX_PER_PAGE = 100
+
+# DPE has no CSR category, tag, or ACF field. Checked on 3 November 2026: the post
+# type's only taxonomy is `cd_category` ("Repository Category"), whose terms name a
+# document type, not a subject, and the ACF fields hold only title, file, language,
+# and date. CSR documents therefore sit under four of DPE's own document types:
+#   418 Guidelines, 400 reports, 428 Archive-Guideline, 434 office-order
+# A free-text search also matches unrelated posts in other types, such as the NMDC
+# CSR Foundation survey annexures (446, 448) and a vacancy note (399), so every
+# request keeps only these four types.
+CSR_CATEGORIES = (418, 400, 428, 434)
+# Two searches, merged: DPE's long-form guidelines (category 428) say "Corporate
+# Social Responsibility" and never "CSR". Checked on 3 November 2026: the two
+# searches return 34 and 10 posts in these categories, 39 after de-duplication.
+SEARCHES = ("csr", "corporate social responsibility")
 
 
 class DpeCsrProbe:
@@ -67,12 +81,19 @@ class DpeCsrProbe:
         return {m["id"]: m["source_url"] for m in media if m.get("source_url")}
 
     def fetch_page(self, page: int, per_page: int = 100, search: str | None = "csr") -> list[dict[str, Any]]:
-        """Return one page of Document Repository posts, newest first.
+        """Return one page of one search's Document Repository posts, newest first.
 
-        Each post gets a `source_url`, the file that its ACF `pdf` field points to.
-        A post without a file has no `source_url`.
+        Only posts in `CSR_CATEGORIES` come back. Each post gets a `source_url`, the
+        file that its ACF `pdf` field points to. A post without a file has no
+        `source_url`.
         """
-        params = {"page": page, "per_page": per_page, "orderby": "date", "order": "desc"}
+        params = {
+            "page": page,
+            "per_page": per_page,
+            "orderby": "date",
+            "order": "desc",
+            "cd_category": ",".join(str(c) for c in CSR_CATEGORIES),
+        }
         if search:
             params["search"] = search
 
@@ -84,6 +105,9 @@ class DpeCsrProbe:
             if e.code == 400:
                 return []
             raise
+
+        # WordPress ignores a parameter it does not know, so check the types again here.
+        items = [i for i in items if set(i.get("cd_category") or ()) & set(CSR_CATEGORIES)]
 
         file_ids = {}
         for item in items:
@@ -97,6 +121,31 @@ class DpeCsrProbe:
             if file_ids[item["id"]] in urls:
                 item["source_url"] = urls[file_ids[item["id"]]]
         return items
+
+    def fetch_documents(
+        self,
+        per_page: int = 100,
+        max_pages: int = 10,
+        searches: Sequence[str] = SEARCHES,
+    ) -> list[dict[str, Any]]:
+        """Return the posts that any of `searches` finds, de-duplicated, newest first.
+
+        Each search pages until it runs out or reaches `max_pages`. With `max_pages=1`
+        the result is the newest `per_page` posts of the union, since each search
+        returns its own newest first.
+        """
+        found: dict[Any, dict[str, Any]] = {}
+        for search in searches:
+            for page in range(1, max_pages + 1):
+                items = self.fetch_page(page, per_page=per_page, search=search)
+                if not items:
+                    break
+                for item in items:
+                    found.setdefault(item["id"], item)
+                if self.sleep:
+                    time.sleep(self.sleep)
+        merged = sorted(found.values(), key=lambda i: (i.get("date") or "", i["id"]), reverse=True)
+        return merged[:per_page] if max_pages == 1 else merged
 
     @staticmethod
     def _title(item: dict[str, Any]) -> str:
@@ -178,21 +227,18 @@ class DpeCsrProbe:
         with self.manifest.open("a", encoding="utf-8") as f:
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
-    def probe(self, search: str | None = "csr", dry_run: bool = False, max_pages: int = 10) -> list[dict[str, Any]]:
+    def probe(
+        self,
+        searches: Sequence[str] = SEARCHES,
+        dry_run: bool = False,
+        max_pages: int = 10,
+    ) -> list[dict[str, Any]]:
         records = []
-        for page in range(1, max_pages + 1):
-            items = self.fetch_page(page, search=search)
-            if not items:
-                break
-
-            for item in items:
-                record = self.download_item(item, dry_run=dry_run)
-                if record:
-                    if not dry_run:
-                        self.append_manifest(record)
-                    records.append(record)
-
-            if self.sleep:
-                time.sleep(self.sleep)
+        for item in self.fetch_documents(max_pages=max_pages, searches=searches):
+            record = self.download_item(item, dry_run=dry_run)
+            if record:
+                if not dry_run:
+                    self.append_manifest(record)
+                records.append(record)
 
         return records

@@ -20,7 +20,7 @@ from .audit_pdf_index import CAG_ACCOUNTS_STATES, CAGAccountsProbe, get_state
 from .bill_catalog_api import BILLS_API, BillsProbe
 from .budget import RBI_STATE_FINANCES_URL, BudgetProbe
 from .committee_report_api import CommitteeProbe, resolve_committees
-from .csr.dpe import DpeCsrProbe
+from .csr.dpe import SEARCHES, DpeCsrProbe
 from .csr.mca import McaCsrProbe
 from .dmft.mines import MinesDmftProbe
 from .drupal_publication_index import PRS_CRAWL_DELAY_SEC, PrsProbe
@@ -582,7 +582,7 @@ def indiacode_query_cmd(args: argparse.Namespace) -> None:
 def dpe_csr_cmd(args: argparse.Namespace) -> None:
     out = Path(args.out)
     probe = DpeCsrProbe(out, sleep=args.sleep)
-    records = probe.probe(search=args.search, dry_run=args.dry_run, max_pages=args.max_pages)
+    records = probe.probe(searches=args.search or SEARCHES, dry_run=args.dry_run, max_pages=args.max_pages)
     for record in records:
         print(json.dumps(record, ensure_ascii=False))
 
@@ -1690,7 +1690,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Download DPE CPSE CSR documents via WordPress REST API.",
     )
     dpe_csr.add_argument("--out", required=True, help="Output directory")
-    dpe_csr.add_argument("--search", default="csr", help="Search query for the Document Repository endpoint (default: 'csr').")
+    dpe_csr.add_argument(
+        "--search",
+        action="append",
+        help="Search query for the Document Repository endpoint. Repeat it to merge several "
+        "searches (default: 'csr' and 'corporate social responsibility').",
+    )
     dpe_csr.add_argument("--max-pages", type=int, default=10, help="Max pages to fetch (default: 10).")
     dpe_csr.add_argument("--sleep", type=float, default=1.0)
     dpe_csr.add_argument(

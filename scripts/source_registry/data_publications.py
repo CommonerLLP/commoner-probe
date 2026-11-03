@@ -216,7 +216,7 @@ def _dpe_date(r: dict) -> str:
 
 def _dpe_documents() -> list[dict]:
     probe = DpeCsrProbe(SCRATCH / "dpe-csr", sleep=0)
-    records = (probe.download_item(item, dry_run=True) for item in probe.fetch_page(1, per_page=10))
+    records = (probe.download_item(item, dry_run=True) for item in probe.fetch_documents(per_page=10, max_pages=1))
     return [record for record in records if record]
 
 
