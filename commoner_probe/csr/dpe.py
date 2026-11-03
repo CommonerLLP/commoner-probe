@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import html
 import json
 import time
 import urllib.parse
@@ -97,9 +98,23 @@ class DpeCsrProbe:
                 item["source_url"] = urls[file_ids[item["id"]]]
         return items
 
+    @staticmethod
+    def _title(item: dict[str, Any]) -> str:
+        """Return the ACF `title` when it has text, else WordPress `title.rendered`.
+
+        For some Document Repository posts `title.rendered` is a slug such as
+        "7th-csr", while `acf.title` holds the readable title.
+        """
+        acf_title = (item.get("acf") or {}).get("title")
+        if isinstance(acf_title, str):
+            acf_title = html.unescape(acf_title).strip()
+            if acf_title:
+                return acf_title
+        return item.get("title", {}).get("rendered", "")
+
     def _record(self, item: dict[str, Any], dest: Path) -> dict[str, Any]:
         source_url = item.get("source_url")
-        title = item.get("title", {}).get("rendered", "")
+        title = self._title(item)
         item_id = item.get("id")
         date_str = item.get("date", "")
 

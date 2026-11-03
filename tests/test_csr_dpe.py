@@ -146,3 +146,25 @@ def test_file_download_sends_the_scheme_free_user_agent(monkeypatch, tmp_path) -
     record = DpeCsrProbe(tmp_path, sleep=0).download_item({"id": 5, "source_url": PDF_URL, "title": {}}, dry_run=False)
     assert record["status"] == "downloaded"
     assert seen[0].get_header("User-agent") == SCHEME_FREE_USER_AGENT
+
+
+def test_record_title_prefers_the_acf_title(tmp_path) -> None:
+    item = _post(7, title="  Seventh Regional Workshop on CSR &amp; more ", pdf=10)
+    item["title"]["rendered"] = "7th-csr"
+    item["source_url"] = PDF_URL
+    record = DpeCsrProbe(tmp_path, sleep=0).download_item(item, dry_run=True)
+    assert record["title"] == "Seventh Regional Workshop on CSR & more"
+
+
+@pytest.mark.parametrize("acf_title", [None, "", "   ", 5])
+def test_record_title_falls_back_to_the_rendered_title(tmp_path, acf_title) -> None:
+    item = _post(8, title=acf_title, pdf=10)
+    item["source_url"] = PDF_URL
+    record = DpeCsrProbe(tmp_path, sleep=0).download_item(item, dry_run=True)
+    assert record["title"] == "Post 8"
+
+
+def test_record_title_falls_back_when_the_post_has_no_acf(tmp_path) -> None:
+    item = {"id": 9, "title": {"rendered": "Plain"}, "source_url": PDF_URL, "acf": []}
+    record = DpeCsrProbe(tmp_path, sleep=0).download_item(item, dry_run=True)
+    assert record["title"] == "Plain"
