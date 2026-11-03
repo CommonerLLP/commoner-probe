@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.22.0 — 2026-11-03
 
 **This release is a MINOR.** A new parser, `amu`, joins the registry.
 `document_class` also changes on re-run for eligibility lists and written-test

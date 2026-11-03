@@ -29,6 +29,7 @@ record; this file says what ships next and what is deliberately deferred.
 | 0.21.0 | 2026-11-02 | `document_class` gains `navigation` and `admission_notice`; `iim_recruit` reads ads on HTML pages; Rajya Sabha committees read the current endpoint |
 | 0.21.1 | 2026-11-02 | `iim_recruit` HTML ads carry the date printed in their row |
 | 0.21.2 | 2026-11-03 | Shortlist and interview notices become `results_notice`; `generic` reads month-first date stamps |
+| 0.22.0 | 2026-11-03 | `amu` parser reads Aligarh Muslim University's JSON job list; eligibility lists and written-test notices become `results_notice` |
 
 ## On master, unreleased
 
