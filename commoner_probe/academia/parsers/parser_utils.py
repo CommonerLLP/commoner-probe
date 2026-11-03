@@ -331,6 +331,8 @@ _DOCUMENT_CLASSES: tuple[tuple[str, "re.Pattern[str]"], ...] = (
         r"|\bscreening\s+(?:list|result|report)s?\b"
         r"|\bfound\s+suitable\b"
         r"|\bqualified\s+candidates\b|\bcandidates\s+qualified\b"
+        r"|\blist\s+of\s+eligible\s+candidates\b|\bwritten\s+test\s+for\b"
+        r"|\bdate\s+of\s+written\s+test\b"
         r"|\bdeclaration\s+of\s+(?:the\s+)?list\b"
         r"|\bselection\s+committee\s+meeting\b|\breporting\s+time\b"
         r"|\b(?:schedule|date)\s+of\s+(?:the\s+)?interviews?\b"

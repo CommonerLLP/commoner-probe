@@ -1206,7 +1206,11 @@
     "city": "Aligarh",
     "state": "Uttar Pradesh",
     "source_url": "https://www.amu.ac.in/employment-news",
-    "apply_url": "https://www.amu.ac.in/employment-news"
+    "apply_url": "https://www.amu.ac.in/employment-news",
+    "career_page_url_guess": "https://api.amu.ac.in/api/v1/getjobs?lang=en",
+    "parser": "amu",
+    "robots_override": true,
+    "robots_override_reason": "The job list exists only on api.amu.ac.in, whose robots.txt disallows all paths. Page 1 only, once a week. Commoner decision, 2026-11-03."
   },
   {
     "id": "delhi-university",

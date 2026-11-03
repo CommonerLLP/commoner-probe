@@ -311,6 +311,7 @@ _ACADEMIA = (
     ("iit_indore", "iit-indore"),
     ("private_university", "ashoka-university"),
     ("anna_university", "anna-university"),
+    ("amu", "amu-aligarh"),
 )
 
 
