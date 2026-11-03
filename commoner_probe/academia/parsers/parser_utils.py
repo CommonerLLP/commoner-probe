@@ -204,10 +204,33 @@ def _to_iso(day: str, month_s: str, year: str) -> str | None:
         return None
 
 
+#: A listing's own date stamp at the start of an entry: "Oct 13 2026 Advertisement
+#: for Teaching posts". Visva-Bharati's careers list uses this month-first form.
+#: Only the month-first form counts. A day-first date at the start can be a
+#: deadline ("30.11.2026: last date extended"), so it keeps its old reading.
+_LEADING_STAMP_RE = re.compile(
+    r"^\s*(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+(\d{1,2}),?\s+(20\d{2})\b",
+    re.IGNORECASE,
+)
+
+
+def split_leading_stamp(text: str) -> tuple[str | None, str]:
+    """Return (ISO date of the leading stamp or None, the text after it)."""
+    stamp = _LEADING_STAMP_RE.match(text)
+    if not stamp:
+        return None, text
+    mon, day, year = stamp.groups()
+    return _to_iso(day, mon, year), text[stamp.end():]
+
+
 def extract_dates(text: str) -> tuple[str | None, str | None]:
-    """Return (publication_date, closing_date) as ISO strings."""
-    pub: str | None = None
+    """Return (publication_date, closing_date) as ISO strings.
+
+    A date that opens the text is the listing's posting stamp, so it is the
+    publication date. It never becomes the closing date.
+    """
     close: str | None = None
+    pub, text = split_leading_stamp(text)
     matches = list(_DATE_RE.finditer(text))
     for m in matches:
         ctx = text[max(0, m.start() - 60): m.start()]
@@ -300,7 +323,19 @@ _DOCUMENT_CLASSES: tuple[tuple[str, "re.Pattern[str]"], ...] = (
         r"|\bresults?\s+of\s+the\s+recruitment\b"
         r"|\b(?:select|merit|wai" + _lig("ting") + r")\s+list\b"
         r"|\blist\s+of\s+candidates\s+selected\b"
-        r"|\bresults?\s+" + _lig("notification") + r"\b",
+        r"|\bresults?\s+" + _lig("notification") + r"\b"
+        # The selection stages after an advertisement closes. A careers page
+        # lists these beside the ads, and they outnumber the ads there.
+        r"|(?<!the\s)\bshort[\s-]?listed\b|\bshort[\s-]?listing\s+of\b"
+        r"|\b(?:final|" + _lig("provisional") + r")\s+(?:screening\s+)?lists?\b"
+        r"|\bscreening\s+(?:list|result|report)s?\b"
+        r"|\bfound\s+suitable\b"
+        r"|\bqualified\s+candidates\b|\bcandidates\s+qualified\b"
+        r"|\bdeclaration\s+of\s+(?:the\s+)?list\b"
+        r"|\bselection\s+committee\s+meeting\b|\breporting\s+time\b"
+        r"|\b(?:schedule|date)\s+of\s+(?:the\s+)?interviews?\b"
+        r"|\binterview\s+schedule\b|\bviva[\s-]*voce\b"
+        r"|\bdocument\s+verification\b|\bskill\s+test\b",
         re.I)),
     ("cancellation", re.compile(
         r"\b" + _lig("cancellation") + r"\s+of\s+advertisement\b"

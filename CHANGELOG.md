@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased
+
+**`document_class` changes on re-run for every parser, and `publication_date`
+changes for `generic` entries that open with a month-first date.** Shortlists,
+interview schedules and document-verification notices now carry
+`results_notice`, not `advertisement`. Re-run `academic-jobs`.
+
+### Fixed
+
+- **Selection-stage notices read as open ads.** A careers page lists the
+  shortlist, screening and interview notices of past ads beside the open ads.
+  On the Visva-Bharati careers page, seen 2026-11-03, 134 of 428 links are
+  such notices. The `results_notice` pattern now matches them. An ad whose
+  own text mentions "the shortlisted candidates" stays an `advertisement`.
+- **`generic` missed month-first dates.** An entry that opens with "Oct 13
+  2026" now carries that date as `publication_date`. Before, 212 of 254
+  Visva-Bharati ads carried no date, so a consumer that ages ads by date read
+  2019 ads as open. A day-first date at the start keeps its old reading,
+  because it can be a deadline.
+
 ## 0.21.1 — 2026-11-02
 
 **`publication_date` and `closing_date` change on re-run for `iim_recruit`
