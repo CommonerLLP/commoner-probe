@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.21.2 — 2026-11-03
 
 **`document_class` changes on re-run for every parser, and `publication_date`
 changes for `generic` entries that open with a month-first date.** Shortlists,
