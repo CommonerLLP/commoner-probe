@@ -332,6 +332,21 @@ def resolve_preset(name: str, tables: dict[str, ShrugTable]) -> list[ShrugTable]
     return chosen
 
 
+SHRUG_BUCKET_HOST = "shrug-assets-ddl.s3.amazonaws.com"
+
+
+def respect_robots_for(url: str) -> bool:
+    """Whether to check robots.txt before requesting *url*.
+
+    True for every host except the SHRUG file bucket, matched by exact hostname.
+    The bucket's /robots.txt answers 403 AccessDenied, which the HTTP client
+    reads as disallow-all. The catalogue page on ``www.devdatalab.org`` keeps its
+    robots.txt check. The freshness check in ``scripts/source_registry`` uses
+    this same predicate.
+    """
+    return urlparse(url).hostname != SHRUG_BUCKET_HOST
+
+
 def size_of(url: str, *, session: Any = None, timeout: int = 90) -> int:
     """The file's total size in bytes, from a ranged GET.
 
@@ -340,7 +355,8 @@ def size_of(url: str, *, session: Any = None, timeout: int = 90) -> int:
     ``Range: bytes=0-0`` answers 206 with ``Content-Range: bytes 0-0/<total>``.
     """
     sess = session if session is not None else make_session()
-    resp = sess.get(url, headers={"Range": "bytes=0-0"}, timeout=timeout)
+    resp = sess.get(url, headers={"Range": "bytes=0-0"}, timeout=timeout,
+                    respect_robots=respect_robots_for(url))
     headers = getattr(resp, "headers", None)
     if headers is None:
         raise ShrugCatalogueError(
@@ -376,7 +392,8 @@ def _download(session: Any, url: str, dest: Path, *, timeout: int = 900,
     written = 0
     part = dest.with_suffix(dest.suffix + ".part")
     try:
-        resp = session.get(url, timeout=timeout, stream=True)
+        resp = session.get(url, timeout=timeout, stream=True,
+                           respect_robots=respect_robots_for(url))
         resp.raise_for_status()
         with part.open("wb") as handle:
             for chunk in iter_capped(resp, max_bytes=max_bytes):

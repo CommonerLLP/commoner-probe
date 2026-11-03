@@ -250,6 +250,44 @@ def test_size_of_names_the_missing_headers_on_the_stdlib_session():
         shrug.size_of(VD11, session=session)
 
 
+# ------------------------------------------------------------ robots.txt policy
+
+def test_respect_robots_for_skips_only_the_exact_bucket_host():
+    """The bucket's robots.txt answers 403, which reads as disallow-all."""
+    assert shrug.respect_robots_for(VD11) is False
+    assert shrug.respect_robots_for("https://SHRUG-ASSETS-DDL.s3.amazonaws.com:443/x.zip") is False
+    assert shrug.respect_robots_for(shrug.CATALOGUE_URL) is True
+    assert shrug.respect_robots_for("https://example.org/pc11_vd.zip") is True
+    assert shrug.respect_robots_for("https://shrug-assets-ddl.s3.amazonaws.com.evil.example/x.zip") is True
+
+
+def test_size_of_skips_robots_on_the_bucket_and_not_elsewhere():
+    resp = _Resp(b"\x00", status=206, headers={"Content-Range": "bytes 0-0/10"})
+    other = "https://example.org/pc11_vd.zip"
+    session = _Session({S3: resp, other: resp})
+    shrug.size_of(VD11, session=session)
+    shrug.size_of(other, session=session)
+    assert session.calls[0][1]["respect_robots"] is False
+    assert session.calls[1][1]["respect_robots"] is True
+
+
+def test_download_skips_robots_on_the_bucket_and_not_elsewhere(tmp_path):
+    other = "https://example.org/pc11_vd.zip"
+    session = _Session({S3: _Resp(b"abc"), other: _Resp(b"abc")})
+    shrug._download(session, VD11, tmp_path / "a.zip")
+    shrug._download(session, other, tmp_path / "b.zip")
+    assert session.calls[0][1]["respect_robots"] is False
+    assert session.calls[1][1]["respect_robots"] is True
+
+
+def test_fetch_preset_keeps_robots_checks_on_the_catalogue_page(tmp_path):
+    session = _fetch_session()
+    shrug.fetch_preset("caste", tmp_path, session=session, log=lambda _m: None, min_rows=1)
+    flags = {url: kw.get("respect_robots", True) for url, kw in session.calls}
+    assert flags[shrug.CATALOGUE_URL] is True
+    assert all(flag is False for url, flag in flags.items() if url.startswith(S3))
+
+
 # ---------------------------------------------------------------- fetch_preset
 
 def _fetch_session(payload=b"shrug bytes"):

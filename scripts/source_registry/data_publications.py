@@ -30,7 +30,7 @@ from commoner_probe.nada import NadaProbe
 from commoner_probe.ogd_town_release import DchbTownProbe
 from commoner_probe.pay_report_index import DoePayAllowancesProbe
 from commoner_probe.rest_dataset_api import MospiClient
-from commoner_probe.shrug_catalogue_api import catalogue
+from commoner_probe.shrug_catalogue_api import catalogue, respect_robots_for
 from commoner_probe.spa_jwt_api import UdiseDocumentProbe
 from commoner_probe.wayback_recover import host_captures, rank_captures, raw_replay_url
 
@@ -169,18 +169,6 @@ def _shrug_tables() -> list[dict]:
 def _shrug_sentinel() -> dict | None:
     return next((t for t in _shrug_tables() if t["table_label"] == "2011 Population Census Village Directory"),
                 None)
-
-
-SHRUG_BUCKET_HOST = "shrug-assets-ddl.s3.amazonaws.com"
-
-
-def _off_the_shrug_bucket(url: str) -> bool:
-    """Respect robots.txt for a SHRUG file unless it's on the SHRUG bucket.
-
-    The bucket's /robots.txt answers 403 AccessDenied, which RetrySession reads
-    as disallow-all.
-    """
-    return urlparse(url).hostname != SHRUG_BUCKET_HOST
 
 
 # -- DoE Pay and Allowances annual reports -------------------------------------
@@ -470,7 +458,7 @@ SOURCES = [
            fetch=_shrug_tables, required=("table_label", "filetype", "url"),
            total=lambda: len(_shrug_tables()),
            document=lambda r: r["url"], document_kind="zip",
-           document_respect_robots=_off_the_shrug_bucket,
+           document_respect_robots=respect_robots_for,
            # The sentinel only proves that a known table is still listed.
            freshness=(Sentinel(_shrug_sentinel, lambda r: r["table_label"],
                                "2011 Population Census Village Directory"),
