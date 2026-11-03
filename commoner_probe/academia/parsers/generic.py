@@ -18,7 +18,12 @@ from typing import Any, Callable
 from urllib.parse import urljoin
 
 from .._common import PLACEHOLDER_INSTITUTION_ID, iso, stable_id
-from .parser_utils import DOCUMENT_CLASS_NAVIGATION, classify_document, in_site_chrome
+from .parser_utils import (
+    DOCUMENT_CLASS_NAVIGATION,
+    classify_document,
+    in_site_chrome,
+    split_leading_stamp,
+)
 
 RECRUITMENT_KEYWORDS = [
     r"recruit", r"vacanc", r"advert", r"non[- ]?teaching", r"ministerial",
@@ -118,8 +123,8 @@ def _to_iso(day: str, month_s: str, year: str) -> str | None:
 
 
 def _extract_dates(text: str) -> tuple[str | None, str | None]:
-    pub: str | None = None
     close: str | None = None
+    pub, text = split_leading_stamp(text)
     matches = list(DATE_RE.finditer(text))
     for m in matches:
         ctx = text[max(0, m.start() - 60): m.start()].lower()

@@ -1059,6 +1059,64 @@ def test_classify_document_labels_admissions_and_result_notifications():
     ) == "results_notice"
 
 
+def test_classify_document_labels_selection_stage_notices():
+    """Visva-Bharati, IISc and IIM Ranchi link titles, seen 2026-11-03."""
+    from commoner_probe.academia.parsers.parser_utils import classify_document
+
+    for title in (
+        "Final List of Shortlisted Candidates for the post of Assistant Professor of French",
+        "Dept. of Bengali - Provisional lists of \"Shortlisted for Interview\"",
+        "Candidates shortlisted and not shortlisted for the post of Assistant Professor",
+        "Centre for Modern European Languages - Provisional Screening report",
+        "Candidates found suitable for recruitment of Research Assistant",
+        "Declaration of list of Qualified candidates in the Written Examination",
+        "Notice - Interview/Viva-Voce Examination for engagement of ABPF",
+        "Notice regarding the document verification and skill test for Section Officer",
+        "Announcement of Seminar & Interview Schedule of Special Recruitment Drive",
+        "Reporting time and venue for the walk-in interview for the post",
+    ):
+        assert classify_document(title) == "results_notice", title
+
+
+def test_generic_reads_a_leading_month_first_stamp_as_publication_date():
+    """Visva-Bharati prefixes each entry with "Oct 13 2026". It is the posting date."""
+    from commoner_probe.academia.parsers import generic
+
+    html = (
+        '<ul><li><a href="files/a.pdf">Oct 13 2026 Advertisement for Teaching posts '
+        "(Advertisement No. 03/2026)</a></li>"
+        '<li><a href="files/b.pdf">Jan 09 2021 Dept of Zoology - Advertisement for '
+        "Guest Teacher</a></li></ul>"
+    )
+    ads = generic.parse(html, "https://www.visvabharati.ac.in/CareeratVB.html", FETCHED_GENERIC)
+    assert [(a["publication_date"], a["closing_date"]) for a in ads] == [
+        ("2026-10-13", None),
+        ("2021-01-09", None),
+    ]
+
+
+def test_split_leading_stamp_ignores_a_day_first_date():
+    """A day-first date at the start can be a deadline, so it is not a stamp."""
+    from commoner_probe.academia.parsers.parser_utils import split_leading_stamp
+
+    assert split_leading_stamp("Oct 13 2026 Advt") == ("2026-10-13", " Advt")
+    assert split_leading_stamp("30.11.2026: last date extended") == (
+        None, "30.11.2026: last date extended",
+    )
+
+
+def test_classify_document_keeps_ads_that_mention_selection_steps():
+    """An advertisement's own text names the later stages. It stays an ad."""
+    from commoner_probe.academia.parsers.parser_utils import classify_document
+
+    for title in (
+        "Professor — Only Email shall be sent for calling the shortlisted candidates for interview.",
+        "Walk-in interview for engagement of one (1) Technology Agent",
+        "Advertisement for Teaching posts (Advertisement No. 03/2026 Dated 13/10/2026)",
+    ):
+        assert classify_document(title) == "advertisement", title
+
+
 def test_schema_enum_matches_document_classes():
     """A value the code emits and the schema rejects fails every validating consumer."""
     import json
