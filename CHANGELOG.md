@@ -1,5 +1,34 @@
 # Changelog
 
+## Unreleased
+
+**This release is a MINOR.** A new parser, `amu`, joins the registry.
+`document_class` also changes on re-run for eligibility lists and written-test
+notices, which now carry `results_notice`.
+
+### Added
+
+- **`amu` parser for Aligarh Muslim University.** It reads the JSON job list at
+  `api.amu.ac.in/api/v1/getjobs`, page 1 only: the 20 newest entries. Each
+  entry carries `publication_date` from its upload time. File links use the
+  `/storage` path, because the bare `/file/` path redirects to the host root.
+- The bundled registry row carries `robots_override`. `api.amu.ac.in`
+  disallows all paths, and no other route to the list exists. This is a
+  recorded decision for this one host, taken 2026-11-03.
+
+### Fixed
+
+- **"List of eligible candidates" and written-test notices read as ads.** They
+  now carry `results_notice`. Seen on AMU's list, 2026-11-03.
+
+### Known limits
+
+- 17 of AMU's 20 newest PDFs are scans with no text layer, so their closing
+  date stays unread. `api.amu.ac.in` also omits its TLS intermediate
+  certificate (GlobalSign RSA OV SSL CA 2018). Python then fails to verify the
+  host, so add that intermediate to the trust store. Do not disable
+  verification.
+
 ## 0.21.2 — 2026-11-03
 
 **`document_class` changes on re-run for every parser, and `publication_date`

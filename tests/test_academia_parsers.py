@@ -6,6 +6,7 @@ dict shape (plain dicts, string post_type/contract_status) and key fields.
 
 from __future__ import annotations
 
+import json
 from datetime import datetime
 
 import pytest
@@ -562,3 +563,43 @@ def test_academia_extraction_returns_none_when_nothing_can_read_it(monkeypatch, 
 
     monkeypatch.setattr(pdf_text, "extract_pdf_text", lambda path, *, layout=True: "   ")
     assert pdf_text.extract_text(tmp_path / "ad.pdf") is None
+
+
+def _amu_payload(*rows):
+    return json.dumps({"success": True, "data": {"data": {"current_page": 1, "data": list(rows)}}})
+
+
+def test_amu_reads_the_json_job_list():
+    """Shape of api.amu.ac.in/api/v1/getjobs, seen 2026-11-03."""
+    from commoner_probe.academia.parsers import get_parser
+
+    payload = _amu_payload(
+        {"id": 2604, "title": "Local Advertisement No. FM/42/2026, Dated 30.10.2026",
+         "file": "/file/8003/jobs/1793440897.pdf", "approval_status": "Approved",
+         "created_at": "2026-10-31T10:01:37.000000Z", "deleted_at": None},
+        {"id": 2590, "title": "Shortlisted Candidates for the post of MTS (Unskilled)",
+         "file": "/file/8003/jobs/1.pdf", "approval_status": "Approved",
+         "created_at": "2026-09-19T10:00:00.000000Z", "deleted_at": None},
+        {"id": 1, "title": "Withdrawn entry", "file": "/file/1/jobs/2.pdf",
+         "approval_status": "Approved", "created_at": "2026-09-01T00:00:00Z",
+         "deleted_at": "2026-09-02T00:00:00Z"},
+        {"id": 2, "title": "Pending entry", "file": "/file/1/jobs/3.pdf",
+         "approval_status": "Pending", "created_at": "2026-09-01T00:00:00Z", "deleted_at": None},
+    )
+    ads = get_parser("amu")(payload, "https://api.amu.ac.in/api/v1/getjobs?lang=en", "2026-11-03")
+
+    assert [a["title"] for a in ads] == [
+        "Local Advertisement No. FM/42/2026, Dated 30.10.2026",
+        "Shortlisted Candidates for the post of MTS (Unskilled)",
+    ]
+    # The bare /file/ path redirects to the host root. Only /storage serves.
+    assert ads[0]["original_url"] == "https://api.amu.ac.in/storage/file/8003/jobs/1793440897.pdf"
+    assert ads[0]["publication_date"] == "2026-10-31"
+    assert ads[0]["document_class"] == "advertisement"
+    assert ads[1]["document_class"] == "results_notice"
+
+
+def test_amu_returns_nothing_for_a_non_json_body():
+    from commoner_probe.academia.parsers import get_parser
+
+    assert get_parser("amu")("<html>maintenance</html>", "https://api.amu.ac.in/", "2026-11-03") == []

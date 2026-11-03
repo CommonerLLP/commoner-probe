@@ -1074,6 +1074,8 @@ def test_classify_document_labels_selection_stage_notices():
         "Notice regarding the document verification and skill test for Section Officer",
         "Announcement of Seminar & Interview Schedule of Special Recruitment Drive",
         "Reporting time and venue for the walk-in interview for the post",
+        "List of Eligible candidates and Date of Written Test for the post of MTS",
+        "List of Eligible candidates for Written Test for the post of Record Keeper",
     ):
         assert classify_document(title) == "results_notice", title
 
@@ -1113,6 +1115,7 @@ def test_classify_document_keeps_ads_that_mention_selection_steps():
         "Professor — Only Email shall be sent for calling the shortlisted candidates for interview.",
         "Walk-in interview for engagement of one (1) Technology Agent",
         "Advertisement for Teaching posts (Advertisement No. 03/2026 Dated 13/10/2026)",
+        "Local Advertisement from eligible candidates for engagement of one Counsellor",
     ):
         assert classify_document(title) == "advertisement", title
 

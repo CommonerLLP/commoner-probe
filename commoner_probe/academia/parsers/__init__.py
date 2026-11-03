@@ -26,6 +26,7 @@ from __future__ import annotations
 from typing import Callable
 
 from . import (
+    amu,
     anna_university,
     generic,
     iim_recruit,
@@ -49,6 +50,7 @@ PARSERS: dict[str, Callable] = {
     "jnu": jnu.parse,
     "iit_gandhinagar": iit_gandhinagar.parse,
     "iit_hyderabad": iit_hyderabad.parse,
+    "amu": amu.parse,
 }
 
 #: Origin parser names not migrated to the probe; they fall back to ``generic``.
