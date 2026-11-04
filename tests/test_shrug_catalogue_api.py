@@ -1,10 +1,12 @@
 # SPDX-License-Identifier: MIT
 """Offline tests for the SHRUG / Devdatalab catalogue client.
 
-No network. The live grammar these fixtures copy was measured on 2026-08-14
-against www.devdatalab.org: the catalogue endpoint returned 52 rows, each
+No network. The live grammar these fixtures copy was measured against
+www.devdatalab.org. On 2026-08-14 the catalogue endpoint returned 52 rows, each
 download field held an HTML anchor, and a ranged GET reported 79,180,800 bytes
-for a file whose HEAD answered 403.
+for a file whose HEAD answered 403. On 2026-10-05 the download fields held bare
+presigned URLs instead of anchors. ``_download_link`` reads both forms and
+prefers the anchor.
 """
 from __future__ import annotations
 
@@ -157,6 +159,30 @@ def test_catalogue_refuses_two_rows_under_one_label():
         shrug.catalogue(session=_catalogue_session(rows=rows), min_rows=1)
 
 
+def test_catalogue_reads_a_bare_url_cell():
+    """On 5 October 2026 the download cells hold the URL as text, with no anchor."""
+    row = _row("Census", "SECC Rural", "")
+    row["primary_download"] = VD11
+    row["secondary_download"] = VD01
+    tables = shrug.catalogue(session=_catalogue_session(rows=[row]), min_rows=1)
+    assert tables["SECC Rural"].url == VD11
+    assert tables["SECC Rural"].secondary_url == VD01
+
+
+def test_catalogue_prefers_the_anchor_href_over_other_text_in_the_cell():
+    row = _row("Census", "SECC Rural", VD11)
+    row["primary_download"] += " mirror: https://example.org/other.zip"
+    tables = shrug.catalogue(session=_catalogue_session(rows=[row]), min_rows=1)
+    assert tables["SECC Rural"].url == VD11
+
+
+def test_a_cell_with_only_the_word_download_has_no_url():
+    row = _row("Census", "SECC Rural", "")
+    row["primary_download"] = "Download"
+    tables = shrug.catalogue(session=_catalogue_session(rows=[row]), min_rows=1)
+    assert tables["SECC Rural"].url is None
+
+
 def test_a_row_with_no_anchor_has_no_url():
     rows = [_row("Census", "SECC Rural", "")]
     tables = shrug.catalogue(session=_catalogue_session(rows=rows), min_rows=1)
@@ -222,6 +248,44 @@ def test_size_of_names_the_missing_headers_on_the_stdlib_session():
     session = _Session({S3: _NoHeaderResp(b"\x00", status=206)})
     with pytest.raises(shrug.ShrugCatalogueError, match="commoner-probe\\[http\\]"):
         shrug.size_of(VD11, session=session)
+
+
+# ------------------------------------------------------------ robots.txt policy
+
+def test_respect_robots_for_skips_only_the_exact_bucket_host():
+    """The bucket's robots.txt answers 403, which reads as disallow-all."""
+    assert shrug.respect_robots_for(VD11) is False
+    assert shrug.respect_robots_for("https://SHRUG-ASSETS-DDL.s3.amazonaws.com:443/x.zip") is False
+    assert shrug.respect_robots_for(shrug.CATALOGUE_URL) is True
+    assert shrug.respect_robots_for("https://example.org/pc11_vd.zip") is True
+    assert shrug.respect_robots_for("https://shrug-assets-ddl.s3.amazonaws.com.evil.example/x.zip") is True
+
+
+def test_size_of_skips_robots_on_the_bucket_and_not_elsewhere():
+    resp = _Resp(b"\x00", status=206, headers={"Content-Range": "bytes 0-0/10"})
+    other = "https://example.org/pc11_vd.zip"
+    session = _Session({S3: resp, other: resp})
+    shrug.size_of(VD11, session=session)
+    shrug.size_of(other, session=session)
+    assert session.calls[0][1]["respect_robots"] is False
+    assert session.calls[1][1]["respect_robots"] is True
+
+
+def test_download_skips_robots_on_the_bucket_and_not_elsewhere(tmp_path):
+    other = "https://example.org/pc11_vd.zip"
+    session = _Session({S3: _Resp(b"abc"), other: _Resp(b"abc")})
+    shrug._download(session, VD11, tmp_path / "a.zip")
+    shrug._download(session, other, tmp_path / "b.zip")
+    assert session.calls[0][1]["respect_robots"] is False
+    assert session.calls[1][1]["respect_robots"] is True
+
+
+def test_fetch_preset_keeps_robots_checks_on_the_catalogue_page(tmp_path):
+    session = _fetch_session()
+    shrug.fetch_preset("caste", tmp_path, session=session, log=lambda _m: None, min_rows=1)
+    flags = {url: kw.get("respect_robots", True) for url, kw in session.calls}
+    assert flags[shrug.CATALOGUE_URL] is True
+    assert all(flag is False for url, flag in flags.items() if url.startswith(S3))
 
 
 # ---------------------------------------------------------------- fetch_preset

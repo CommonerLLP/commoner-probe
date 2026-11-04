@@ -40,7 +40,16 @@ def test_only_committees_rs_skips_robots_and_only_on_the_rs_bucket():
     assert respect("https://BUCKETAPI.rajyasabha.digital:443/rsdocs/174.pdf") is False
     assert respect("https://sansad.in/getFile/rs/174.pdf") is True
     assert respect("https://bucketapi.rajyasabha.digital.evil.example/x.pdf") is True
-    assert all(s.document_respect_robots is True for s in SOURCES if s.id != "committees-rs")
+    assert all(s.document_respect_robots is True
+               for s in SOURCES if s.id not in ("committees-rs", "shrug"))
+
+
+def test_only_shrug_skips_robots_and_only_on_the_shrug_bucket():
+    respect = BY_ID["shrug"].document_respect_robots
+    assert respect("https://shrug-assets-ddl.s3.amazonaws.com/media/private/x.zip?X-Amz-Signature=1") is False
+    assert respect("https://SHRUG-ASSETS-DDL.s3.amazonaws.com:443/media/private/x.zip") is False
+    assert respect("https://www.devdatalab.org/shrug_download/") is True
+    assert respect("https://shrug-assets-ddl.s3.amazonaws.com.evil.example/x.zip") is True
 
 
 def test_ls_date_falls_back_in_order():

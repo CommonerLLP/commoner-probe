@@ -41,8 +41,11 @@ That returns 52 rows, one per table. Scraping the rendered page finds no links
 at all. The general lesson is short. A download page with a sortable table and
 no links keeps the links in the JSON endpoint the table is bound to.
 
-The two download fields hold **HTML anchors**, not bare URLs. The cell text is
-the word "Download". The URL is in the ``href``.
+The two download fields hold either an **HTML anchor** or a **bare URL**. As an
+anchor, the cell text is the word "Download" and the URL is in the ``href``. As
+a bare URL, the cell text is the URL. The catalogue held anchors on 14 August
+2026 and bare presigned URLs on 5 October 2026. :func:`_download_link` reads
+both, and prefers the anchor.
 
 PRESIGNED LINKS ARE SIGNED FOR GET ONLY
 =======================================
@@ -198,14 +201,20 @@ def _visible_text(value: Any) -> str:
     return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", str(value or ""))).strip()
 
 
-def _anchor_href(value: Any) -> str | None:
-    """The href of the first anchor in a catalogue cell.
+def _download_link(value: Any) -> str | None:
+    """The download URL in a catalogue cell, from an anchor or from bare text.
 
-    None when there is no anchor. The cell text is the word "Download", so
-    falling back to it would hand the caller a filename to fetch.
+    Reads the ``href`` of the first anchor. When the cell has no anchor, reads
+    the first ``http(s)://`` URL in the cell text. None when neither is there.
+    The cell text of an anchor is the word "Download", so the function never
+    falls back to that word, which would hand the caller a filename to fetch.
     """
-    match = re.search(r"""href=["']([^"']+)["']""", str(value or ""))
-    return match.group(1) if match else None
+    text = str(value or "")
+    match = re.search(r"""href=["']([^"']+)["']""", text)
+    if match:
+        return match.group(1)
+    match = re.search(r"""https?://[^\s<>"']+""", text)
+    return match.group(0) if match else None
 
 
 def _public_url(url: str) -> str:
@@ -292,8 +301,8 @@ def catalogue(*, session: Any = None, timeout: int = 90,
             table_label=label,
             filetype=_visible_text(row.get("primary_filetype")),
             citation=_visible_text(row.get("citation")),
-            url=_anchor_href(row.get("primary_download")),
-            secondary_url=_anchor_href(row.get("secondary_download")),
+            url=_download_link(row.get("primary_download")),
+            secondary_url=_download_link(row.get("secondary_download")),
         )
     return tables
 
@@ -323,6 +332,21 @@ def resolve_preset(name: str, tables: dict[str, ShrugTable]) -> list[ShrugTable]
     return chosen
 
 
+SHRUG_BUCKET_HOST = "shrug-assets-ddl.s3.amazonaws.com"
+
+
+def respect_robots_for(url: str) -> bool:
+    """Whether to check robots.txt before requesting *url*.
+
+    True for every host except the SHRUG file bucket, matched by exact hostname.
+    The bucket's /robots.txt answers 403 AccessDenied, which the HTTP client
+    reads as disallow-all. The catalogue page on ``www.devdatalab.org`` keeps its
+    robots.txt check. The freshness check in ``scripts/source_registry`` uses
+    this same predicate.
+    """
+    return urlparse(url).hostname != SHRUG_BUCKET_HOST
+
+
 def size_of(url: str, *, session: Any = None, timeout: int = 90) -> int:
     """The file's total size in bytes, from a ranged GET.
 
@@ -331,7 +355,8 @@ def size_of(url: str, *, session: Any = None, timeout: int = 90) -> int:
     ``Range: bytes=0-0`` answers 206 with ``Content-Range: bytes 0-0/<total>``.
     """
     sess = session if session is not None else make_session()
-    resp = sess.get(url, headers={"Range": "bytes=0-0"}, timeout=timeout)
+    resp = sess.get(url, headers={"Range": "bytes=0-0"}, timeout=timeout,
+                    respect_robots=respect_robots_for(url))
     headers = getattr(resp, "headers", None)
     if headers is None:
         raise ShrugCatalogueError(
@@ -367,7 +392,8 @@ def _download(session: Any, url: str, dest: Path, *, timeout: int = 900,
     written = 0
     part = dest.with_suffix(dest.suffix + ".part")
     try:
-        resp = session.get(url, timeout=timeout, stream=True)
+        resp = session.get(url, timeout=timeout, stream=True,
+                           respect_robots=respect_robots_for(url))
         resp.raise_for_status()
         with part.open("wb") as handle:
             for chunk in iter_capped(resp, max_bytes=max_bytes):
