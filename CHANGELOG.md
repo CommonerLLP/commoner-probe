@@ -1,5 +1,87 @@
 # Changelog
 
+## 0.23.0 — 2026-11-04
+
+**This release is a MINOR, and it moves published records.** Re-run
+`ministry-ddg` for DST and MHA, and re-run `dpe-csr`.
+
+**DST Detailed Demands for Grants records get new keys.** The key and file
+name now come from the year and a slug of the document title, not from the
+PDF's file name. DST stores each PDF under a 32-hex hash that can change on
+any re-upload. Re-running the DST probe writes new records alongside the ones
+keyed by the hashed file name. Keys and file names for every other portal do
+not change.
+
+**DPE CSR records and titles change on re-run.** DPE moved its CSR files from
+the WordPress media library to its Document Repository, so the record set, the
+file URLs, and the titles differ from earlier runs. The title is now the
+post's readable `acf.title`, not a slug such as "7th-csr". The probe keeps
+only the four repository types that carry CSR documents. Live, the merged
+result is 39 posts. Re-run `dpe-csr`.
+
+**`ministry-ddg-mha` reads a different page.** MHA's volumes moved from
+`finance-division` to the Budget Division page, `finance-division-inner`.
+The page lists 14 volumes, 2021-22 to 2026-27, and no longer lists the Output
+Outcome Monitoring Framework PDF.
+
+### Changed
+
+- **`DpeCsrProbe.probe(search=...)` is now `probe(searches=...)`.** The new
+  argument is a sequence of search terms. The adapter merges the results,
+  de-duplicates them by post ID, and sorts them newest first.
+  `dpe-csr --search` is repeatable and defaults to two searches, `csr` and
+  `corporate social responsibility`, because DPE's long-form guidelines never
+  use the word "CSR". `fetch_page` and `fetch_documents` now return Document
+  Repository posts, not media items.
+
+### Fixed
+
+- **`budget-union` failed with a `PermissionError` on robots.txt.**
+  `RetrySession` checked robots.txt with the session's default user agent and
+  ignored a per-request `User-Agent` header. `indiabudget.gov.in` answers the
+  default user agent, which contains a URL, with 403, and the 401/403 rule
+  reads that as "disallow all". The check now uses the request's own user
+  agent. The rule itself is unchanged.
+- **A UDISE connection failure read as a broken contract.** The freshness
+  check now reports a host outage as no response and an HTTP 4xx or 5xx answer
+  as an HTTP error. A 200 response that isn't a PDF stays broken.
+- **IIT Indore returned no advertisements.** The old
+  `recruitments/faculty-positions` page returns 404. Both registry URLs now
+  point at `careers/teaching_positions`, and the `iit_indore` parser reads the
+  new card layout: one ad per card, titled from the card heading. Links on
+  `iiti.ac.in` and `http://` normalize to `https://www.iiti.ac.in`, so one PDF
+  gets one ID, and Hindi copies are still dropped.
+- **SHRUG catalogue records had an empty `url`.** The catalogue's download
+  cells hold bare presigned URLs, and the adapter read only an anchor `href`.
+  It now takes the anchor when there is one and the first `http(s)` URL in the
+  cell text otherwise.
+- **SHRUG downloads failed on every catalogue file.** The S3 bucket's
+  `robots.txt` answers 403 AccessDenied, which the HTTP client reads as
+  "disallow all". Downloads and `size_of` now skip the robots.txt check for
+  `shrug-assets-ddl.s3.amazonaws.com` only, as `committees --house rs` does for
+  its PDF bucket. The catalogue page and every other host keep the check.
+- **MHA Detailed Demands for Grants stopped listing.** MHA rebuilt its site and
+  the old listing URL returns 404. The portal now reads the Budget Division
+  page with the card parser. A per-portal `demand_grant_titles_only` option
+  drops cards that aren't Demands for Grants volumes. `dea` parsing is
+  unchanged.
+- **DPE CSR returned HTTP 403 and no files.** `www.dpe.gov.in` answers 403 to a
+  user agent that contains a URL scheme, including on robots.txt. The adapter
+  and the `dpe-csr` source now send the scheme-free user agent, and the base
+  URL is `https://www.dpe.gov.in/cms/wp-json`, so calls no longer redirect.
+  Posts without a file are skipped and don't fall back to the CMS `guid`.
+- **DPE CSR posts lost their file when an ACF file field was empty.** An empty
+  ACF file field is stored as `false` or `0`, and `bool` is an `int` in Python,
+  so the adapter chose the empty field ahead of a later valid one and the post
+  got no `source_url`. It now takes only positive, non-boolean media IDs, in the
+  order `pdf`, `pdf_both`, `pdf_hindi`.
+- **DST Detailed Demands for Grants yielded no documents.** DST rebuilt
+  `www.dst.gov.in` as a Next.js app that renders its lists in the browser. The
+  new `wp_json` template reads the series from the site's WordPress JSON API:
+  one post named `budget` in the `orders-and-notices` category, with its
+  attachment IDs resolved to titles and PDF URLs. The year comes from the
+  title, so the freshness check sees 2026-27.
+
 ## 0.22.0 — 2026-11-03
 
 **This release is a MINOR.** A new parser, `amu`, joins the registry.
