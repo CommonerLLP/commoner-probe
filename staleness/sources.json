@@ -6,6 +6,11 @@
       "since": "2026-10-05",
       "status": "broken"
     },
+    "academic-jobs-amu": {
+      "reason": "ValueError: amu-aligarh yielded no ads: fetch_error fetch_error",
+      "since": "2026-11-04",
+      "status": "broken"
+    },
     "academic-jobs-anna-university": {
       "reason": "",
       "since": "2026-10-05",
@@ -32,9 +37,9 @@
       "status": "fresh"
     },
     "academic-jobs-iit-indore": {
-      "reason": "ValueError: iit-indore yielded no ads: fetch_error http_error (HTTP 404)",
-      "since": "2026-10-05",
-      "status": "broken"
+      "reason": "",
+      "since": "2026-11-04",
+      "status": "fresh"
     },
     "academic-jobs-iit-kanpur": {
       "reason": "",
@@ -72,12 +77,12 @@
       "status": "broken"
     },
     "budget-union": {
-      "reason": "document: PermissionError: Disallowed by robots.txt: https://www.indiabudget.gov.in/doc/eb/sbe101.xlsx",
-      "since": "2026-10-05",
-      "status": "broken"
+      "reason": "",
+      "since": "2026-11-04",
+      "status": "fresh"
     },
     "cag-finance-accounts": {
-      "reason": "ConnectTimeout: HTTPSConnectionPool(host='cag.gov.in', port=443): Max retries exceeded with url: /en/state-accounts-report?defuat_state_id=71 (Caused by ConnectTimeoutError(<HTTPSConnection(host='cag.",
+      "reason": "ReadTimeout: HTTPSConnectionPool(host='cag.gov.in', port=443): Read timed out. (read timeout=60)",
       "since": "2026-10-05",
       "status": "unreachable"
     },
@@ -97,9 +102,9 @@
       "status": "fresh"
     },
     "dchb-town": {
-      "reason": "TLS handshake failed: SSLError: HTTPSConnectionPool(host='censusindia.gov.in', port=443): Max retries exceeded with url: /nada/index.php/api/catalog/DH_2011_1301_PART_A_DCHB_MON (Caused by SSLError(SS",
-      "since": "2026-10-05",
-      "status": "broken"
+      "reason": "",
+      "since": "2026-10-26",
+      "status": "fresh"
     },
     "debates-ls": {
       "reason": "",
@@ -122,7 +127,7 @@
       "status": "down"
     },
     "go-register-ap": {
-      "reason": "ControlFailed: the positive control GoQuery(department='SE', from_date='13-05-2025', to_date='13-05-2025', go_no='19', go_type='1', text='') against https://goir.ap.gov.in/ raised ConnectTimeout: HTTP",
+      "reason": "ControlFailed: the positive control GoQuery(department='SE', from_date='13-05-2025', to_date='13-05-2025', go_no='19', go_type='1', text='') against https://goir.ap.gov.in/ raised ValueError: URL reje",
       "since": "2026-10-05",
       "status": "broken"
     },
@@ -152,9 +157,9 @@
       "status": "fresh"
     },
     "mines-dmft-odisha": {
-      "reason": "document: SSLError: HTTPSConnectionPool(host='dmf.odisha.gov.in', port=443): Max retries exceeded with url: /assets/cron_files/state_summary_data.json (Caused by SSLError(SSLCertVerificationError(1, '",
+      "reason": "URLError: <urlopen error timed out>",
       "since": "2026-10-05",
-      "status": "broken"
+      "status": "unreachable"
     },
     "ministry-ddg-dea": {
       "reason": "document: TLS handshake failed: SSLError: HTTPSConnectionPool(host='dea.gov.in', port=443): Max retries exceeded with url: /files/detail_demands_grants_documents/Final%20DDG%20%282026-27%29%20MoF-1.pd",
@@ -167,9 +172,9 @@
       "status": "fresh"
     },
     "ministry-ddg-mha": {
-      "reason": "document: PermissionError: Disallowed by robots.txt: https://www.mha.gov.in/sites/default/files/2026-02/DDGVOL12026-27_11022026.pdf",
-      "since": "2026-10-05",
-      "status": "broken"
+      "reason": "",
+      "since": "2026-11-04",
+      "status": "fresh"
     },
     "mospi-udise": {
       "reason": "TLS handshake failed: SSLError: HTTPSConnectionPool(host='api.mospi.gov.in', port=443): Max retries exceeded with url: /api/udise/getUdiseRecords?indicator_code=41&year=2024-25&state_code=8&page=1&lim",
@@ -182,9 +187,9 @@
       "status": "fresh"
     },
     "nada": {
-      "reason": "TLS handshake failed: SSLError: HTTPSConnectionPool(host='microdata.gov.in', port=443): Max retries exceeded with url: /NADA/index.php/api/catalog/search?ps=3&page=1 (Caused by SSLError(SSLCertVerific",
-      "since": "2026-10-05",
-      "status": "broken"
+      "reason": "ConnectTimeout: HTTPSConnectionPool(host='microdata.gov.in', port=443): Max retries exceeded with url: /NADA/index.php/api/catalog/search?ps=3&page=1 (Caused by ConnectTimeoutError(<HTTPSConnection(ho",
+      "since": "2026-11-04",
+      "status": "unreachable"
     },
     "niti-annual-report": {
       "reason": "PermissionError: Disallowed by robots.txt: https://www.niti.gov.in/publication/annual-report",
@@ -222,9 +227,9 @@
       "status": "fresh"
     },
     "questions-list-rs": {
-      "reason": "HTTP 500",
-      "since": "2026-10-05",
-      "status": "down"
+      "reason": "",
+      "since": "2026-10-12",
+      "status": "fresh"
     },
     "sansad-ls": {
       "reason": "",
@@ -252,9 +257,9 @@
       "status": "fresh"
     },
     "shrug": {
-      "reason": "no record has all required fields: table_label, filetype, url",
-      "since": "2026-10-05",
-      "status": "broken"
+      "reason": "",
+      "since": "2026-11-04",
+      "status": "fresh"
     },
     "state-assembly-neva": {
       "reason": "",
