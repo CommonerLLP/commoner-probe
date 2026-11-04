@@ -117,6 +117,14 @@ def test_fetch_page_falls_back_to_the_combined_then_hindi_file(api) -> None:
     assert [i["source_url"] for i in items] == [PDF_URL, HINDI_URL]
 
 
+@pytest.mark.parametrize("empty", [False, 0])
+def test_fetch_page_skips_an_empty_file_field_for_a_later_valid_one(api, empty) -> None:
+    api["posts"] = [_post(1, pdf=empty, pdf_hindi=11), _post(2, pdf=empty, pdf_both=12)]
+    api["media"] = {11: HINDI_URL, 12: PDF_URL}
+    items = DpeCsrProbe(Path("unused"), sleep=0).fetch_page(1)
+    assert [i["source_url"] for i in items] == [HINDI_URL, PDF_URL]
+
+
 def test_a_post_without_a_file_gets_no_source_url_and_no_record(api, tmp_path) -> None:
     api["posts"] = [_post(1), _post(2, pdf=10)]
     api["media"] = {10: PDF_URL}

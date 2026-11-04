@@ -47,6 +47,11 @@ CSR_CATEGORIES = (418, 400, 428, 434)
 SEARCHES = ("csr", "corporate social responsibility")
 
 
+def _is_media_id(value: Any) -> bool:
+    """Return True for a positive integer ID; an empty ACF file field is false, 0, or null."""
+    return isinstance(value, int) and not isinstance(value, bool) and value > 0
+
+
 class DpeCsrProbe:
     """Download DPE CPSE CSR documents via WordPress REST API.
 
@@ -112,7 +117,7 @@ class DpeCsrProbe:
         file_ids = {}
         for item in items:
             acf = item.get("acf") or {}
-            file_ids[item["id"]] = next((acf[f] for f in _FILE_FIELDS if isinstance(acf.get(f), int)), None)
+            file_ids[item["id"]] = next((acf[f] for f in _FILE_FIELDS if _is_media_id(acf.get(f))), None)
         wanted = sorted({i for i in file_ids.values() if i})
         urls: dict[int, str] = {}
         for start in range(0, len(wanted), _MAX_PER_PAGE):
