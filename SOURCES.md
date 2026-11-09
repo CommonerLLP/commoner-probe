@@ -13,13 +13,11 @@ The weekly source freshness check writes this table. For what each status means,
 | MoSPI eSankhyiki UDISE dropout rate: no date, can't see new years | api.mospi.gov.in | `broken` | 2026-10-05 | TLS handshake failed: SSLError: HTTPSConnectionPool(host='api.mospi.gov.in', port=443): Max retries exceeded with url: /api/udise/getUdiseRecords?indicator_code=41&year=2024-25&state_code=8&page=1&lim |
 | NITI Aayog Annual Reports (English) | www.niti.gov.in | `broken` | 2026-10-05 | PermissionError: Disallowed by robots.txt: https://www.niti.gov.in/publication/annual-report |
 | RBI State Finances: A Study of Budgets | rbi.org.in | `broken` | 2026-10-05 | document: body isn't a PDF |
-| UDISE+ public documents: pinned catalogue, can't see new documents | api.udiseplus.gov.in | `broken` | 2026-10-05 | no record has all required fields: key, url, sha256 |
-| DPE CPSE CSR documents (Document Repository) | www.dpe.gov.in | `down` | 2026-10-05 | HTTP 403 |
 | MCA CSR company spend, FY 2022-23: no date, can't see new years | mcacdm.nic.in | `down` | 2026-10-05 | HTTP 400 |
 | CAG State Finance Accounts Vol-II (Gujarat) | cag.gov.in | `unreachable` | 2026-10-05 | ReadTimeout: HTTPSConnectionPool(host='cag.gov.in', port=443): Read timed out. (read timeout=60) |
 | India Code state Acts (West Bengal) | indiacode.nic.in | `unreachable` | 2026-10-05 | ReadTimeout: HTTPSConnectionPool(host='www.indiacode.nic.in', port=443): Read timed out. (read timeout=45) |
-| NADA catalogue (MoSPI microdata): no date, can't see new studies | microdata.gov.in | `unreachable` | 2026-11-04 | ConnectTimeout: HTTPSConnectionPool(host='microdata.gov.in', port=443): Max retries exceeded with url: /NADA/index.php/api/catalog/search?ps=3&page=1 (Caused by ConnectTimeoutError(<HTTPSConnection(ho |
 | Odisha DMF summary files (JSON) | dmf.odisha.gov.in | `unreachable` | 2026-10-05 | URLError: <urlopen error timed out> |
+| UDISE+ public documents: pinned catalogue, can't see new documents | api.udiseplus.gov.in | `unreachable` | 2026-11-09 | ConnectTimeout: HTTPSConnectionPool(host='api.udiseplus.gov.in', port=443): Max retries exceeded with url: /udise-fms/api/fileUpload/getDocument/UploadedFiles/DCF0112.pdf (Caused by ConnectTimeoutErro |
 | Academic job ads (anna_university parser, Anna University): no posting date, can't see stale ads | www.annauniv.edu | `fresh` | 2026-10-05 |  |
 | Academic job ads (generic parser, IIT Guwahati): no posting date, can't see stale ads | www.iitg.ac.in | `fresh` | 2026-10-05 |  |
 | Academic job ads (iim_recruit parser, IIM Calcutta): no posting date, can't see stale ads | www.iimcal.ac.in | `fresh` | 2026-10-05 |  |
@@ -29,6 +27,7 @@ The weekly source freshness check writes this table. For what each status means,
 | Academic job ads (iit_kanpur parser, IIT Kanpur): no posting date, can't see stale ads | iitk.ac.in | `fresh` | 2026-10-05 |  |
 | Academic job ads (private_university parser, Ashoka University): no posting date, can't see stale ads | careers.ashoka.edu.in | `fresh` | 2026-10-05 |  |
 | Census DCHB Town Release, Nagaland: no date, can't see new releases | censusindia.gov.in | `fresh` | 2026-10-26 |  |
+| DPE CPSE CSR documents (Document Repository) | www.dpe.gov.in | `fresh` | 2026-11-09 |  |
 | Detailed Demands for Grants (DST, WordPress JSON API) | www.dst.gov.in | `fresh` | 2026-10-05 |  |
 | Detailed Demands for Grants (MHA, card template) | www.mha.gov.in | `fresh` | 2026-11-04 |  |
 | DoE Pay and Allowances annual reports: no date, can't see new years | doe.gov.in | `fresh` | 2026-10-05 |  |
@@ -43,6 +42,7 @@ The weekly source freshness check writes this table. For what each status means,
 | Lok Sabha session calendar | sansad.in | `fresh` | 2026-10-05 |  |
 | Ministry of Mines DMF dashboards (CSV) | mines.gov.in | `fresh` | 2026-10-05 |  |
 | MyNeta Lok Sabha 2024 candidate affidavits | myneta.info | `fresh` | 2026-10-05 |  |
+| NADA catalogue (MoSPI microdata): no date, can't see new studies | microdata.gov.in | `fresh` | 2026-11-09 |  |
 | NITI Aayog library (Koha): no date, can't see new holdings | library.niti.gov.in | `fresh` | 2026-10-05 |  |
 | PRS MP Track, Lok Sabha | prsindia.org | `fresh` | 2026-10-05 |  |
 | PRS MP Track, Rajya Sabha | prsindia.org | `fresh` | 2026-10-05 |  |

@@ -122,9 +122,9 @@
       "status": "fresh"
     },
     "dpe-csr": {
-      "reason": "HTTP 403",
-      "since": "2026-10-05",
-      "status": "down"
+      "reason": "",
+      "since": "2026-11-09",
+      "status": "fresh"
     },
     "go-register-ap": {
       "reason": "ControlFailed: the positive control GoQuery(department='SE', from_date='13-05-2025', to_date='13-05-2025', go_no='19', go_type='1', text='') against https://goir.ap.gov.in/ raised ValueError: URL reje",
@@ -187,9 +187,9 @@
       "status": "fresh"
     },
     "nada": {
-      "reason": "ConnectTimeout: HTTPSConnectionPool(host='microdata.gov.in', port=443): Max retries exceeded with url: /NADA/index.php/api/catalog/search?ps=3&page=1 (Caused by ConnectTimeoutError(<HTTPSConnection(ho",
-      "since": "2026-11-04",
-      "status": "unreachable"
+      "reason": "",
+      "since": "2026-11-09",
+      "status": "fresh"
     },
     "niti-annual-report": {
       "reason": "PermissionError: Disallowed by robots.txt: https://www.niti.gov.in/publication/annual-report",
@@ -272,9 +272,9 @@
       "status": "fresh"
     },
     "udise-docs": {
-      "reason": "no record has all required fields: key, url, sha256",
-      "since": "2026-10-05",
-      "status": "broken"
+      "reason": "ConnectTimeout: HTTPSConnectionPool(host='api.udiseplus.gov.in', port=443): Max retries exceeded with url: /udise-fms/api/fileUpload/getDocument/UploadedFiles/DCF0112.pdf (Caused by ConnectTimeoutErro",
+      "since": "2026-11-09",
+      "status": "unreachable"
     },
     "wayback-recover": {
       "reason": "",
