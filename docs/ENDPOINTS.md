@@ -177,6 +177,43 @@ commoner-probe mines-dmft \
   --sources mines-gov-in,odisha
 ```
 
+## State RERA project listings (`rera`)
+
+`commoner-probe rera` downloads the project listing of a state Real Estate
+Regulatory Authority portal. Karnataka (`--state KA`) is verified against the
+live portal on November 11, 2026.
+
+Source contract (Karnataka, `https://rera.karnataka.gov.in`):
+
+- form page: `GET /viewAllProjects` (HTTP 200, about 6.5 MB). `GET
+  /projectViewDetails` answers HTTP 405.
+- listing: `POST /projectViewDetails` as `application/x-www-form-urlencoded`
+  with `project=&firm=&appNo=&regNo=&district=<option value>&subdistrict=0&btn1=Search`.
+  The `district` value is the option's `value` attribute exactly, and
+  `Bengaluru  Rural` has two spaces.
+- no token, cookie, login, or CAPTCHA. `robots.txt` answers 404.
+- every response carries about 6.5 MB of page chrome. The adapter waits at
+  least 5 seconds between requests and reads the form page only for
+  `--all-districts` and `--list-districts`.
+
+Outputs:
+
+- `manifest.jsonl` records with `kind = "rera_listing"`
+- `rera_project_rows.jsonl` rows with `kind = "rera_project_row"`
+- the stored response for each request under `listings/IN-KA/`
+
+The parser reads the `<table id="approvedTable">` and anchors every column on
+its exact header string. A missing header raises, so a portal redesign fails
+instead of returning mislabelled rows. The schemas are in
+[SCHEMAS.md](SCHEMAS.md), and the captured fixture and header list are in
+`tests/fixtures/rera_karnataka/README.md`.
+
+Example:
+
+```bash
+commoner-probe rera --state KA --out data/rera
+```
+
 ## DMFT Evidence Bundle
 
 `commoner-probe evidence dmft` combines executive disclosure and parliamentary

@@ -357,6 +357,40 @@ Downloads raw Ministry of Mines static CSV snapshots and Odisha DMFT public
 JSON/report surfaces. Use `--dry-run` to print manifest records without opening
 network sessions.
 
+### `commoner-probe rera` — state RERA project listings
+
+```bash
+commoner-probe rera --state KA --out data/rera
+commoner-probe rera --state KA --district Kodagu --district Yadgir --out data/rera
+commoner-probe rera --state KA --all-districts --out data/rera
+commoner-probe rera --state KA --list-districts
+```
+
+Downloads the project listing from a state Real Estate Regulatory Authority
+(RERA) portal. Karnataka (`KA`) is the only registered state. A state that
+isn't registered exits non-zero and lists the ones that are.
+
+Each run writes the stored response under `listings/IN-KA/`, one `rera_listing`
+record per request to `manifest.jsonl`, and one project per row to
+`rera_project_rows.jsonl`. The probe records the dates the portal publishes. It
+doesn't compute delay.
+
+| Flag | Default | What it does |
+|---|---|---|
+| `--state` | required | State code, such as `KA` |
+| `--out` | none | Output directory. Not needed with `--list-districts` or `--dry-run` |
+| `--district` | `Bengaluru Urban` | District to fetch. Repeat for several. Case and repeated spaces don't matter |
+| `--all-districts` | off | Fetch every district in the portal's list. Reads the 6.5 MB form page first |
+| `--list-districts` | off | Print the portal's district names and exit |
+| `--sleep` | `5` | Seconds between requests. The minimum is `5` |
+| `--dry-run` | off | Print the requests without a network session or output files |
+
+Every Karnataka response carries about 6.5 MB of page chrome, and Bengaluru
+Urban's is about 33 MB (4,460 rows on November 11, 2026). Rerunning replaces a
+project's row by its acknowledgement number. A response without the project
+table, or with a changed header, writes an error record and no rows, and the
+command exits 1.
+
 ### `commoner-probe mospi` — MoSPI eSankhyiki statistics API
 
 The eSankhyiki portal fronts MoSPI's statistical datasets (PLFS, AISHE,
