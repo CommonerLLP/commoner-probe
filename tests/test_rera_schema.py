@@ -134,6 +134,20 @@ def test_row_with_a_wrong_shape_is_rejected(bad):
     assert _errors("rera_project_row", {**BASE_ROW, **bad})
 
 
+def test_haryana_registration_validity_and_lapsed_flag_validate():
+    row = {**BASE_ROW, "registration_valid_until": "2029-11-27", "lapsed": True}
+    assert _errors("rera_project_row", row) == []
+    assert _errors("rera_project_row", {**row, "registration_valid_until": None, "lapsed": None}) == []
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [{"registration_valid_until": "27/11/2029"}, {"lapsed": "yes"}, {"lapsed": 1}],
+)
+def test_haryana_typed_fields_reject_a_wrong_shape(bad):
+    assert _errors("rera_project_row", {**BASE_ROW, **bad})
+
+
 def test_row_accepts_a_state_specific_typed_field():
     assert _errors("rera_project_row", {**BASE_ROW, "quarterly_report_url": "https://x"}) == []
 

@@ -349,7 +349,8 @@ class ReraProjectRowRecord:
     header string. The typed dates are ISO strings. Each extension is a range,
     so it has a `_start` and an `_end`; `_end` is None when the portal lists a
     start with no end date. `registration_no` is None for a project that has an
-    acknowledgement number but no registration.
+    acknowledgement number but no registration. `lapsed` is True when the portal
+    flags the project as lapsed (Haryana), and None for a portal with no flag.
     """
 
     key: str
@@ -365,6 +366,8 @@ class ReraProjectRowRecord:
     source_sha256: str
     extracted_at: str
     approved_on: str | None = None
+    registration_valid_until: str | None = None
+    lapsed: bool | None = None
     proposed_completion_date_at_registration: str | None = None
     proposed_completion_date_current: str | None = None
     covid_extension_start: str | None = None

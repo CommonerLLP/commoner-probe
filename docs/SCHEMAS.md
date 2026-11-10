@@ -872,13 +872,15 @@ header string, so state-specific columns stay state-specific.
 
 | Field | Type | Required | Notes | Provenance |
 |---|---|---|---|---|
-| `key` | string | yes | `RERA\|{state}\|{id}`, where `{id}` is the identifier the portal assigns first. For Karnataka that is the acknowledgement number, which doesn't change when a registration number is issued | rera adapters |
+| `key` | string | yes | `RERA\|{state}\|{id}`, where `{id}` is the identifier the portal assigns first. For Karnataka that is the acknowledgement number, which doesn't change when a registration number is issued. For Haryana it is the registration certificate number, because `Project ID` is `NA` for 37 Gurugram projects | rera adapters |
 | `kind` / `record_type` | string | yes | `const: "rera_project_row"` | rera adapters |
 | `source` | string | yes | The portal ID, for example `rera-karnataka` | rera adapters |
 | `state` | string | yes | ISO 3166-2:IN code, for example `IN-KA` | rera adapters |
 | `registration_no` | string\|null | yes | Null for a project that has an acknowledgement number and no registration (Karnataka: empty for 288 of 4,460 Bengaluru Urban rows) | rera adapters |
 | `promoter` / `project_name` / `district` | string\|null | yes | As the portal prints them. Karnataka has one Bengaluru Urban row with an empty project name | rera adapters |
-| `approved_on` | date\|null | no | ISO date. Karnataka prints `dd/mm/yyyy` | rera adapters |
+| `approved_on` | date\|null | no | ISO date. Karnataka prints `dd/mm/yyyy`. For Haryana it is the `DATED` date in the certificate number, null when the cell has none | rera adapters |
+| `registration_valid_until` | date\|null | no | ISO date the registration runs to. Haryana's `Registration Up-to` column prints `dd/mm/yyyy`, and the placeholder `01/01/1970` becomes null | rera adapters |
+| `lapsed` | boolean\|null | no | True when the portal flags the project as lapsed. Haryana prints `Lapsed Project` beside the certificate number. Absent for Karnataka | rera adapters |
 | `proposed_completion_date_at_registration` | date\|null | no | ISO date. Karnataka prints `dd-mm-yyyy` here | rera adapters |
 | `proposed_completion_date_current` | date\|null | no | ISO date. Karnataka prints `dd/mm/yyyy` | rera adapters |
 | `covid_extension_start` / `_end` | date\|null | no | The COVID-19 extension range. Karnataka lists 47 Bengaluru Urban rows with a start and no end, so `_end` is null while `_start` is set | rera adapters |

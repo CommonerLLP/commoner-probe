@@ -8,11 +8,13 @@ its adapter has been verified against the live portal.
 
 from __future__ import annotations
 
+from .haryana import HaryanaReraProbe
 from .karnataka import KarnatakaReraProbe
 
 #: Registered states, keyed by the two-letter code the CLI accepts.
 STATES: dict[str, type] = {
+    "HR": HaryanaReraProbe,
     "KA": KarnatakaReraProbe,
 }
 
-__all__ = ["STATES", "KarnatakaReraProbe"]
+__all__ = ["STATES", "HaryanaReraProbe", "KarnatakaReraProbe"]

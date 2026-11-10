@@ -368,8 +368,8 @@ def test_upsert_keeps_position_and_replaces_by_key(tmp_path):
 # --- CLI ---------------------------------------------------------------------
 
 
-def test_karnataka_is_the_registered_state():
-    assert set(STATES) == {"KA"}
+def test_karnataka_is_a_registered_state():
+    assert STATES["KA"] is KarnatakaReraProbe
 
 
 def test_cli_defaults_to_bengaluru_urban_in_a_dry_run(capsys, monkeypatch):

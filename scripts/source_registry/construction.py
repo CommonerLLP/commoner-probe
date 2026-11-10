@@ -8,6 +8,7 @@ from commoner_probe.http_client import (
     read_capped_response,
     refuse_challenge,
 )
+from commoner_probe.rera import haryana
 from commoner_probe.rera.karnataka import (
     LISTING_URL,
     MAX_LISTING_BYTES,
@@ -42,6 +43,25 @@ def _rera_karnataka_rows() -> list[dict]:
     return parse_listing(body.decode("utf-8", errors="replace"))
 
 
+# Haryana's Gurugram listing is the one to watch: the Panchkula listing prints no
+# certificate date for 1,063 of its 1,132 rows. On November 11, 2026 the Gurugram
+# listing had 1,086 rows, 12 certificates dated in the last 90 days, a newest
+# date of November 2, 2026, and no gap longer than 25 days since January 2025.
+# The whole table comes in one 2.6 MB GET.
+_RERA_HR_AUTHORITY = "gurugram"
+
+
+def _rera_haryana_rows() -> list[dict]:
+    """GET the Gurugram listing and parse it with the adapter's own parser."""
+    url = haryana.listing_url(_RERA_HR_AUTHORITY)
+    resp = make_session().get(url, stream=True, timeout=120)
+    if resp.status_code != 200:
+        raise RuntimeError(f"HTTP {resp.status_code} from {url}")
+    refuse_challenge(resp, url, expect_body=True)
+    body = read_capped_response(resp, max_bytes=haryana.MAX_LISTING_BYTES)
+    return haryana.parse_listing(body.decode("utf-8", errors="replace"), url=url)
+
+
 SOURCES = [
     # The listing is the record, so the entry has no `document`.
     Source(id="rera-karnataka", label="Karnataka RERA project registrations (Bengaluru Urban)",
@@ -52,4 +72,12 @@ SOURCES = [
            # 95 registrations in 90 days is about one every day, so 30 days without
            # a new one means the listing stopped, not that the district was quiet.
            freshness=(MaxAge(days=30), CountFloor(0.95))),
+    Source(id="rera-haryana", label="Haryana RERA registered projects (Gurugram)",
+           host="haryanarera.gov.in",
+           fetch=_rera_haryana_rows,
+           required=("key", "promoter", "project_name", "district"),
+           record_date=lambda r: r.get("approved_on") or "",
+           # The longest gap between two certificate dates since January 2025 is 25
+           # days, so 60 days without a new one means the listing stopped.
+           freshness=(MaxAge(days=60), CountFloor(0.95))),
 ]

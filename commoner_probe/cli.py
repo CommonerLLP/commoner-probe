@@ -40,6 +40,8 @@ from .pay_report_index import DoePayAllowancesProbe
 from .question_list_api import QuestionsListProbe
 from .rera import STATES as RERA_STATES
 from .rera.common import MIN_SLEEP_SEC as RERA_MIN_SLEEP_SEC
+from .rera.common import ReraError
+from .rera.haryana import resolve_authority as resolve_haryana_authority
 from .rest_dataset_api import MospiClient, MospiProbe
 from .site_mirror import SiteMirror, verify_manifest
 from .spa_jwt_api import UdiseDocumentProbe
@@ -861,6 +863,11 @@ def rera_cmd(args: argparse.Namespace) -> None:
     if not (args.list_districts or args.dry_run or args.out):
         raise SystemExit("--out is required unless you pass --list-districts or --dry-run")
     probe = probe_cls(args.out or ".", sleep=args.sleep)
+    if code == "HR":
+        _rera_haryana(args, probe)
+        return
+    if args.authority:
+        raise SystemExit("--authority applies only to --state HR")
     if args.list_districts:
         for district in probe.list_districts():
             print(district)
@@ -877,7 +884,23 @@ def rera_cmd(args: argparse.Namespace) -> None:
         districts = probe.list_districts()
     elif args.district:
         districts = probe.resolve_districts(args.district, live=not args.dry_run)
-    records = probe.run(districts, dry_run=args.dry_run)
+    _rera_report(probe.run(districts, dry_run=args.dry_run))
+
+
+def _rera_haryana(args: argparse.Namespace, probe) -> None:
+    if args.district or args.all_districts or args.list_districts:
+        raise SystemExit(
+            "--district, --all-districts, and --list-districts apply to --state KA; "
+            "for --state HR, choose --authority gurugram or panchkula"
+        )
+    try:
+        authorities = [resolve_haryana_authority(a) for a in args.authority or []]
+    except ReraError as exc:
+        raise SystemExit(str(exc)) from exc
+    _rera_report(probe.run(authorities or None, dry_run=args.dry_run))
+
+
+def _rera_report(records: list[dict]) -> None:
     for record in records:
         print(json.dumps(record, ensure_ascii=False))
     failed = [r for r in records if r["status"] == "error"]
@@ -1963,7 +1986,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     rera = sub.add_parser(
         "rera",
-        help="Download a state RERA project listing (Karnataka: Bengaluru Urban by default).",
+        help=(
+            "Download a state RERA project listing "
+            "(KA: Bengaluru Urban by default; HR: Gurugram by default)."
+        ),
     )
     rera.add_argument(
         "--state",
@@ -1977,6 +2003,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--district",
         action="append",
         help="District to fetch; repeat for several. Default: Bengaluru Urban.",
+    )
+    rera.add_argument(
+        "--authority",
+        action="append",
+        help=(
+            "Haryana only: authority to fetch, gurugram or panchkula (the rest of "
+            "Haryana); repeat for both. Default: gurugram."
+        ),
     )
     rera.add_argument(
         "--all-districts",

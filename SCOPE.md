@@ -17,8 +17,8 @@ provenance, for downstream consumers:
   portals, MCA and DPE CSR disclosures, mines/DMFT disclosures, Union
   Budget + RBI source files, ministry DDG series, DoE Pay & Allowances
   reports, MoSPI eSankhyiki statistics, Lok Sabha attendance, ADR/MyNeta
-  affidavits, academic faculty-recruitment advertisements, Karnataka RERA
-  project registrations.
+  affidavits, academic faculty-recruitment advertisements, Karnataka and Haryana
+  RERA project registrations.
 - **Shared HTTP discipline**: `http_client.py` and `url_safety.py` —
   SSRF guard, robots.txt, per-domain rate limiting, retry/backoff,
   optional cache, User-Agent policy.

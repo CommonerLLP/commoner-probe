@@ -180,8 +180,8 @@ commoner-probe mines-dmft \
 ## State RERA project listings (`rera`)
 
 `commoner-probe rera` downloads the project listing of a state Real Estate
-Regulatory Authority portal. Karnataka (`--state KA`) is verified against the
-live portal on November 11, 2026.
+Regulatory Authority portal. Karnataka (`--state KA`) and Haryana
+(`--state HR`) are verified against the live portals on November 11, 2026.
 
 Source contract (Karnataka, `https://rera.karnataka.gov.in`):
 
@@ -212,6 +212,30 @@ Example:
 
 ```bash
 commoner-probe rera --state KA --out data/rera
+```
+
+Source contract (Haryana, `https://haryanarera.gov.in`, `--state HR`, verified
+November 11, 2026):
+
+- listing: `GET /admincontrol/registered_projects/2` is the Gurugram authority
+  (1,086 rows, about 2.6 MB), and `GET /admincontrol/registered_projects/1` is
+  the Panchkula authority, which covers every other Haryana district (1,132
+  rows). Select one with `--authority gurugram|panchkula`.
+- the whole table is in the HTML (the DataTable paginates in the browser). No
+  token, cookie, login, or CAPTCHA. `robots.txt` answers 404.
+- `Project ID` is `NA` for 37 Gurugram projects, so the row key is the
+  registration certificate number. The adapter splits that cell into
+  `registration_no`, `approved_on` (the `DATED` date), and `lapsed`.
+- the `View Quarterly Progress` link opens an index of quarters with a `POST`
+  form per quarter. The adapter records the link in `fields` and never fetches
+  it, or any other link in a row.
+
+The parser reads `<table id="compliant_hearing">` and anchors every column on
+its exact header string. The captured fixtures and header list are in
+`tests/fixtures/rera_haryana/README.md`.
+
+```bash
+commoner-probe rera --state HR --out data/rera
 ```
 
 ## DMFT Evidence Bundle

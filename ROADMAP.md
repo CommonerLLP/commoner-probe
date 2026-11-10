@@ -37,6 +37,9 @@ record; this file says what ships next and what is deliberately deferred.
 - `rera --state KA`: Karnataka RERA project registrations, one `rera_project_row`
   per project. The source freshness check watches the Bengaluru Urban listing
   as `rera-karnataka`.
+- `rera --state HR`: Haryana RERA registered projects (Gurugram or Panchkula
+  authority), with typed `registration_valid_until` and `lapsed`. The source
+  freshness check watches the Gurugram listing as `rera-haryana`.
 
 **Next gate: 1.0.0 — deferred deliberately, and gated on Phase 2.** Declaring
 1.0 promises interface stability, and the package rename to `probe`/`compose`

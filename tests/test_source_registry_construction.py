@@ -70,3 +70,57 @@ def test_record_date_is_the_approved_on_date():
     newest = cs.newest_date(rows, source.record_date, date(2026, 11, 11))
     assert newest and newest <= "2026-11-11"
     assert source.record_date({"approved_on": None}) == ""
+
+
+# --- Haryana ---------------------------------------------------------------
+
+HR_FIXTURE = Path(__file__).parent / "fixtures" / "rera_haryana" / "registered_projects_2_trimmed.html"
+HR_HTML = HR_FIXTURE.read_text(encoding="utf-8")
+
+
+class _GetSession:
+    def __init__(self, status=200, body=HR_HTML.encode("utf-8")):
+        self.status, self.body, self.calls = status, body, []
+
+    def get(self, url, **kwargs):
+        self.calls.append((url, kwargs))
+        return StdlibResponse(url, self.status, self.body, {"Content-Type": "text/html"})
+
+
+def test_the_haryana_entry_is_registered_with_the_planned_rules():
+    source = BY_ID["rera-haryana"]
+    assert source.host == "haryanarera.gov.in"
+    assert source.required == ("key", "promoter", "project_name", "district")
+    assert source.document is None
+    assert source.freshness == (cs.MaxAge(days=60), cs.CountFloor(0.95))
+
+
+def test_haryana_fetch_gets_the_gurugram_listing_and_parses_it(monkeypatch):
+    session = _GetSession()
+    monkeypatch.setattr(construction, "make_session", lambda: session)
+    rows = construction._rera_haryana_rows()
+    assert len(rows) == 12
+    (url, _), = session.calls
+    assert url == "https://haryanarera.gov.in/admincontrol/registered_projects/2"
+
+
+def test_haryana_fetch_requests_no_quarterly_progress_link(monkeypatch):
+    session = _GetSession()
+    monkeypatch.setattr(construction, "make_session", lambda: session)
+    construction._rera_haryana_rows()
+    assert all("print_quarterly_schedules" not in url for url, _ in session.calls)
+
+
+def test_haryana_fetch_raises_a_message_the_checker_reads_as_http_error(monkeypatch):
+    monkeypatch.setattr(construction, "make_session", lambda: _GetSession(status=503, body=b""))
+    with pytest.raises(RuntimeError) as exc:
+        construction._rera_haryana_rows()
+    assert cs.classify_exception(exc.value)[:2] == (cs.HTTP_ERROR, 503)
+
+
+def test_haryana_record_date_is_the_certificate_date():
+    source = BY_ID["rera-haryana"]
+    rows = construction.haryana.parse_listing(HR_HTML)
+    newest = cs.newest_date(rows, source.record_date, date(2026, 11, 11))
+    assert newest == "2026-07-03"
+    assert source.record_date({"approved_on": None}) == ""

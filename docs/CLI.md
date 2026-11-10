@@ -364,15 +364,17 @@ commoner-probe rera --state KA --out data/rera
 commoner-probe rera --state KA --district Kodagu --district Yadgir --out data/rera
 commoner-probe rera --state KA --all-districts --out data/rera
 commoner-probe rera --state KA --list-districts
+commoner-probe rera --state HR --out data/rera
+commoner-probe rera --state HR --authority gurugram --authority panchkula --out data/rera
 ```
 
 Downloads the project listing from a state Real Estate Regulatory Authority
-(RERA) portal. Karnataka (`KA`) is the only registered state. A state that
+(RERA) portal. Karnataka (`KA`) and Haryana (`HR`) are registered. A state that
 isn't registered exits non-zero and lists the ones that are.
 
-Each run writes the stored response under `listings/IN-KA/`, one `rera_listing`
-record per request to `manifest.jsonl`, and one project per row to
-`rera_project_rows.jsonl`. The probe records the dates the portal publishes. It
+Each run writes the stored response under `listings/IN-<state>/`, one
+`rera_listing` record per request to `manifest.jsonl`, and one project per row
+to `rera_project_rows.jsonl`. The probe records the dates the portal publishes. It
 doesn't compute delay.
 
 | Flag | Default | What it does |
@@ -380,10 +382,19 @@ doesn't compute delay.
 | `--state` | required | State code, such as `KA` |
 | `--out` | none | Output directory. Not needed with `--list-districts` or `--dry-run` |
 | `--district` | `Bengaluru Urban` | District to fetch. Repeat for several. Case and repeated spaces don't matter |
+| `--authority` | `gurugram` | `HR` only: `gurugram` or `panchkula` (every other Haryana district). Repeat for both. |
 | `--all-districts` | off | Fetch every district in the portal's list. Reads the 6.5 MB form page first |
 | `--list-districts` | off | Print the portal's district names and exit |
 | `--sleep` | `5` | Seconds between requests. The minimum is `5` |
 | `--dry-run` | off | Print the requests without a network session or output files |
+
+`--district`, `--all-districts`, and `--list-districts` apply to `KA`, and
+`--authority` applies to `HR`. Passing one to the other state exits non-zero.
+
+Haryana publishes each authority's whole table in one 2.6 MB `GET` (1,086
+Gurugram rows on November 11, 2026). Each row keeps every column in `fields`,
+`lapsed` is `true` for a project the portal flags as lapsed, and the
+quarterly-progress link is recorded in `fields` and never fetched.
 
 Every Karnataka response carries about 6.5 MB of page chrome, and Bengaluru
 Urban's is about 33 MB (4,460 rows on November 11, 2026). Rerunning replaces a
