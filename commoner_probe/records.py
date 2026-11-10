@@ -342,6 +342,71 @@ class DchbTownAmenityRecord:
 
 
 @dataclass
+class ReraProjectRowRecord:
+    """One project from a state RERA portal listing, from rera_project_rows.jsonl.
+
+    `fields` holds every column the portal publishes, keyed by the portal's own
+    header string. The typed dates are ISO strings. Each extension is a range,
+    so it has a `_start` and an `_end`; `_end` is None when the portal lists a
+    start with no end date. `registration_no` is None for a project that has an
+    acknowledgement number but no registration.
+    """
+
+    key: str
+    kind: str
+    record_type: str
+    source: str
+    state: str
+    registration_no: str | None
+    promoter: str | None
+    project_name: str | None
+    district: str | None
+    listing_url: str
+    source_sha256: str
+    extracted_at: str
+    approved_on: str | None = None
+    proposed_completion_date_at_registration: str | None = None
+    proposed_completion_date_current: str | None = None
+    covid_extension_start: str | None = None
+    covid_extension_end: str | None = None
+    section6_extension_start: str | None = None
+    section6_extension_end: str | None = None
+    further_extension_start: str | None = None
+    further_extension_end: str | None = None
+    fields: dict[str, str | None] = field(default_factory=dict)
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "ReraProjectRowRecord":
+        return _from_dict(cls, d)
+
+
+@dataclass
+class ManifestReraListingRecord:
+    """One request to a state RERA portal listing, from manifest.jsonl."""
+
+    key: str
+    kind: str
+    state: str
+    url: str
+    method: str
+    form: dict
+    http_status: int | None
+    path: str | None
+    sha256: str | None
+    bytes: int | None
+    row_count: int | None
+    fetched_at: str
+    status: str
+    error: str | None
+    record_type: str | None = None
+    source: str | None = None
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "ManifestReraListingRecord":
+        return _from_dict(cls, d)
+
+
+@dataclass
 class ManifestNadaStudyRecord:
     """One NADA study record from manifest.jsonl.
 
@@ -1479,6 +1544,8 @@ __all__ = [
     "NevaDistrictRowRecord",
     "VacancyRowRecord",
     "OutsourcingRowRecord",
+    "ReraProjectRowRecord",
+    "ManifestReraListingRecord",
     "AtrLinkageRecord",
     "RunRecord",
     # Re-exported from entities
