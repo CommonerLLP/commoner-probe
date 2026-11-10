@@ -124,3 +124,49 @@ def test_haryana_record_date_is_the_certificate_date():
     newest = cs.newest_date(rows, source.record_date, date(2026, 11, 11))
     assert newest == "2026-07-03"
     assert source.record_date({"approved_on": None}) == ""
+
+
+# --- Tamil Nadu ------------------------------------------------------------
+
+TN_FIXTURE = Path(__file__).parent / "fixtures" / "rera_tamil_nadu" / "registered_building_tn_trimmed.html"
+TN_HTML = TN_FIXTURE.read_text(encoding="utf-8")
+
+
+def test_the_tamil_nadu_entry_is_registered_with_the_planned_rules():
+    source = BY_ID["rera-tamil-nadu"]
+    assert source.host == "rera.tn.gov.in"
+    assert source.required == ("key", "promoter", "approved_on")
+    assert source.document is None
+    # No CountFloor: the list holds one year, so its count restarts every January.
+    assert source.freshness == (cs.MaxAge(days=30),)
+
+
+def test_tamil_nadu_fetch_gets_the_current_year_building_list(monkeypatch):
+    session = _GetSession(body=TN_HTML.encode("utf-8"))
+    monkeypatch.setattr(construction, "make_session", lambda: session)
+    rows = construction._rera_tamil_nadu_rows()
+    assert len(rows) == 10
+    (url, _), = session.calls
+    assert url == "https://rera.tn.gov.in/registered-building/tn"
+
+
+def test_tamil_nadu_fetch_requests_no_pdf_or_row_link(monkeypatch):
+    session = _GetSession(body=TN_HTML.encode("utf-8"))
+    monkeypatch.setattr(construction, "make_session", lambda: session)
+    construction._rera_tamil_nadu_rows()
+    assert all(not url.lower().endswith(".pdf") and "/uploads/" not in url for url, _ in session.calls)
+
+
+def test_tamil_nadu_fetch_raises_a_message_the_checker_reads_as_http_error(monkeypatch):
+    monkeypatch.setattr(construction, "make_session", lambda: _GetSession(status=503, body=b""))
+    with pytest.raises(RuntimeError) as exc:
+        construction._rera_tamil_nadu_rows()
+    assert cs.classify_exception(exc.value)[:2] == (cs.HTTP_ERROR, 503)
+
+
+def test_tamil_nadu_record_date_is_the_registration_date():
+    source = BY_ID["rera-tamil-nadu"]
+    rows = construction.tamil_nadu.parse_listing(TN_HTML)
+    newest = cs.newest_date(rows, source.record_date, date(2026, 11, 11))
+    assert newest == "2026-11-10"
+    assert source.record_date({"approved_on": None}) == ""

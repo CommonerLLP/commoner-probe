@@ -10,11 +10,13 @@ from __future__ import annotations
 
 from .haryana import HaryanaReraProbe
 from .karnataka import KarnatakaReraProbe
+from .tamil_nadu import TamilNaduReraProbe
 
 #: Registered states, keyed by the two-letter code the CLI accepts.
 STATES: dict[str, type] = {
     "HR": HaryanaReraProbe,
     "KA": KarnatakaReraProbe,
+    "TN": TamilNaduReraProbe,
 }
 
-__all__ = ["STATES", "HaryanaReraProbe", "KarnatakaReraProbe"]
+__all__ = ["STATES", "HaryanaReraProbe", "KarnatakaReraProbe", "TamilNaduReraProbe"]

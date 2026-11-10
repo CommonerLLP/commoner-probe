@@ -40,6 +40,10 @@ record; this file says what ships next and what is deliberately deferred.
 - `rera --state HR`: Haryana RERA registered projects (Gurugram or Panchkula
   authority), with typed `registration_valid_until` and `lapsed`. The source
   freshness check watches the Gurugram listing as `rera-haryana`.
+- `rera --state TN`: Tamil Nadu RERA registered buildings and layouts (`--kind`,
+  `--year`), with typed CMDA and Greater Chennai Corporation permit numbers and
+  coordinates. The source freshness check watches the current-year building list
+  as `rera-tamil-nadu`.
 
 **Next gate: 1.0.0 — deferred deliberately, and gated on Phase 2.** Declaring
 1.0 promises interface stability, and the package rename to `probe`/`compose`

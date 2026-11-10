@@ -42,6 +42,7 @@ from .rera import STATES as RERA_STATES
 from .rera.common import MIN_SLEEP_SEC as RERA_MIN_SLEEP_SEC
 from .rera.common import ReraError
 from .rera.haryana import resolve_authority as resolve_haryana_authority
+from .rera.tamil_nadu import resolve_kind as resolve_tamil_nadu_kind
 from .rest_dataset_api import MospiClient, MospiProbe
 from .site_mirror import SiteMirror, verify_manifest
 from .spa_jwt_api import UdiseDocumentProbe
@@ -866,8 +867,13 @@ def rera_cmd(args: argparse.Namespace) -> None:
     if code == "HR":
         _rera_haryana(args, probe)
         return
+    if code == "TN":
+        _rera_tamil_nadu(args, probe)
+        return
     if args.authority:
         raise SystemExit("--authority applies only to --state HR")
+    if args.kind or args.year:
+        raise SystemExit("--kind and --year apply only to --state TN")
     if args.list_districts:
         for district in probe.list_districts():
             print(district)
@@ -893,11 +899,28 @@ def _rera_haryana(args: argparse.Namespace, probe) -> None:
             "--district, --all-districts, and --list-districts apply to --state KA; "
             "for --state HR, choose --authority gurugram or panchkula"
         )
+    if args.kind or args.year:
+        raise SystemExit("--kind and --year apply only to --state TN")
     try:
         authorities = [resolve_haryana_authority(a) for a in args.authority or []]
     except ReraError as exc:
         raise SystemExit(str(exc)) from exc
     _rera_report(probe.run(authorities or None, dry_run=args.dry_run))
+
+
+def _rera_tamil_nadu(args: argparse.Namespace, probe) -> None:
+    if args.district or args.all_districts or args.list_districts or args.authority:
+        raise SystemExit(
+            "--district, --all-districts, --list-districts, and --authority apply to other "
+            "states; for --state TN, choose --kind building or layout and optionally --year"
+        )
+    if args.year is not None and not (args.year.isdigit() and len(args.year) == 4):
+        raise SystemExit(f"--year must be a four-digit year, not {args.year!r}")
+    try:
+        kinds = [resolve_tamil_nadu_kind(k) for k in args.kind or []]
+    except ReraError as exc:
+        raise SystemExit(str(exc)) from exc
+    _rera_report(probe.run(kinds or None, year=args.year, dry_run=args.dry_run))
 
 
 def _rera_report(records: list[dict]) -> None:
@@ -1988,7 +2011,8 @@ def build_parser() -> argparse.ArgumentParser:
         "rera",
         help=(
             "Download a state RERA project listing "
-            "(KA: Bengaluru Urban by default; HR: Gurugram by default)."
+            "(KA: Bengaluru Urban by default; HR: Gurugram by default; "
+            "TN: registered buildings by default)."
         ),
     )
     rera.add_argument(
@@ -2010,6 +2034,22 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Haryana only: authority to fetch, gurugram or panchkula (the rest of "
             "Haryana); repeat for both. Default: gurugram."
+        ),
+    )
+    rera.add_argument(
+        "--kind",
+        action="append",
+        help=(
+            "Tamil Nadu only: listing to fetch, building or layout (the layout list is "
+            "about 11 MB); repeat for both. Default: building."
+        ),
+    )
+    rera.add_argument(
+        "--year",
+        help=(
+            "Tamil Nadu only: registration year, such as 2025. Default: the portal's "
+            "current year. An older year posts the page's token back, which needs "
+            "commoner-probe[http]."
         ),
     )
     rera.add_argument(

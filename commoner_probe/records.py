@@ -351,6 +351,10 @@ class ReraProjectRowRecord:
     start with no end date. `registration_no` is None for a project that has an
     acknowledgement number but no registration. `lapsed` is True when the portal
     flags the project as lapsed (Haryana), and None for a portal with no flag.
+    `cmda_permission_no` and `gcc_permission_no` are the Chennai planning and
+    building permit numbers that Tamil Nadu's Approval Details text cites, and
+    `latitude` and `longitude` are decimal degrees (Tamil Nadu). Each is None
+    when the portal's text has no value in that shape.
     """
 
     key: str
@@ -368,6 +372,10 @@ class ReraProjectRowRecord:
     approved_on: str | None = None
     registration_valid_until: str | None = None
     lapsed: bool | None = None
+    cmda_permission_no: str | None = None
+    gcc_permission_no: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
     proposed_completion_date_at_registration: str | None = None
     proposed_completion_date_current: str | None = None
     covid_extension_start: str | None = None

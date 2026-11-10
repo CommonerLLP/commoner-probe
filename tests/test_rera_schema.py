@@ -148,6 +148,27 @@ def test_haryana_typed_fields_reject_a_wrong_shape(bad):
     assert _errors("rera_project_row", {**BASE_ROW, **bad})
 
 
+def test_tamil_nadu_permit_numbers_and_coordinates_validate():
+    row = {
+        **BASE_ROW,
+        "cmda_permission_no": "OL-PP/NHRB/0235/2025",
+        "gcc_permission_no": "CEBA/WDCN10/00287/2025",
+        "latitude": 13.04864,
+        "longitude": 80.211372,
+    }
+    assert _errors("rera_project_row", row) == []
+    nulls = {k: None for k in ("cmda_permission_no", "gcc_permission_no", "latitude", "longitude")}
+    assert _errors("rera_project_row", {**BASE_ROW, **nulls}) == []
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [{"cmda_permission_no": 5}, {"latitude": "13.0"}, {"longitude": 181}, {"latitude": -91}],
+)
+def test_tamil_nadu_typed_fields_reject_a_wrong_shape(bad):
+    assert _errors("rera_project_row", {**BASE_ROW, **bad})
+
+
 def test_row_accepts_a_state_specific_typed_field():
     assert _errors("rera_project_row", {**BASE_ROW, "quarterly_report_url": "https://x"}) == []
 

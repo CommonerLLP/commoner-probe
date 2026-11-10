@@ -433,7 +433,7 @@ def test_dry_run_writes_nothing_and_makes_no_request(tmp_path):
 
 
 def test_haryana_is_a_registered_state():
-    assert set(STATES) == {"HR", "KA"}
+    assert {"HR", "KA"} <= set(STATES)
 
 
 def test_cli_defaults_to_gurugram_in_a_dry_run(capsys, monkeypatch):
