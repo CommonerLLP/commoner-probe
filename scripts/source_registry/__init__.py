@@ -1,4 +1,4 @@
 """The source registry: every data source the freshness check covers."""
-from . import data_publications, parliament, state_legal
+from . import construction, data_publications, parliament, state_legal
 
-SOURCES = parliament.SOURCES + state_legal.SOURCES + data_publications.SOURCES
+SOURCES = parliament.SOURCES + state_legal.SOURCES + data_publications.SOURCES + construction.SOURCES
