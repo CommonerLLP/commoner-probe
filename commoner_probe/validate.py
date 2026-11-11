@@ -240,6 +240,7 @@ def validate_corpus(
         "outsourcing_rows.jsonl": "outsourcing_row",
         "neva_district_rows.jsonl": "neva_district_row",
         "town_amenity_rows.jsonl": "dchb_town_amenity",
+        "rera_project_rows.jsonl": "rera_project_row",
         "vacancy_rows.jsonl": "vacancy_row",
         "atr_linkage.jsonl": "atr_linkage",
         "committee_members.jsonl": "committee_members",

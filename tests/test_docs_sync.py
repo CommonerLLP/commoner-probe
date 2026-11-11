@@ -77,6 +77,7 @@ class CliCommandSyncTests(unittest.TestCase):
                 "mca-csr",
                 "dpe-csr",
                 "mines-dmft",
+                "rera",
                 "doe-pay-allowances",
                 "ministry-ddg",
                 "cag",

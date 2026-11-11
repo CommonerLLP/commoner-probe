@@ -863,6 +863,64 @@ The file is **state-level** despite arriving attached to a per-district DCHB
 record, so ~36 files cover India. Carries `state_code`, `sha256`, `towns` and
 `districts`; the rows themselves live in `town_amenity_rows.jsonl`.
 
+## `rera_project_rows.jsonl` — RERA project row (`kind = "rera_project_row"`)
+
+One project from a state RERA (Real Estate Regulatory Authority) portal
+listing. Schema: `rera_project_row.schema.json`. The shared core is thin; every
+column the portal publishes also sits in `fields`, keyed by the portal's own
+header string, so state-specific columns stay state-specific.
+
+| Field | Type | Required | Notes | Provenance |
+|---|---|---|---|---|
+| `key` | string | yes | `RERA\|{state}\|{id}`, where `{id}` is the identifier the portal assigns first. For Karnataka that is the acknowledgement number, which doesn't change when a registration number is issued. For Haryana it is the registration certificate number, because `Project ID` is `NA` for 37 Gurugram projects. For Tamil Nadu it is the registration number | rera adapters |
+| `kind` / `record_type` | string | yes | `const: "rera_project_row"` | rera adapters |
+| `source` | string | yes | The portal ID, for example `rera-karnataka` | rera adapters |
+| `state` | string | yes | ISO 3166-2:IN code, for example `IN-KA` | rera adapters |
+| `registration_no` | string\|null | yes | Null for a project that has an acknowledgement number and no registration (Karnataka: empty for 288 of 4,460 Bengaluru Urban rows) | rera adapters |
+| `promoter` / `project_name` / `district` | string\|null | yes | As the portal prints them. Karnataka has one Bengaluru Urban row with an empty project name | rera adapters |
+| `approved_on` | date\|null | no | ISO date. Karnataka prints `dd/mm/yyyy`. For Haryana it is the `DATED` date in the certificate number, null when the cell has none. For Tamil Nadu it is the `dated` date beside the registration number | rera adapters |
+| `registration_valid_until` | date\|null | no | ISO date the registration runs to. Haryana's `Registration Up-to` column prints `dd/mm/yyyy`, and the placeholder `01/01/1970` becomes null | rera adapters |
+| `lapsed` | boolean\|null | no | True when the portal flags the project as lapsed. Haryana prints `Lapsed Project` beside the certificate number. Absent for Karnataka | rera adapters |
+| `cmda_permission_no` | string\|null | no | Tamil Nadu: the CMDA planning-permission number (`OL-PP/...`) that the free-text Approval Details cites, or the CMDA letter number (`CMDA/PP/...`) when it gives no planning-permission number. Null when the text has neither (such as an older `C/27/2025` number, or a project outside Chennai) | rera adapters |
+| `gcc_permission_no` | string\|null | no | Tamil Nadu: the Greater Chennai Corporation building-permission number (`CEBA/...`) in Approval Details, read only after the text names the Corporation | rera adapters |
+| `latitude` / `longitude` | number\|null | no | Tamil Nadu: decimal degrees from `Other Details`. Promoters type these, and most are not decimal degrees, so both are null unless both are decimal degrees with at least three decimal places inside Tamil Nadu's bounding box and differ from each other. The text stays in `fields` | rera adapters |
+| `proposed_completion_date_at_registration` | date\|null | no | ISO date. Karnataka prints `dd-mm-yyyy` here | rera adapters |
+| `proposed_completion_date_current` | date\|null | no | ISO date. Karnataka prints `dd/mm/yyyy` | rera adapters |
+| `covid_extension_start` / `_end` | date\|null | no | The COVID-19 extension range. Karnataka lists 47 Bengaluru Urban rows with a start and no end, so `_end` is null while `_start` is set | rera adapters |
+| `section6_extension_start` / `_end` | date\|null | no | The Section 6 extension range | rera adapters |
+| `further_extension_start` / `_end` | date\|null | no | The further extension range | rera adapters |
+| `fields` | object | no | Every other column, header string to cell text | rera adapters |
+| `listing_url` | string | yes | The listing page the row came from | rera adapters |
+| `source_sha256` | string | yes | Hash of the stored listing response | rera adapters |
+| `extracted_at` | string | yes | When the row was parsed | rera adapters |
+
+**The probe records the dates the portal publishes and never computes delay.**
+The gap between the original and the current proposed completion date is
+interpretation, and belongs downstream. `additionalProperties` stays true so
+later states can add their own typed fields.
+
+## `manifest.jsonl` — RERA listing capture (`kind = "rera_listing"`)
+
+One request to a state RERA portal listing. Schema:
+`manifest_rera_listing.schema.json`. The rows parsed from the response live in
+`rera_project_rows.jsonl`.
+
+| Field | Type | Required | Notes | Provenance |
+|---|---|---|---|---|
+| `key` | string | yes | `RERA\|{state}\|{request}` | rera adapters |
+| `kind` | string | yes | `const: "rera_listing"` | rera adapters |
+| `record_type` / `source` | string | no | As in the row schema | rera adapters |
+| `state` | string | yes | ISO 3166-2:IN code | rera adapters |
+| `url` / `method` | string | yes | The request URL and HTTP method | rera adapters |
+| `form` | object | yes | The form values sent | rera adapters |
+| `http_status` | integer\|null | yes | Null when no response arrived | rera adapters |
+| `path` | string\|null | yes | The stored response, null on `error` | rera adapters |
+| `sha256` / `bytes` | string\|null, integer\|null | yes | Hash and size of the stored response | rera adapters |
+| `row_count` | integer\|null | yes | Data rows in the response | rera adapters |
+| `fetched_at` | string | yes | When the request ran | rera adapters |
+| `status` | string | yes | `downloaded` \| `error` | rera adapters |
+| `error` | string\|null | yes | Why a request failed, else null | rera adapters |
+
 ## `manifest.jsonl` — NADA study (`kind = "nada_study"`)
 
 One record per study acquired from a NADA (National Data Archive) instance,

@@ -31,6 +31,7 @@ record; this file says what ships next and what is deliberately deferred.
 | 0.21.2 | 2026-11-03 | Shortlist and interview notices become `results_notice`; `generic` reads month-first date stamps |
 | 0.22.0 | 2026-11-03 | `amu` parser reads Aligarh Muslim University's JSON job list; eligibility lists and written-test notices become `results_notice` |
 | 0.23.0 | 2026-11-04 | Freshness fixes for budget-union, UDISE, IIT Indore, SHRUG, MHA, DPE CSR and DST; DST records keyed by title; `dpe-csr` reads the Document Repository with repeatable `--search` |
+| 0.24.0 | 2026-11-11 | `rera --state KA\|HR\|TN`: Karnataka, Haryana (Gurugram) and Tamil Nadu RERA project listings, with the shared `rera_project_row` schema and `rera_listing` manifest, and `rera-karnataka`, `rera-haryana` and `rera-tamil-nadu` freshness entries |
 
 ## On master, unreleased
 

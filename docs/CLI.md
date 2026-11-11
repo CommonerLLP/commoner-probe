@@ -357,6 +357,66 @@ Downloads raw Ministry of Mines static CSV snapshots and Odisha DMFT public
 JSON/report surfaces. Use `--dry-run` to print manifest records without opening
 network sessions.
 
+### `commoner-probe rera` — state RERA project listings
+
+```bash
+commoner-probe rera --state KA --out data/rera
+commoner-probe rera --state KA --district Kodagu --district Yadgir --out data/rera
+commoner-probe rera --state KA --all-districts --out data/rera
+commoner-probe rera --state KA --list-districts
+commoner-probe rera --state HR --out data/rera
+commoner-probe rera --state HR --authority gurugram --authority panchkula --out data/rera
+commoner-probe rera --state TN --out data/rera
+commoner-probe rera --state TN --kind layout --year 2025 --out data/rera
+```
+
+Downloads the project listing from a state Real Estate Regulatory Authority
+(RERA) portal. Karnataka (`KA`), Haryana (`HR`), and Tamil Nadu (`TN`) are
+registered. A state that isn't registered exits non-zero and lists the ones
+that are.
+
+Each run writes the stored response under `listings/IN-<state>/`, one
+`rera_listing` record per request to `manifest.jsonl`, and one project per row
+to `rera_project_rows.jsonl`. The probe records the dates the portal publishes. It
+doesn't compute delay.
+
+| Flag | Default | What it does |
+|---|---|---|
+| `--state` | required | State code, such as `KA` |
+| `--out` | none | Output directory. Not needed with `--list-districts` or `--dry-run` |
+| `--district` | `Bengaluru Urban` | District to fetch. Repeat for several. Case and repeated spaces don't matter |
+| `--authority` | `gurugram` | `HR` only: `gurugram` or `panchkula` (every other Haryana district). Repeat for both. |
+| `--kind` | `building` | `TN` only: `building` or `layout`. Repeat for both. The layout list is about 11 MB |
+| `--year` | the portal's current year | `TN` only: a four-digit year the portal's form offers (2026, 2025, and 2024 on November 11, 2026) |
+| `--all-districts` | off | Fetch every district in the portal's list. Reads the 6.5 MB form page first |
+| `--list-districts` | off | Print the portal's district names and exit |
+| `--sleep` | `5` | Seconds between requests. The minimum is `5` |
+| `--dry-run` | off | Print the requests without a network session or output files |
+
+`--district`, `--all-districts`, and `--list-districts` apply to `KA`,
+`--authority` applies to `HR`, and `--kind` and `--year` apply to `TN`. Passing
+one to another state exits non-zero.
+
+Haryana publishes each authority's whole table in one 2.6 MB `GET` (1,086
+Gurugram rows on November 11, 2026). Each row keeps every column in `fields`,
+`lapsed` is `true` for a project the portal flags as lapsed, and the
+quarterly-progress link is recorded in `fields` and never fetched.
+
+Tamil Nadu publishes the current year's whole table in one `GET` (402 building
+rows, 1.4 MB, and 3,945 layout rows, 11 MB, on November 11, 2026). An older
+`--year` also posts the page's `_token` back in the same session, so it needs a
+session that keeps cookies (`pip install commoner-probe[http]`). Each row keeps
+every column in `fields`, with the CMDA and Greater Chennai Corporation permit
+numbers and the coordinates typed when the text gives them. The adapter never
+fetches a PDF or a path under `/uploads/`, because the portal's `robots.txt`
+disallows both. It records those links in `fields` only.
+
+Every Karnataka response carries about 6.5 MB of page chrome, and Bengaluru
+Urban's is about 33 MB (4,460 rows on November 11, 2026). Rerunning replaces a
+project's row by its acknowledgement number. A response without the project
+table, or with a changed header, writes an error record and no rows, and the
+command exits 1.
+
 ### `commoner-probe mospi` — MoSPI eSankhyiki statistics API
 
 The eSankhyiki portal fronts MoSPI's statistical datasets (PLFS, AISHE,

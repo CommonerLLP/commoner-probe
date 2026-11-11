@@ -38,7 +38,7 @@ manifest records only.
   `committees.py`, `debates.py`, `bills.py`, `neva.py` +
   `neva_portals.py`, `indiacode.py`, `dspace.py`, `ddg.py`, `doe.py`,
   `mospi.py`, `attendance.py`, `myneta.py`, `csr/`, `dmft/`, `budget/`,
-  `academia/`. Portal/ministry registries grow one live-verified entry at
+  `academia/`, `rera/`. Portal/ministry registries grow one live-verified entry at
   a time.
 - **Contracts** — `schemas/*.schema.json` (37 schemas), the `validate`
   command, `records.py` dataclasses, `corpus.py` typed readers.
