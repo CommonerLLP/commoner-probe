@@ -31,19 +31,11 @@ record; this file says what ships next and what is deliberately deferred.
 | 0.21.2 | 2026-11-03 | Shortlist and interview notices become `results_notice`; `generic` reads month-first date stamps |
 | 0.22.0 | 2026-11-03 | `amu` parser reads Aligarh Muslim University's JSON job list; eligibility lists and written-test notices become `results_notice` |
 | 0.23.0 | 2026-11-04 | Freshness fixes for budget-union, UDISE, IIT Indore, SHRUG, MHA, DPE CSR and DST; DST records keyed by title; `dpe-csr` reads the Document Repository with repeatable `--search` |
+| 0.24.0 | 2026-11-11 | `rera --state KA\|HR\|TN`: Karnataka, Haryana (Gurugram) and Tamil Nadu RERA project listings, with the shared `rera_project_row` schema and `rera_listing` manifest, and `rera-karnataka`, `rera-haryana` and `rera-tamil-nadu` freshness entries |
 
 ## On master, unreleased
 
-- `rera --state KA`: Karnataka RERA project registrations, one `rera_project_row`
-  per project. The source freshness check watches the Bengaluru Urban listing
-  as `rera-karnataka`.
-- `rera --state HR`: Haryana RERA registered projects (Gurugram or Panchkula
-  authority), with typed `registration_valid_until` and `lapsed`. The source
-  freshness check watches the Gurugram listing as `rera-haryana`.
-- `rera --state TN`: Tamil Nadu RERA registered buildings and layouts (`--kind`,
-  `--year`), with typed CMDA and Greater Chennai Corporation permit numbers and
-  coordinates. The source freshness check watches the current-year building list
-  as `rera-tamil-nadu`.
+Nothing.
 
 **Next gate: 1.0.0 — deferred deliberately, and gated on Phase 2.** Declaring
 1.0 promises interface stability, and the package rename to `probe`/`compose`
