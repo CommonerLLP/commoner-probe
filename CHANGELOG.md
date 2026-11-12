@@ -1,5 +1,58 @@
 # Changelog
 
+## 0.25.0 — 2026-11-13
+
+**This release is a MINOR.** `ckan` and `municipal-budget` add two public
+subcommands and two manifest kinds. Nothing that shipped before changes.
+
+### Added
+
+- **`commoner-probe ckan`.** Download the resources of OpenCity CKAN datasets
+  with provenance and write one `ckan_resource` manifest record per resource.
+  When two resources in a dataset share a file name, the probe appends the
+  resource id to the file name so neither overwrites the other. A dataset slug
+  that no longer exists yields one error record naming the dataset, and the
+  other datasets in the run still download.
+
+- **`commoner-probe municipal-budget`.** Acquire municipal and state finance
+  documents from index pages and write one `municipal_budget_document` manifest
+  record per document. Six portal codes are registered:
+  `gnctd-budget-at-a-glance`, `gnctd-receipts-budget`, `gnctd-budget-speech`,
+  `gnctd-gender-budget`, `gnctd-detailed-demands`, and `mcd-budget-documents`.
+
+- **`ckan_resource` and `municipal_budget_document` manifest kinds.** Each kind
+  has a public schema that pins its `kind` with a `const`.
+
+- **`ckan-opencity-gba`, `municipal-budget-gnctd`, and `municipal-budget-mcd`
+  freshness entries.** The source freshness check watches the OpenCity
+  Greater Bengaluru Authority (GBA) budget dataset and the GNCTD and MCD
+  finance pages. All three showed `fresh` on November 13, 2026.
+
+### Robots.txt handling
+
+- **OpenCity Action API (decision A).** OpenCity's `robots.txt` disallows
+  `/api/`, which is the stock CKAN line that keeps search engines off the
+  Action API. The probe calls the Action API without the robots check for
+  `/api/3/action/` paths only, and it waits the 10-second crawl delay that
+  OpenCity sets. Every file download keeps the robots check.
+
+- **finance.delhi.gov.in (decision B).** The host answers 403 to the
+  `robots.txt` request for every User-Agent, which the shared client reads as
+  disallow-all. The probe relaxes the robots check for that host only.
+
+### Parity
+
+The probe's discovery sets were compared with the sevent4 acquisition recipes
+offline, on identical captures. All 19 comparisons were identical.
+
+### Known limits
+
+- Ahmedabad (AMC) isn't included. `ahmedabadcity.gov.in` needs legacy TLS
+  renegotiation and omits its intermediate certificate, so Python can't reach
+  it with verification on.
+- `gnctd-detailed-demands` doesn't yet acquire the demand-numbered volumes.
+- The GNCTD Drupal `?page=N` pagers aren't followed.
+
 ## 0.24.0 — 2026-11-11
 
 **This release is a MINOR.** `rera` adds a public subcommand, a row schema, and
