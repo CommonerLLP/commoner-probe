@@ -1087,7 +1087,7 @@ commoner-probe municipal-budget --list-portals
 
 commoner-probe municipal-budget \
   --out data/municipal \
-  --portal amc-budget \
+  --portal gnctd-budget-speech \
   --dry-run
 ```
 
@@ -1095,7 +1095,7 @@ commoner-probe municipal-budget \
 |---|---|---|
 | `--out` | required | Output directory. Files land in `<out>/<portal-code>/`. Not needed with `--list-portals`. |
 | `--portal` | | Comma-separated portal codes. Run `--list-portals` to see them. |
-| `--city` | | Comma-separated city names, such as `ahmedabad,delhi`. Runs every portal of each city. |
+| `--city` | | Comma-separated city names, such as `delhi`. Runs every portal of each city. |
 | `--list-portals` | off | Print `code`, `city`, `body`, and `template` for each portal, then exit. |
 | `--sleep` | `2.0` | Seconds between requests |
 | `--max-menu-guides` | `40` | The most MCD menu guides one crawl fetches. A menu tree that loops or fans out past this stops here. |
@@ -1103,12 +1103,10 @@ commoner-probe municipal-budget \
 
 Pass exactly one of `--portal`, `--city`, and `--list-portals`.
 
-The eight portals:
+The six portals:
 
 | Code | Publisher | Documents |
 |---|---|---|
-| `amc-budget` | Ahmedabad Municipal Corporation | Budget books, from `/SP/Budget` |
-| `amc-balance-sheet` | Ahmedabad Municipal Corporation | Balance sheets and audit reports, from `/SP/BalanceSheet` |
 | `gnctd-budget-at-a-glance` | Government of NCT of Delhi | Budget at a Glance, one PDF per fiscal year |
 | `gnctd-receipts-budget` | Government of NCT of Delhi | Receipts Budget |
 | `gnctd-budget-speech` | Government of NCT of Delhi | Budget Speech |

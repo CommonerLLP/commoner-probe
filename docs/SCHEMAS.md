@@ -964,8 +964,8 @@ a figure from a file stays downstream.
 
 One budget document that a city publisher lists on its finance pages, written by
 `commoner-probe municipal-budget`. Schema: `manifest_municipal_budget.schema.json`.
-The publishers are Ahmedabad Municipal Corporation, the Government of NCT of
-Delhi Finance Department, and the Municipal Corporation of Delhi. A page that
+The publishers are the Government of NCT of Delhi Finance Department and the
+Municipal Corporation of Delhi. A page that
 can't be fetched becomes one `error` record that names the page.
 
 | Field | Type | Required | Notes | Provenance |
@@ -974,11 +974,11 @@ can't be fetched becomes one `error` record that names the page.
 | `kind` | string | yes | `const: "municipal_budget_document"` | municipal_budget_index.py |
 | `record_type` | string | yes | `const: "municipal_budget_document"` | municipal_budget_index.py |
 | `source_family` | string | yes | `const: "municipal-budget"` | municipal_budget_index.py |
-| `portal_code` | string | yes | The registry code, for example `amc-budget` | municipal_budget_index.py |
-| `city` | string | yes | The city, lower-case, for example `ahmedabad` or `delhi` | municipal_budget_index.py |
-| `body` | string | yes | The publishing body, for example `Ahmedabad Municipal Corporation`. Cite this | municipal_budget_index.py |
+| `portal_code` | string | yes | The registry code, for example `gnctd-budget-speech` | municipal_budget_index.py |
+| `city` | string | yes | The city, lower-case, for example `delhi` | municipal_budget_index.py |
+| `body` | string | yes | The publishing body, for example `Municipal Corporation of Delhi`. Cite this | municipal_budget_index.py |
 | `publisher` | string | yes | The host that serves the file | municipal_budget_index.py |
-| `document_type` | string | yes | `budget_book` \| `balance_sheet` \| `budget_at_a_glance` \| `receipts_budget` \| `budget_speech` \| `gender_budget` \| `detailed_demands_for_grants` \| `mcd_budget` | municipal_budget_index.py |
+| `document_type` | string | yes | `budget_book` \| `balance_sheet` \| `budget_at_a_glance` \| `receipts_budget` \| `budget_speech` \| `gender_budget` \| `detailed_demands_for_grants` \| `mcd_budget` (`budget_book` and `balance_sheet` belong to the parked Ahmedabad portals; no registry portal emits them) | municipal_budget_index.py |
 | `title` | string | yes | The anchor or table label as the page prints it. On an `error` record, a note that names the page that failed | municipal_budget_index.py |
 | `fiscal_year` | string\|null | yes | `YYYY-YY`, read from the title, else from the file URL. Null when neither names one | municipal_budget_index.py |
 | `url` | string | yes | The document's URL. On an `error` record for a failed page, the page's URL | municipal_budget_index.py |

@@ -505,16 +505,13 @@ Outputs: `manifest.jsonl` (`kind: ckan_resource`) + one file per resource under
 
 ## Municipal finance index pages (`municipal-budget`)
 
-Publishers: Ahmedabad Municipal Corporation (`ahmedabadcity.gov.in`), the
-Government of NCT of Delhi Finance Department (`finance.delhi.gov.in`), and the
-Municipal Corporation of Delhi (`mcdonline.nic.in`). Contract verified
+Publishers: the Government of NCT of Delhi Finance Department
+(`finance.delhi.gov.in`) and the Municipal Corporation of Delhi
+(`mcdonline.nic.in`). Contract verified
 2026-11-12. Auth: none.
 
 Source contract:
 
-- AMC: `GET https://ahmedabadcity.gov.in/SP/Budget` and `/SP/BalanceSheet`.
-  Plain anchors, some to `.pdf` files and some to
-  `/ViewFile/ViewFile?TYPE=FileRepository,<id>`.
 - GNCTD listings: `GET https://finance.delhi.gov.in/finance/{budget-glance,receipts-budget,budget-speech,gender-budget}`.
   A Drupal `generic_multiple_files` view with one PDF per fiscal year.
 - GNCTD Detailed Demands, two hops: `GET .../finance/detailed-demands-grants-0`
@@ -530,10 +527,13 @@ while the pages answer 200. The probe skips the check for that host only (owner
 decision B, November 12, 2026). See
 [`CLI.md`](CLI.md#commoner-probe-municipal-budget--city-budget-documents).
 
+Ahmedabad Municipal Corporation (`ahmedabadcity.gov.in`) is not in the registry.
+Its host needs legacy TLS renegotiation and omits its intermediate certificate
+(owner decision, November 13, 2026; parked in `commoner-probe-h7k`).
+`parse_anchor_index` and the `anchor_index` template stay for it.
+
 Traps:
 
-- AMC lists `Budget 2023-24` twice with different URLs. The URL's file name or ID
-  goes into the key, so both records survive.
 - A `ViewFile` link can answer an HTML page. The probe records
   `error: "body isn't a PDF"` and writes nothing.
 - On a GNCTD Detailed Demands detail page the volumes carry bare numbers as file

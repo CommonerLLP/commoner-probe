@@ -3,16 +3,20 @@
 
 CONTEXT
 =======
-Three publishers, three page shapes. The parsers at the top of this module are
+Three page shapes. The parsers at the top of this module are
 pure: they fetch nothing and write nothing. :class:`MunicipalBudgetProbe`, at
 the bottom, fetches the pages, runs the parsers, and downloads each document it
-finds. :data:`MUNICIPAL_BUDGET_PORTALS` names the eight pages it knows.
+finds. :data:`MUNICIPAL_BUDGET_PORTALS` names the six pages it knows.
 
-- Ahmedabad Municipal Corporation (host ``ahmedabadcity.gov.in``) lists budget
-  books and balance sheets as plain anchors on two pages, ``/SP/Budget`` and
-  ``/SP/BalanceSheet``. Some anchors point at ``.pdf`` files and some at
-  ``ViewFile?TYPE=FileRepository,<id>`` links. The same label can appear twice
-  with different URLs, and both are kept. See :func:`parse_anchor_index`.
+- Plain anchors, the Ahmedabad Municipal Corporation shape. AMC lists budget
+  books and balance sheets on ``/SP/Budget`` and ``/SP/BalanceSheet``. Some
+  anchors point at ``.pdf`` files and some at ``ViewFile?TYPE=FileRepository,<id>``
+  links. The same label can appear twice with different URLs, and both are kept.
+  See :func:`parse_anchor_index`. The registry doesn't list AMC: its host needs
+  legacy TLS renegotiation and omits its intermediate certificate (owner
+  decision, November 13, 2026; parked in commoner-probe-h7k). The parser, the
+  ``anchor_index`` template, and the AMC fixtures stay, so restoring the two
+  portals is a registry change plus the TLS work.
 - The Government of NCT of Delhi Finance Department (host
   ``finance.delhi.gov.in``) is a Drupal site. Four pages list one PDF per
   fiscal year in a ``generic_multiple_files`` view. The Detailed Demands for
@@ -484,7 +488,6 @@ class MunicipalBudgetPortal:
     menu_guides: tuple[str, ...] = ()
 
 
-_AMC = "Ahmedabad Municipal Corporation"
 _GNCTD = "Government of NCT of Delhi"
 _GNCTD_PAGES = (
     ("gnctd-budget-at-a-glance", "budget_at_a_glance", "/finance/budget-glance"),
@@ -495,26 +498,6 @@ _GNCTD_PAGES = (
 
 #: Live-verified on November 4, 2026. Each entry parsed real rows on that date.
 MUNICIPAL_BUDGET_PORTALS: tuple[MunicipalBudgetPortal, ...] = (
-    MunicipalBudgetPortal(
-        code="amc-budget",
-        city="ahmedabad",
-        body=_AMC,
-        host="ahmedabadcity.gov.in",
-        template="anchor_index",
-        document_type="budget_book",
-        pages=("https://ahmedabadcity.gov.in/SP/Budget",),
-        keywords=("budget",),
-    ),
-    MunicipalBudgetPortal(
-        code="amc-balance-sheet",
-        city="ahmedabad",
-        body=_AMC,
-        host="ahmedabadcity.gov.in",
-        template="anchor_index",
-        document_type="balance_sheet",
-        pages=("https://ahmedabadcity.gov.in/SP/BalanceSheet",),
-        keywords=("balance sheet", "audit report", "account"),
-    ),
     *(
         MunicipalBudgetPortal(
             code=code,

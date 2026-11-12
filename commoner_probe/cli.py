@@ -2705,7 +2705,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     municipal_budget = sub.add_parser(
         "municipal-budget",
-        help="Download the budget documents that Ahmedabad, GNCTD and MCD list on their finance pages.",
+        help="Download the budget documents that GNCTD and MCD list on their finance pages.",
     )
     municipal_budget.add_argument("--out", default=None, help="Output directory. Required unless --list-portals.")
     selector = municipal_budget.add_mutually_exclusive_group(required=True)
@@ -2717,7 +2717,7 @@ def build_parser() -> argparse.ArgumentParser:
     selector.add_argument(
         "--city",
         default=None,
-        help="Comma-separated city names, for example ahmedabad,delhi. Runs every portal of each city.",
+        help="Comma-separated city names, for example delhi. Runs every portal of each city.",
     )
     selector.add_argument(
         "--list-portals",

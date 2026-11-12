@@ -20,6 +20,7 @@ from commoner_probe.corpus import Corpus
 from commoner_probe.municipal_budget_index import (
     MAX_MENU_GUIDES,
     MUNICIPAL_BUDGET_PORTALS,
+    MunicipalBudgetPortal,
     MunicipalBudgetProbe,
     document_slug,
     fiscal_year_from_text,
@@ -42,6 +43,21 @@ MCD = FIXTURES / "mcd"
 
 AMC_BUDGET_URL = "https://ahmedabadcity.gov.in/SP/Budget"
 AMC_BALANCE_URL = "https://ahmedabadcity.gov.in/SP/BalanceSheet"
+
+# Ahmedabad is not in the registry (its host needs legacy TLS renegotiation and
+# omits its intermediate certificate; see commoner-probe-h7k). This test-local
+# portal keeps the probe-level coverage of the anchor_index template and the
+# AMC fixtures, and matches the entry the registry had.
+AMC_PORTAL = MunicipalBudgetPortal(
+    code="amc-budget",
+    city="ahmedabad",
+    body="Ahmedabad Municipal Corporation",
+    host="ahmedabadcity.gov.in",
+    template="anchor_index",
+    document_type="budget_book",
+    pages=(AMC_BUDGET_URL,),
+    keywords=("budget",),
+)
 GNCTD = "https://finance.delhi.gov.in/finance"
 MCD_BASE = "https://mcdonline.nic.in/portal"
 BUDGET_GUIDE = "1b4066c6-73ae-417b-bc62-796f9f0b7c7e"
@@ -218,8 +234,6 @@ def test_mcd_menu_guides_ignores_invalid_json():
 
 def test_registry_holds_only_live_verified_portals():
     assert {p.code for p in MUNICIPAL_BUDGET_PORTALS} == {
-        "amc-budget",
-        "amc-balance-sheet",
         "gnctd-budget-at-a-glance",
         "gnctd-receipts-budget",
         "gnctd-budget-speech",
@@ -230,19 +244,20 @@ def test_registry_holds_only_live_verified_portals():
     assert len({p.code for p in MUNICIPAL_BUDGET_PORTALS}) == len(MUNICIPAL_BUDGET_PORTALS)
     delhi = portals_for_city("delhi")
     assert {p.city for p in delhi} == {"delhi"} and len(delhi) == 6
-    assert len(portals_for_city("Ahmedabad")) == 2 and portals_for_city("pune") == []
+    assert len(MUNICIPAL_BUDGET_PORTALS) == 6
+    assert portals_for_city("Ahmedabad") == [] and portals_for_city("pune") == []
+    assert not [p for p in MUNICIPAL_BUDGET_PORTALS if "ahmedabadcity.gov.in" in (p.host, *p.pages)]
 
 
 def test_get_portal_names_the_known_codes_on_a_miss():
-    assert get_portal("amc-budget").pages == (AMC_BUDGET_URL,)
-    with pytest.raises(ValueError, match="amc-budget"):
+    assert get_portal("gnctd-budget-speech").pages == (f"{GNCTD}/budget-speech",)
+    with pytest.raises(ValueError, match="gnctd-budget-speech"):
         get_portal("nope")
+    with pytest.raises(ValueError, match="unknown"):
+        get_portal("amc-budget")
 
 
 def test_registry_fields():
-    amc = get_portal("amc-balance-sheet")
-    assert amc.keywords == ("balance sheet", "audit report", "account")
-    assert amc.document_type == "balance_sheet" and amc.template == "anchor_index"
     glance = get_portal("gnctd-budget-at-a-glance")
     assert glance.pages == (f"{GNCTD}/budget-glance",) and glance.template == "drupal_files"
     assert get_portal("gnctd-detailed-demands").template == "drupal_detail_pages"
@@ -328,7 +343,9 @@ class RoutedSession:
 
 
 def _probe(tmp_path, code, session, **kwargs):
-    return MunicipalBudgetProbe(tmp_path, portal=get_portal(code), session=session, sleep=0, **kwargs)
+    """`code` is a registry code, or a MunicipalBudgetPortal for a test-local portal."""
+    portal = code if isinstance(code, MunicipalBudgetPortal) else get_portal(code)
+    return MunicipalBudgetProbe(tmp_path, portal=portal, session=session, sleep=0, **kwargs)
 
 
 def _amc_session():
@@ -336,7 +353,7 @@ def _amc_session():
 
 
 def test_amc_discover_gives_distinct_keys_for_same_label(tmp_path):
-    probe = _probe(tmp_path, "amc-budget", _amc_session())
+    probe = _probe(tmp_path, AMC_PORTAL, _amc_session())
     records = probe.discover()
     assert len(records) == 27
     both = [r for r in records if r["fiscal_year"] == "2023-24"]
@@ -359,7 +376,7 @@ def test_two_urls_with_one_slug_both_survive(tmp_path):
         '<a href="/a/x.pdf">Budget 2020-21 ' + "pad " * 30 + 'one</a>'
         '<a href="/b/x.pdf">Budget 2020-21 ' + "pad " * 30 + 'one</a>'
     )
-    probe = _probe(tmp_path, "amc-budget", RoutedSession({AMC_BUDGET_URL: page}))
+    probe = _probe(tmp_path, AMC_PORTAL, RoutedSession({AMC_BUDGET_URL: page}))
     records = probe.discover()
     assert len(records) == 2 and len({r["key"] for r in records}) == 2
     assert len({r["dest"] for r in records}) == 2
@@ -486,7 +503,7 @@ def test_page_that_fails_is_one_error_record_and_the_rest_continue(tmp_path):
 
 def test_http_error_on_an_index_page_is_an_error_record(tmp_path):
     session = RoutedSession({AMC_BUDGET_URL: FakeResponse(status=503)})
-    records = _probe(tmp_path, "amc-budget", session).discover()
+    records = _probe(tmp_path, AMC_PORTAL, session).discover()
     assert len(records) == 1 and records[0]["status"] == "error" and "503" in records[0]["error"]
     assert records[0]["source_page"] == AMC_BUDGET_URL and records[0]["fiscal_year"] is None
     assert records[0]["key"].startswith("MUNICIPAL_BUDGET|amc-budget|unknown|")
@@ -496,7 +513,7 @@ def test_http_error_on_an_index_page_is_an_error_record(tmp_path):
 
 
 def _pending(tmp_path, session=None):
-    probe = _probe(tmp_path, "amc-budget", session or _amc_session())
+    probe = _probe(tmp_path, AMC_PORTAL, session or _amc_session())
     return probe, probe.discover()[0]
 
 
@@ -553,7 +570,7 @@ def test_download_keeps_robots_off_for_gnctd_only(tmp_path):
 
 def test_dry_run_downloads_nothing_and_writes_no_manifest(tmp_path):
     session = _amc_session()
-    records = _probe(tmp_path, "amc-budget", session).probe(dry_run=True)
+    records = _probe(tmp_path, AMC_PORTAL, session).probe(dry_run=True)
     assert len(records) == 27 and {r["status"] for r in records} == {"dry_run"}
     assert len(session.calls) == 1
     assert not (tmp_path / "manifest.jsonl").exists()
@@ -561,12 +578,12 @@ def test_dry_run_downloads_nothing_and_writes_no_manifest(tmp_path):
 
 def test_dry_run_leaves_error_records_as_errors(tmp_path):
     session = RoutedSession({AMC_BUDGET_URL: FakeResponse(status=500)})
-    records = _probe(tmp_path, "amc-budget", session).probe(dry_run=True)
+    records = _probe(tmp_path, AMC_PORTAL, session).probe(dry_run=True)
     assert [r["status"] for r in records] == ["error"]
 
 
 def test_probe_downloads_and_appends_manifest(tmp_path):
-    probe = _probe(tmp_path, "amc-budget", _amc_session())
+    probe = _probe(tmp_path, AMC_PORTAL, _amc_session())
     probe.session = _SwitchSession(probe.session, _file_session())
     records = probe.probe()
     assert len(records) == 27 and {r["status"] for r in records} == {"downloaded"}
@@ -637,12 +654,12 @@ def test_discovered_records_validate_against_schema(tmp_path):
     jsonschema = pytest.importorskip("jsonschema")
     schema = sc.load("manifest_municipal_budget")
     for code, session in (
-        ("amc-budget", _amc_session()),
+        (AMC_PORTAL, _amc_session()),
         ("mcd-budget-documents", RoutedSession(_mcd_routes())),
     ):
         for record in _probe(tmp_path, code, session).discover():
             jsonschema.validate(record, schema)
-    failed = _probe(tmp_path, "amc-budget", RoutedSession({AMC_BUDGET_URL: FakeResponse(status=500)})).discover()
+    failed = _probe(tmp_path, AMC_PORTAL, RoutedSession({AMC_BUDGET_URL: FakeResponse(status=500)})).discover()
     jsonschema.validate(failed[0], schema)
 
 
@@ -676,27 +693,28 @@ def test_municipal_budget_cli_list_portals(capsys):
     args = build_parser().parse_args(["municipal-budget", "--list-portals"])
     args.func(args)
     lines = capsys.readouterr().out.splitlines()
-    assert len(lines) == 8
+    assert len(lines) == 6
     assert lines[0].split("\t") == [
-        "amc-budget",
-        "ahmedabad",
-        "Ahmedabad Municipal Corporation",
-        "anchor_index",
+        "gnctd-budget-at-a-glance",
+        "delhi",
+        "Government of NCT of Delhi",
+        "drupal_files",
     ]
+    assert not any("amc-" in line or "ahmedabad" in line for line in lines)
 
 
 def test_municipal_budget_cli_dry_run_prints_records_without_manifest(tmp_path, capsys, monkeypatch):
     from commoner_probe.cli import build_parser
 
-    html = _read(AMC / "budget_trimmed.html")
+    html = _read(DELHI / "budget_speech_trimmed.html")
     monkeypatch.setattr(MunicipalBudgetProbe, "_fetch_text", lambda self, url: html)
     args = build_parser().parse_args(
-        ["municipal-budget", "--out", str(tmp_path), "--portal", "amc-budget", "--dry-run"]
+        ["municipal-budget", "--out", str(tmp_path), "--portal", "gnctd-budget-speech", "--dry-run"]
     )
     assert args.sleep == 2.0 and args.max_menu_guides == 40
     args.func(args)
     lines = capsys.readouterr().out.splitlines()
-    assert len(lines) == 27 and json.loads(lines[0])["status"] == "dry_run"
+    assert len(lines) == 20 and json.loads(lines[0])["status"] == "dry_run"
     assert not (tmp_path / "manifest.jsonl").exists()
 
 
@@ -705,7 +723,7 @@ def test_municipal_budget_cli_city_runs_each_portal_of_the_city(tmp_path, capsys
 
     monkeypatch.setattr(MunicipalBudgetProbe, "_fetch_text", lambda self, url: "<html></html>")
     args = build_parser().parse_args(
-        ["municipal-budget", "--out", str(tmp_path), "--city", "ahmedabad", "--dry-run"]
+        ["municipal-budget", "--out", str(tmp_path), "--city", "delhi", "--dry-run"]
     )
     args.func(args)
     assert capsys.readouterr().out == ""
@@ -722,4 +740,4 @@ def test_municipal_budget_cli_rejects_unknown_portal_and_city(tmp_path):
     with pytest.raises(SystemExit):
         parser.parse_args(["municipal-budget", "--out", str(tmp_path)])
     with pytest.raises(SystemExit):
-        parser.parse_args(["municipal-budget", "--portal", "amc-budget", "--city", "delhi"])
+        parser.parse_args(["municipal-budget", "--portal", "gnctd-budget-speech", "--city", "delhi"])
