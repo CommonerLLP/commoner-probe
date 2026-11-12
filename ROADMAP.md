@@ -35,7 +35,9 @@ record; this file says what ships next and what is deliberately deferred.
 
 ## On master, unreleased
 
-Nothing.
+The `ckan` and `municipal-budget` subcommands acquire OpenCity CKAN dataset resources and the
+GNCTD and MCD finance documents with provenance, and the freshness registry watches both.
+Parity with the sevent4 acquisition recipes is checked in the PR's dogfood run.
 
 **Next gate: 1.0.0 — deferred deliberately, and gated on Phase 2.** Declaring
 1.0 promises interface stability, and the package rename to `probe`/`compose`

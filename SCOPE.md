@@ -18,7 +18,8 @@ provenance, for downstream consumers:
   Budget + RBI source files, ministry DDG series, DoE Pay & Allowances
   reports, MoSPI eSankhyiki statistics, Lok Sabha attendance, ADR/MyNeta
   affidavits, academic faculty-recruitment advertisements, Karnataka, Haryana, and Tamil Nadu
-  RERA project registrations.
+  RERA project registrations, CKAN open-data portal resources (OpenCity), and municipal
+  finance index pages (GNCTD, MCD).
 - **Shared HTTP discipline**: `http_client.py` and `url_safety.py` —
   SSRF guard, robots.txt, per-domain rate limiting, retry/backoff,
   optional cache, User-Agent policy.
