@@ -503,6 +503,51 @@ Traps:
 Outputs: `manifest.jsonl` (`kind: ckan_resource`) + one file per resource under
 `<host>/<dataset>/`.
 
+## Municipal finance index pages (`municipal-budget`)
+
+Publishers: Ahmedabad Municipal Corporation (`ahmedabadcity.gov.in`), the
+Government of NCT of Delhi Finance Department (`finance.delhi.gov.in`), and the
+Municipal Corporation of Delhi (`mcdonline.nic.in`). Contract verified
+2026-11-12. Auth: none.
+
+Source contract:
+
+- AMC: `GET https://ahmedabadcity.gov.in/SP/Budget` and `/SP/BalanceSheet`.
+  Plain anchors, some to `.pdf` files and some to
+  `/ViewFile/ViewFile?TYPE=FileRepository,<id>`.
+- GNCTD listings: `GET https://finance.delhi.gov.in/finance/{budget-glance,receipts-budget,budget-speech,gender-budget}`.
+  A Drupal `generic_multiple_files` view with one PDF per fiscal year.
+- GNCTD Detailed Demands, two hops: `GET .../finance/detailed-demands-grants-0`
+  lists one detail page per year (`.../detailed-demands-grants-2026-27`, 22 on
+  2026-11-12), and each detail page lists that year's volumes.
+- MCD menu API: `GET https://mcdonline.nic.in/portal/{showSubMenu,showContent,showPDFContent}?menuguide=<guid>`.
+  The probe starts from two guides, follows child menus whose title looks like a
+  budget menu, and stops at `--max-menu-guides` guides. The document table is an
+  HTML string inside the `menuName` field of the JSON.
+
+robots.txt: `finance.delhi.gov.in/robots.txt` answers 403 to every User-Agent
+while the pages answer 200. The probe skips the check for that host only (owner
+decision B, November 12, 2026). See
+[`CLI.md`](CLI.md#commoner-probe-municipal-budget--city-budget-documents).
+
+Traps:
+
+- AMC lists `Budget 2023-24` twice with different URLs. The URL's file name or ID
+  goes into the key, so both records survive.
+- A `ViewFile` link can answer an HTML page. The probe records
+  `error: "body isn't a PDF"` and writes nothing.
+- On a GNCTD Detailed Demands detail page the volumes carry bare numbers as file
+  names and the title carries no year, so the parser drops them (sevent4
+  parity; follow-up `commoner-probe-6e7`).
+- A GNCTD title can carry a malformed year, `Budget Speech Hindi 2026-26`. The
+  year comes from the file URL instead.
+- MCD titles span two fiscal years, for example `RBE 22-23 BE 2023-24`. The
+  first year wins.
+- Drupal `?page=N` pagers are not followed.
+
+Outputs: `manifest.jsonl` (`kind: municipal_budget_document`) + one PDF per
+document under `<portal-code>/`.
+
 ## NITI Aayog Annual Reports (`niti-annual-report`)
 
 Publisher: NITI Aayog. Contract verified live 2026-07-30. Carries the "Young

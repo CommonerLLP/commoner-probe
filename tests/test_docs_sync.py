@@ -98,6 +98,7 @@ class CliCommandSyncTests(unittest.TestCase):
                 "koha",
                 "budget",
                 "ckan",
+                "municipal-budget",
                 "academic-jobs",
                 "debates",
                 "bills",

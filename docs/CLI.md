@@ -1080,6 +1080,59 @@ publisher's documented machine interface, so the probe calls
 download keeps the robots check, and the 10-second crawl delay applies to every
 request. The record's `organization` names the publisher; OpenCity is a mirror.
 
+### `commoner-probe municipal-budget` — city budget documents
+
+```bash
+commoner-probe municipal-budget --list-portals
+
+commoner-probe municipal-budget \
+  --out data/municipal \
+  --portal amc-budget \
+  --dry-run
+```
+
+| Flag | Default | What it does |
+|---|---|---|
+| `--out` | required | Output directory. Files land in `<out>/<portal-code>/`. Not needed with `--list-portals`. |
+| `--portal` | | Comma-separated portal codes. Run `--list-portals` to see them. |
+| `--city` | | Comma-separated city names, such as `ahmedabad,delhi`. Runs every portal of each city. |
+| `--list-portals` | off | Print `code`, `city`, `body`, and `template` for each portal, then exit. |
+| `--sleep` | `2.0` | Seconds between requests |
+| `--max-menu-guides` | `40` | The most MCD menu guides one crawl fetches. A menu tree that loops or fans out past this stops here. |
+| `--dry-run` | off | Print records without downloading or writing `manifest.jsonl`. It still fetches the index pages to list the documents. |
+
+Pass exactly one of `--portal`, `--city`, and `--list-portals`.
+
+The eight portals:
+
+| Code | Publisher | Documents |
+|---|---|---|
+| `amc-budget` | Ahmedabad Municipal Corporation | Budget books, from `/SP/Budget` |
+| `amc-balance-sheet` | Ahmedabad Municipal Corporation | Balance sheets and audit reports, from `/SP/BalanceSheet` |
+| `gnctd-budget-at-a-glance` | Government of NCT of Delhi | Budget at a Glance, one PDF per fiscal year |
+| `gnctd-receipts-budget` | Government of NCT of Delhi | Receipts Budget |
+| `gnctd-budget-speech` | Government of NCT of Delhi | Budget Speech |
+| `gnctd-gender-budget` | Government of NCT of Delhi | Gender Budget |
+| `gnctd-detailed-demands` | Government of NCT of Delhi | Detailed Demands for Grants, through one detail page per year |
+| `mcd-budget-documents` | Municipal Corporation of Delhi | Budget documents, through the MCD menu API |
+
+Each record carries the publishing body, the page that listed the document, the
+fiscal year, `sha256`, `bytes`, and `text_layer`. Two anchors that share a
+label but point at different files get different keys and filenames. A link
+that answers an HTML page instead of a PDF is recorded as `status: "error"`
+with `error: "body isn't a PDF"`, and nothing is written. A page that can't be
+fetched is one `error` record, and the run goes on.
+
+**Decision B: `finance.delhi.gov.in` and robots.txt.** The host's `robots.txt`
+answers 403 to every User-Agent while its pages answer 200, so a strict check
+would refuse every page. The probe skips the robots check for that one host,
+for both pages and downloads. Every other host keeps the check. Re-verified on
+November 12, 2026.
+
+Two gaps are deliberate. The Detailed Demands volumes whose file names are bare
+demand numbers, such as `d-1_8.pdf`, are dropped, as sevent4 drops them; the
+follow-up is `commoner-probe-6e7`. The Drupal `?page=N` pagers are not followed.
+
 ### `commoner-probe academic-jobs` — HEI faculty-recruitment ads
 
 ```bash

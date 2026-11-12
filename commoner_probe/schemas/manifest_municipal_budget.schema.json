@@ -1,0 +1,120 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CommonerLLP/commoner-probe/schemas/v1/manifest_municipal_budget.json",
+  "title": "manifest.jsonl — municipal budget document",
+  "description": "One budget document that a city publisher lists on its finance pages, with where it came from and where it is stored. `status` is `pending` after discovery, then `downloaded`, `skipped_exists`, or `error`. A page that could not be fetched is one `error` record whose `url` and `source_page` are the page. `sha256`, `bytes`, `text_layer`, `http_status`, and `error` appear only once a download or fetch has been attempted.",
+  "type": "object",
+  "required": [
+    "key",
+    "kind",
+    "record_type",
+    "source_family",
+    "portal_code",
+    "city",
+    "body",
+    "publisher",
+    "document_type",
+    "title",
+    "fiscal_year",
+    "url",
+    "filename",
+    "dest",
+    "status",
+    "media_type",
+    "fetched_at",
+    "probed_at"
+  ],
+  "properties": {
+    "key": {
+      "type": "string",
+      "pattern": "^MUNICIPAL_BUDGET\\|[a-z0-9-]+\\|(20\\d{2}-\\d{2}|unknown)\\|[a-z0-9-]+$"
+    },
+    "kind": {
+      "type": "string",
+      "const": "municipal_budget_document"
+    },
+    "record_type": {
+      "type": "string",
+      "const": "municipal_budget_document"
+    },
+    "source_family": {
+      "type": "string",
+      "const": "municipal-budget"
+    },
+    "portal_code": {
+      "type": "string"
+    },
+    "city": {
+      "type": "string"
+    },
+    "body": {
+      "type": "string"
+    },
+    "publisher": {
+      "type": "string"
+    },
+    "document_type": {
+      "type": "string",
+      "enum": [
+        "budget_book",
+        "balance_sheet",
+        "budget_at_a_glance",
+        "receipts_budget",
+        "budget_speech",
+        "gender_budget",
+        "detailed_demands_for_grants",
+        "mcd_budget"
+      ]
+    },
+    "title": {
+      "type": "string"
+    },
+    "fiscal_year": {
+      "type": ["string", "null"],
+      "pattern": "^20\\d{2}-\\d{2}$"
+    },
+    "url": {
+      "type": "string",
+      "format": "uri"
+    },
+    "source_page": {
+      "type": ["string", "null"]
+    },
+    "filename": {
+      "type": "string"
+    },
+    "dest": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["pending", "dry_run", "downloaded", "skipped_exists", "error"]
+    },
+    "media_type": {
+      "type": "string"
+    },
+    "fetched_at": {
+      "type": "string"
+    },
+    "probed_at": {
+      "type": "string"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "bytes": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "text_layer": {
+      "type": ["boolean", "null"]
+    },
+    "http_status": {
+      "type": "integer"
+    },
+    "error": {
+      "type": "string"
+    }
+  }
+}

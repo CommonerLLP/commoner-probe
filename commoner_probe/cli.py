@@ -36,6 +36,13 @@ from .ministry_pdf_index import (
     MinistryDDGProbe,
     get_portal,
 )
+from .municipal_budget_index import (
+    MAX_MENU_GUIDES,
+    MUNICIPAL_BUDGET_PORTALS,
+    MunicipalBudgetProbe,
+    portals_for_city,
+)
+from .municipal_budget_index import get_portal as get_municipal_portal
 from .parliament_qa_api import SansadProbe
 from .pay_report_index import DoePayAllowancesProbe
 from .question_list_api import QuestionsListProbe
@@ -1350,6 +1357,40 @@ def ckan_cmd(args: argparse.Namespace) -> None:
         print(json.dumps(record, ensure_ascii=False))
 
 
+def municipal_budget_cmd(args: argparse.Namespace) -> None:
+    if args.list_portals:
+        for portal in MUNICIPAL_BUDGET_PORTALS:
+            print(f"{portal.code}\t{portal.city}\t{portal.body}\t{portal.template}")
+        return
+    if not args.out:
+        raise SystemExit("--out is required")
+    portals = []
+    for code in _split_csv(args.portal) or []:
+        try:
+            portals.append(get_municipal_portal(code))
+        except ValueError as exc:
+            raise SystemExit(str(exc)) from exc
+    for city in _split_csv(args.city) or []:
+        found = portals_for_city(city)
+        if not found:
+            known = ", ".join(sorted({p.city for p in MUNICIPAL_BUDGET_PORTALS}))
+            raise SystemExit(f"no municipal budget portals for city {city!r}; known cities: {known}")
+        portals.extend(found)
+    seen: set[str] = set()
+    for portal in portals:
+        if portal.code in seen:
+            continue
+        seen.add(portal.code)
+        probe = MunicipalBudgetProbe(
+            Path(args.out),
+            portal=portal,
+            sleep=args.sleep,
+            max_menu_guides=args.max_menu_guides,
+        )
+        for record in probe.probe(dry_run=args.dry_run):
+            print(json.dumps(record, ensure_ascii=False))
+
+
 def udise_docs_cmd(args: argparse.Namespace) -> None:
     out = Path(args.out)
     probe = UdiseDocumentProbe(out, sleep=args.sleep, log=print)
@@ -2661,6 +2702,49 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     ckan.set_defaults(func=ckan_cmd)
+
+    municipal_budget = sub.add_parser(
+        "municipal-budget",
+        help="Download the budget documents that Ahmedabad, GNCTD and MCD list on their finance pages.",
+    )
+    municipal_budget.add_argument("--out", default=None, help="Output directory. Required unless --list-portals.")
+    selector = municipal_budget.add_mutually_exclusive_group(required=True)
+    selector.add_argument(
+        "--portal",
+        default=None,
+        help="Comma-separated portal codes. Run --list-portals to see them.",
+    )
+    selector.add_argument(
+        "--city",
+        default=None,
+        help="Comma-separated city names, for example ahmedabad,delhi. Runs every portal of each city.",
+    )
+    selector.add_argument(
+        "--list-portals",
+        action="store_true",
+        help="Print each portal's code, city, body, and template, then exit.",
+    )
+    municipal_budget.add_argument(
+        "--sleep",
+        type=float,
+        default=2.0,
+        help="Seconds between requests. Default: %(default)s.",
+    )
+    municipal_budget.add_argument(
+        "--max-menu-guides",
+        type=int,
+        default=MAX_MENU_GUIDES,
+        help="Most MCD menu guides to fetch in one crawl. Default: %(default)s.",
+    )
+    municipal_budget.add_argument(
+        "--dry-run",
+        action="store_true",
+        help=(
+            "Print manifest records without downloading or writing manifest.jsonl. "
+            "Still fetches the index pages to list the documents."
+        ),
+    )
+    municipal_budget.set_defaults(func=municipal_budget_cmd)
 
     udise_docs = sub.add_parser(
         "udise-docs",

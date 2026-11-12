@@ -660,6 +660,43 @@ class ManifestCkanResourceRecord:
 
 
 @dataclass
+class ManifestMunicipalBudgetRecord:
+    """One budget document a city publisher lists on its finance pages."""
+
+    key: str
+    kind: str
+    record_type: str
+    source_family: str
+    portal_code: str
+    city: str
+    body: str
+    publisher: str
+    document_type: str
+    title: str
+    url: str
+    filename: str
+    dest: str
+    status: str
+    media_type: str
+    fetched_at: str
+    probed_at: str
+    #: `YYYY-YY`, or None when no year could be read from the title or the URL.
+    fiscal_year: str | None = None
+    source_page: str | None = None
+    sha256: str | None = None
+    bytes: int | None = None
+    #: True or False once a PDF was read; None when the text could not be
+    #: extracted. None is unknown, not False.
+    text_layer: bool | None = None
+    http_status: int | None = None
+    error: str | None = None
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "ManifestMunicipalBudgetRecord":
+        return _from_dict(cls, d)
+
+
+@dataclass
 class ManifestAcademicJobRecord:
     """One Indian HEI faculty-recruitment advertisement / coverage record."""
 
@@ -1583,6 +1620,7 @@ __all__ = [
     "ManifestTabledPaperRecord",
     "ManifestBudgetRecord",
     "ManifestCkanResourceRecord",
+    "ManifestMunicipalBudgetRecord",
     "ManifestAcademicJobRecord",
     "ManifestFloorDebateRecord",
     "ManifestBillRecord",

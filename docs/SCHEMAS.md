@@ -960,6 +960,44 @@ portal is data.opencity.in, a mirror: the publisher of a file is the dataset's
 **`text_layer` is the only extractability signal the probe supplies.** Reading
 a figure from a file stays downstream.
 
+## `manifest.jsonl` — municipal budget document (`kind = "municipal_budget_document"`)
+
+One budget document that a city publisher lists on its finance pages, written by
+`commoner-probe municipal-budget`. Schema: `manifest_municipal_budget.schema.json`.
+The publishers are Ahmedabad Municipal Corporation, the Government of NCT of
+Delhi Finance Department, and the Municipal Corporation of Delhi. A page that
+can't be fetched becomes one `error` record that names the page.
+
+| Field | Type | Required | Notes | Provenance |
+|---|---|---|---|---|
+| `key` | string | yes | `MUNICIPAL_BUDGET\|{portal_code}\|{fiscal_year or unknown}\|{slug}`. The slug ends in the URL's file name or ID, so two anchors with one label get two keys | municipal_budget_index.py |
+| `kind` | string | yes | `const: "municipal_budget_document"` | municipal_budget_index.py |
+| `record_type` | string | yes | `const: "municipal_budget_document"` | municipal_budget_index.py |
+| `source_family` | string | yes | `const: "municipal-budget"` | municipal_budget_index.py |
+| `portal_code` | string | yes | The registry code, for example `amc-budget` | municipal_budget_index.py |
+| `city` | string | yes | The city, lower-case, for example `ahmedabad` or `delhi` | municipal_budget_index.py |
+| `body` | string | yes | The publishing body, for example `Ahmedabad Municipal Corporation`. Cite this | municipal_budget_index.py |
+| `publisher` | string | yes | The host that serves the file | municipal_budget_index.py |
+| `document_type` | string | yes | `budget_book` \| `balance_sheet` \| `budget_at_a_glance` \| `receipts_budget` \| `budget_speech` \| `gender_budget` \| `detailed_demands_for_grants` \| `mcd_budget` | municipal_budget_index.py |
+| `title` | string | yes | The anchor or table label as the page prints it. On an `error` record, a note that names the page that failed | municipal_budget_index.py |
+| `fiscal_year` | string\|null | yes | `YYYY-YY`, read from the title, else from the file URL. Null when neither names one | municipal_budget_index.py |
+| `url` | string | yes | The document's URL. On an `error` record for a failed page, the page's URL | municipal_budget_index.py |
+| `source_page` | string\|null | no | The page or API response that listed the document | municipal_budget_index.py |
+| `filename` | string | yes | `{portal_code}_{fiscal_year or unknown}_{slug}.pdf` | municipal_budget_index.py |
+| `dest` | string | yes | `{out}/{portal_code}/{filename}` | municipal_budget_index.py |
+| `status` | string | yes | `pending` \| `dry_run` \| `downloaded` \| `skipped_exists` \| `error` | municipal_budget_index.py |
+| `media_type` | string | yes | `application/pdf`, or the `Content-Type` the server sent | municipal_budget_index.py |
+| `fetched_at` | string | yes | When the record was written | municipal_budget_index.py |
+| `probed_at` | string | yes | When the record was written | municipal_budget_index.py |
+| `sha256` | string | cond | SHA-256 of the file, present once it is on disk | municipal_budget_index.py |
+| `bytes` | integer | cond | Size of the file in bytes, present once it is on disk | municipal_budget_index.py |
+| `text_layer` | boolean\|null | cond | Whether the PDF carries a text layer. Null is unknown, not false | municipal_budget_index.py |
+| `http_status` | integer | cond | The HTTP status of the download | municipal_budget_index.py |
+| `error` | string | cond | Why a page or download failed. `body isn't a PDF` means the server answered an HTML page for a PDF link | municipal_budget_index.py |
+
+**`text_layer` is the only extractability signal the probe supplies.** Reading
+a figure from a file stays downstream.
+
 ## `manifest.jsonl` — NADA study (`kind = "nada_study"`)
 
 One record per study acquired from a NADA (National Data Archive) instance,

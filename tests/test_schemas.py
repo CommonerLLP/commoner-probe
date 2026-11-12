@@ -72,6 +72,7 @@ def _parse_docs_fields(schema_name: str) -> set[str]:
         "manifest_indiacode": ["Shape F"],
         "manifest_dpe_csr": ["Shape G"],
         "manifest_ckan_resource": ['kind = "ckan_resource"'],
+        "manifest_municipal_budget": ['kind = "municipal_budget_document"'],
         "runs": ["_runs.jsonl"],
         "windows": ["_windows.jsonl"],
         "answers_qa_response": ['kind = "qa_response"'],
@@ -564,6 +565,7 @@ _ANSWERS_COMMON_FIELDS = {
     "manifest_indiacode",
     "manifest_dpe_csr",
     "manifest_ckan_resource",
+    "manifest_municipal_budget",
 ])
 def test_docs_fields_match_schema_properties(schema_name):
     """Every field documented in SCHEMAS.md exists in the schema, and vice-versa."""

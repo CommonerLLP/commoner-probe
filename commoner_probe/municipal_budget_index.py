@@ -1,10 +1,12 @@
 # SPDX-License-Identifier: MIT
-"""Parse the index pages where three city publishers list their budget documents.
+"""Find, and download, the budget documents three city publishers list on index pages.
 
 CONTEXT
 =======
-Three publishers, three page shapes. This module holds the parsers only. It
-fetches nothing and writes nothing.
+Three publishers, three page shapes. The parsers at the top of this module are
+pure: they fetch nothing and write nothing. :class:`MunicipalBudgetProbe`, at
+the bottom, fetches the pages, runs the parsers, and downloads each document it
+finds. :data:`MUNICIPAL_BUDGET_PORTALS` names the eight pages it knows.
 
 - Ahmedabad Municipal Corporation (host ``ahmedabadcity.gov.in``) lists budget
   books and balance sheets as plain anchors on two pages, ``/SP/Budget`` and
@@ -42,12 +44,25 @@ the PDFs is a sevent4 concern.
 
 from __future__ import annotations
 
+import hashlib
 import json
+import os
 import re
+from collections import deque
+from dataclasses import dataclass
+from datetime import datetime, timezone
 from html import unescape
 from html.parser import HTMLParser
+from pathlib import Path
 from typing import Any
 from urllib.parse import urljoin, urlparse
+
+from commoner_probe.base import _private_tmp_path, note_text_layer
+from commoner_probe.budget.probe import BUDGET_USER_AGENT
+from commoner_probe.http_client import make_session, read_capped_response
+
+#: A PDF whose extracted text is shorter than this has no usable text layer.
+TEXT_LAYER_MIN_CHARS = 200
 
 # Ported from sevent4 scripts/recipes/delhi/acquire_finance.py, DETAIL_PAGE_RE
 # (used by extract_detail_page_links).
@@ -442,3 +457,386 @@ def parse_mcd_documents(payload: str, source_url: str) -> list[dict[str, str | N
 
     walk(parsed)
     return docs
+
+
+# --- portal registry --------------------------------------------------------
+
+MCD_BASE = "https://mcdonline.nic.in"
+#: The most menu guides one MCD crawl fetches. A menu tree that loops, or fans out
+#: past this, stops here.
+MAX_MENU_GUIDES = 40
+_GNCTD_HOST = "finance.delhi.gov.in"
+_TEMPLATES = ("anchor_index", "drupal_files", "drupal_detail_pages", "mcd_menu_json")
+
+
+@dataclass(frozen=True)
+class MunicipalBudgetPortal:
+    """One index page, or one menu tree, that lists a publisher's budget documents."""
+
+    code: str
+    city: str
+    body: str
+    host: str
+    template: str  # one of _TEMPLATES
+    document_type: str
+    pages: tuple[str, ...] = ()
+    keywords: tuple[str, ...] = ()
+    menu_guides: tuple[str, ...] = ()
+
+
+_AMC = "Ahmedabad Municipal Corporation"
+_GNCTD = "Government of NCT of Delhi"
+_GNCTD_PAGES = (
+    ("gnctd-budget-at-a-glance", "budget_at_a_glance", "/finance/budget-glance"),
+    ("gnctd-receipts-budget", "receipts_budget", "/finance/receipts-budget"),
+    ("gnctd-budget-speech", "budget_speech", "/finance/budget-speech"),
+    ("gnctd-gender-budget", "gender_budget", "/finance/gender-budget"),
+)
+
+#: Live-verified on November 4, 2026. Each entry parsed real rows on that date.
+MUNICIPAL_BUDGET_PORTALS: tuple[MunicipalBudgetPortal, ...] = (
+    MunicipalBudgetPortal(
+        code="amc-budget",
+        city="ahmedabad",
+        body=_AMC,
+        host="ahmedabadcity.gov.in",
+        template="anchor_index",
+        document_type="budget_book",
+        pages=("https://ahmedabadcity.gov.in/SP/Budget",),
+        keywords=("budget",),
+    ),
+    MunicipalBudgetPortal(
+        code="amc-balance-sheet",
+        city="ahmedabad",
+        body=_AMC,
+        host="ahmedabadcity.gov.in",
+        template="anchor_index",
+        document_type="balance_sheet",
+        pages=("https://ahmedabadcity.gov.in/SP/BalanceSheet",),
+        keywords=("balance sheet", "audit report", "account"),
+    ),
+    *(
+        MunicipalBudgetPortal(
+            code=code,
+            city="delhi",
+            body=_GNCTD,
+            host=_GNCTD_HOST,
+            template="drupal_files",
+            document_type=document_type,
+            pages=(f"https://{_GNCTD_HOST}{path}",),
+        )
+        for code, document_type, path in _GNCTD_PAGES
+    ),
+    MunicipalBudgetPortal(
+        code="gnctd-detailed-demands",
+        city="delhi",
+        body=_GNCTD,
+        host=_GNCTD_HOST,
+        template="drupal_detail_pages",
+        document_type="detailed_demands_for_grants",
+        pages=(f"https://{_GNCTD_HOST}/finance/detailed-demands-grants-0",),
+    ),
+    MunicipalBudgetPortal(
+        code="mcd-budget-documents",
+        city="delhi",
+        body="Municipal Corporation of Delhi",
+        host="mcdonline.nic.in",
+        template="mcd_menu_json",
+        document_type="mcd_budget",
+        menu_guides=(
+            "914bf40f-81d3-4ae4-91c0-202a64bfa925",
+            "561ea9dd-8ddb-46cf-b19f-a3eabd02903f",
+        ),
+    ),
+)
+
+
+def get_portal(code: str) -> MunicipalBudgetPortal:
+    """The portal with this code. Raises ``ValueError`` naming the known codes."""
+    for portal in MUNICIPAL_BUDGET_PORTALS:
+        if portal.code == code:
+            return portal
+    known = ", ".join(p.code for p in MUNICIPAL_BUDGET_PORTALS)
+    raise ValueError(f"unknown municipal budget portal {code!r}; known portals: {known}")
+
+
+def portals_for_city(city: str) -> list[MunicipalBudgetPortal]:
+    """Every portal for `city`, matched case-insensitively."""
+    wanted = city.strip().lower()
+    return [p for p in MUNICIPAL_BUDGET_PORTALS if p.city == wanted]
+
+
+def respect_robots_for(url: str) -> bool:
+    """False only for ``finance.delhi.gov.in``; True for every other host.
+
+    Decision B (owner decision, November 12, 2026). That host's robots.txt
+    answers 403 to every User-Agent while its pages answer 200, so a strict
+    robots check would refuse every page. Re-verified November 12, 2026. The
+    relaxation covers that one host and nothing else.
+    """
+    return (urlparse(url).hostname or "").lower() != _GNCTD_HOST
+
+
+def mcd_menu_urls(guide: str) -> list[str]:
+    """The three MCD API URLs for one menu guide: submenu, content, PDF content."""
+    return [
+        f"{MCD_BASE}/portal/{endpoint}?menuguide={guide}"
+        for endpoint in ("showSubMenu", "showContent", "showPDFContent")
+    ]
+
+
+def _slug(text: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
+
+
+def document_slug(title: str, url: str) -> str:
+    """A stable, filename-safe name for one document.
+
+    The tail is the URL path's basename without ``.pdf`` when the path ends in
+    ``.pdf``, else the digits of the query string joined by hyphens (the AMC
+    ``ViewFile?TYPE=FileRepository,<id>`` links). The title and the tail are
+    joined, lower-cased, collapsed to single hyphens, and cut to 80 characters.
+    The tail tells apart two anchors that share a label.
+    """
+    parsed = urlparse(url)
+    if parsed.path.lower().endswith(".pdf"):
+        tail = parsed.path.rsplit("/", 1)[-1][: -len(".pdf")]
+    else:
+        tail = "-".join(re.findall(r"\d+", parsed.query))
+    return _slug(f"{title} {tail}")[:80].strip("-")
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+class MunicipalBudgetProbe:
+    """Discover, and later download, one portal's budget documents."""
+
+    def __init__(
+        self,
+        out_dir: Path,
+        *,
+        portal: MunicipalBudgetPortal,
+        sleep: float = 2.0,
+        max_menu_guides: int = MAX_MENU_GUIDES,
+        user_agent: str = BUDGET_USER_AGENT,
+        session=None,
+    ) -> None:
+        self.out_dir = Path(out_dir)
+        self.portal = portal
+        self.sleep = sleep
+        self.max_menu_guides = max_menu_guides
+        self.manifest = self.out_dir / "manifest.jsonl"
+        self.session = session or make_session(rate_limit_sec=sleep, user_agent=user_agent)
+
+    def _fetch_text(self, url: str) -> str:
+        resp = self.session.get(url, timeout=60, respect_robots=respect_robots_for(url))
+        resp.raise_for_status()
+        return resp.text
+
+    def discover(self) -> list[dict]:
+        """One `pending` record per document, plus one `error` record per page that fails."""
+        template = self.portal.template
+        if template in ("anchor_index", "drupal_files"):
+            docs, errors = self._discover_pages()
+        elif template == "drupal_detail_pages":
+            docs, errors = self._discover_detail_pages()
+        elif template == "mcd_menu_json":
+            docs, errors = self._discover_mcd()
+        else:
+            raise ValueError(f"unknown template {template!r} for portal {self.portal.code}")
+        records: list[dict] = []
+        urls_by_key: dict[str, str] = {}
+        for doc in docs:
+            record = self._record(doc, status="pending")
+            owner = urls_by_key.get(record["key"])
+            if owner == record["url"]:
+                continue
+            if owner is not None:
+                # Two URLs, one key: the 80-character cut of the slug can do
+                # this. A hash of the URL keeps both documents.
+                record = self._with_slug_suffix(record, hashlib.sha1(record["url"].encode()).hexdigest()[:8])
+            urls_by_key[record["key"]] = record["url"]
+            records.append(record)
+        return records + errors
+
+    def _with_slug_suffix(self, record: dict, suffix: str) -> dict:
+        filename = record["filename"].removesuffix(".pdf") + f"-{suffix}.pdf"
+        return {
+            **record,
+            "key": f"{record['key']}-{suffix}",
+            "filename": filename,
+            "dest": str(self.out_dir / self.portal.code / filename),
+        }
+
+    def _error_record(self, page_url: str, exc: Exception) -> dict:
+        title = f"Page not fetched: {page_url}"
+        record = self._record(
+            {"title": title, "url": page_url, "fiscal_year": None, "source_page": page_url},
+            status="error",
+        )
+        record["error"] = str(exc) or type(exc).__name__
+        return record
+
+    def _discover_pages(self) -> tuple[list[dict], list[dict]]:
+        docs: list[dict] = []
+        errors: list[dict] = []
+        for page in self.portal.pages:
+            try:
+                html = self._fetch_text(page)
+            except Exception as exc:  # noqa: BLE001 - one bad page must not end the run
+                errors.append(self._error_record(page, exc))
+                continue
+            if self.portal.template == "anchor_index":
+                docs.extend(parse_anchor_index(html, page, keywords=self.portal.keywords))
+            else:
+                docs.extend(
+                    parse_drupal_file_links(html, page, document_type=self.portal.document_type)
+                )
+        return docs, errors
+
+    def _discover_detail_pages(self) -> tuple[list[dict], list[dict]]:
+        docs: list[dict] = []
+        errors: list[dict] = []
+        for page in self.portal.pages:
+            try:
+                index_html = self._fetch_text(page)
+            except Exception as exc:  # noqa: BLE001
+                errors.append(self._error_record(page, exc))
+                continue
+            for detail in parse_detail_page_links(index_html, page):
+                detail_url = str(detail["url"])
+                try:
+                    html = self._fetch_text(detail_url)
+                except Exception as exc:  # noqa: BLE001
+                    errors.append(self._error_record(detail_url, exc))
+                    continue
+                docs.extend(
+                    parse_drupal_file_links(
+                        html, detail_url, document_type=self.portal.document_type
+                    )
+                )
+        return docs, errors
+
+    def _discover_mcd(self) -> tuple[list[dict], list[dict]]:
+        """Breadth-first walk of the MCD menu tree, at most `max_menu_guides` guides."""
+        docs: list[dict] = []
+        errors: list[dict] = []
+        queue = deque(self.portal.menu_guides)
+        queued = set(queue)
+        fetched = 0
+        while queue and fetched < self.max_menu_guides:
+            guide = queue.popleft()
+            fetched += 1
+            for url in mcd_menu_urls(guide):
+                try:
+                    payload = self._fetch_text(url)
+                except Exception as exc:  # noqa: BLE001
+                    errors.append(self._error_record(url, exc))
+                    continue
+                docs.extend(parse_mcd_documents(payload, url))
+                if "/showSubMenu" in url:
+                    for child in parse_mcd_menu_guides(payload):
+                        if child["menu_guide"] not in queued:
+                            queued.add(child["menu_guide"])
+                            queue.append(child["menu_guide"])
+        return docs, errors
+
+    def _record(self, doc: dict, *, status: str) -> dict:
+        portal = self.portal
+        fiscal_year = doc.get("fiscal_year")
+        slug = document_slug(doc["title"], doc["url"]) or "document"
+        filename = f"{portal.code}_{fiscal_year or 'unknown'}_{slug}.pdf"
+        now = _now_iso()
+        return {
+            "key": f"MUNICIPAL_BUDGET|{portal.code}|{fiscal_year or 'unknown'}|{slug}",
+            "kind": "municipal_budget_document",
+            "record_type": "municipal_budget_document",
+            "source_family": "municipal-budget",
+            "portal_code": portal.code,
+            "city": portal.city,
+            "body": portal.body,
+            "publisher": portal.host,
+            "document_type": portal.document_type,
+            "title": doc["title"],
+            "fiscal_year": fiscal_year,
+            "url": doc["url"],
+            "source_page": doc.get("source_page"),
+            "filename": filename,
+            "dest": str(self.out_dir / portal.code / filename),
+            "status": status,
+            "media_type": "application/pdf",
+            "fetched_at": now,
+            "probed_at": now,
+        }
+
+    @staticmethod
+    def _finalize(record: dict, dest: Path, body: bytes) -> None:
+        record["bytes"] = len(body)
+        note_text_layer(record, dest, body, min_chars=TEXT_LAYER_MIN_CHARS)
+
+    def download(self, record: dict, *, dry_run: bool) -> dict:
+        """Fetch one document to `record["dest"]` and return the updated record.
+
+        A dry run makes no request. A record that is already an `error` passes
+        through. A non-empty file already at `dest` is kept and recorded as
+        `skipped_exists`. A response whose `Content-Type` is HTML is not
+        written: an index page or a login page isn't the PDF. A failed fetch
+        becomes an `error` record; it never raises.
+        """
+        if record["status"] == "error":
+            return dict(record)
+        if dry_run:
+            return {**record, "status": "dry_run"}
+        record = dict(record)
+        dest = Path(record["dest"])
+        if dest.exists() and dest.stat().st_size > 0:
+            record["status"] = "skipped_exists"
+            self._finalize(record, dest, dest.read_bytes())
+            return record
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        tmp_path = _private_tmp_path(dest)
+        try:
+            url = record["url"]
+            resp = self.session.get(
+                url, timeout=180, stream=True, respect_robots=respect_robots_for(url)
+            )
+            record["http_status"] = getattr(resp, "status_code", 200)
+            resp.raise_for_status()
+            headers = getattr(resp, "headers", None) or {}
+            content_type = (headers.get("Content-Type") or "").split(";", 1)[0].strip()
+            if content_type.lower().startswith("text/html"):
+                record["status"] = "error"
+                record["error"] = "body isn't a PDF"
+                return record
+            body = read_capped_response(resp)
+            tmp_path.write_bytes(body)
+            os.replace(tmp_path, dest)
+        except Exception as exc:  # noqa: BLE001 - one bad document must not end the run
+            record["status"] = "error"
+            record["error"] = str(exc)
+            return record
+        finally:
+            tmp_path.unlink(missing_ok=True)
+        if content_type:
+            record["media_type"] = content_type
+        record["status"] = "downloaded"
+        self._finalize(record, dest, body)
+        return record
+
+    def append_manifest(self, record: dict) -> None:
+        self.out_dir.mkdir(parents=True, exist_ok=True)
+        with self.manifest.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+    def probe(self, *, dry_run: bool = False) -> list[dict]:
+        """Discover and download every document of the portal.
+
+        Records are appended to `manifest.jsonl` unless `dry_run`.
+        """
+        records = [self.download(r, dry_run=dry_run) for r in self.discover()]
+        if not dry_run:
+            for record in records:
+                self.append_manifest(record)
+        return records
