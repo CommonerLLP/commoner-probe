@@ -1022,6 +1022,64 @@ commoner-probe budget \
 | `--rbi-url` | RBI default | RBI State-Finances publication page to discover documents from |
 | `--dry-run` | off | Print manifest records without writing (offline for `union-budget`) |
 
+### `commoner-probe ckan` — CKAN open-data portal resources
+
+```bash
+commoner-probe ckan \
+  --out data/ckan \
+  --base-url https://data.opencity.in \
+  --dataset gba-corporation-budgets-2026-27 \
+  --formats XLSX \
+  --dry-run
+```
+
+| Flag | Default | What it does |
+|---|---|---|
+| `--out` | required | Output directory. Files land in `<out>/<host>/<dataset>/`. |
+| `--base-url` | required | CKAN portal root, for example `https://data.opencity.in` |
+| `--dataset` | required | Dataset slug. Repeat the flag for more than one dataset. |
+| `--formats` | every format | Comma-separated resource formats to keep, for example `CSV,XLSX` |
+| `--sleep` | `10.0` | Seconds between requests. 10 is the portal's `Crawl-Delay`. |
+| `--dry-run` | off | Print records without downloading or writing `manifest.jsonl`. It still calls `package_show` to list each dataset. |
+
+Each record carries the publishing body (`organization`), the license, the
+dataset URL, the resource URL, `sha256`, `bytes`, and, for a PDF, `text_layer`.
+A dataset slug that no longer exists yields one `status: "error"` record that
+names the dataset, and the other datasets in the run still download. A resource
+that is already on disk is recorded as `skipped_exists`. When two resources in
+one dataset share a name, the probe appends each resource ID to the filename so
+that the files don't overwrite one another.
+
+OpenCity recipe. Bengaluru:
+
+```bash
+commoner-probe ckan --out data/ckan --base-url https://data.opencity.in \
+  --dataset bbmp-budget \
+  --dataset bbmp-budget-2023-24 \
+  --dataset bbmp-budget-2024-25 \
+  --dataset bbmp-budget-2025-26 \
+  --dataset gba-corporation-budgets-2026-27 \
+  --dataset bbmp-work-orders-by-ward-2013-2022 \
+  --dataset bbmp-work-orders-and-bill-payment \
+  --dataset bengaluru-mla-local-area-development-funds \
+  --formats CSV,XLSX,XLS,JSON,GEOJSON
+```
+
+Chennai:
+
+```bash
+commoner-probe ckan --out data/ckan --base-url https://data.opencity.in \
+  --dataset great-chennai-corporation-finances --formats CSV
+```
+
+**Decision A: the Action API and robots.txt.** OpenCity's `robots.txt`
+disallows `/api/` and sets `Crawl-Delay: 10`. The disallow line is CKAN's stock
+file, which keeps search engines off the Action API. The Action API is the
+publisher's documented machine interface, so the probe calls
+`/api/3/action/` with `respect_robots=False` and nothing else. Every resource
+download keeps the robots check, and the 10-second crawl delay applies to every
+request. The record's `organization` names the publisher; OpenCity is a mirror.
+
 ### `commoner-probe academic-jobs` — HEI faculty-recruitment ads
 
 ```bash

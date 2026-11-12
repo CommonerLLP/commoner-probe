@@ -29,17 +29,20 @@ land. It does not read a figure from any of them.
 
 from __future__ import annotations
 
+import hashlib
 import json
+import os
 import re
 import urllib.parse
+from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from commoner_probe.base import safe_filename_segment
+from commoner_probe.base import _private_tmp_path, note_text_layer, safe_filename_segment
 from commoner_probe.budget.probe import _MEDIA_TYPES, BUDGET_USER_AGENT
-from commoner_probe.http_client import make_session
+from commoner_probe.http_client import make_session, read_capped_response
 
 #: OpenCity's robots.txt `Crawl-Delay`, in seconds. Applied to every request.
 CKAN_CRAWL_DELAY_SEC = 10.0
@@ -47,6 +50,8 @@ CKAN_CRAWL_DELAY_SEC = 10.0
 _ACTION_PATH = "/api/3/action/"
 _EXTENSION = re.compile(r"^\.[A-Za-z0-9]{1,8}$")
 _FALLBACK_MEDIA_TYPE = "application/octet-stream"
+#: A PDF whose extracted text is shorter than this has no usable text layer.
+TEXT_LAYER_MIN_CHARS = 200
 
 
 class CkanError(RuntimeError):
@@ -221,14 +226,28 @@ class CkanResourceProbe:
         )
 
     def discover(self, dataset: str) -> list[dict]:
-        """One `pending` record per kept resource of `dataset`."""
+        """One `pending` record per kept resource of `dataset`.
+
+        Two resources in a dataset can share a name, and so a filename. Each
+        colliding filename gets its resource id before the extension, so no
+        record's `dest` points at another record's file.
+        """
         payload = self.client.package_show(dataset)
         resources = parse_package(payload, portal=self.portal, dataset=dataset)
-        return [self._record(r, status="pending") for r in filter_formats(resources, self.formats)]
+        kept = filter_formats(resources, self.formats)
+        names = [resource_filename(r) for r in kept]
+        counts = Counter(n.casefold() for n in names)
+        records = []
+        for res, name in zip(kept, names, strict=True):
+            if counts[name.casefold()] > 1:
+                stem, ext = os.path.splitext(name)
+                name = f"{stem}_{safe_filename_segment(res.resource_id, collapse=True)}{ext}"
+            records.append(self._record(res, status="pending", filename=name))
+        return records
 
-    def _record(self, res: CkanResource, *, status: str) -> dict:
+    def _record(self, res: CkanResource, *, status: str, filename: str | None = None) -> dict:
         now = _now_iso()
-        filename = resource_filename(res)
+        filename = filename or resource_filename(res)
         dest = self.out_dir / self.host / res.dataset / filename
         return {
             "key": f"CKAN|{self.host}|{res.dataset}|{res.resource_id}",
@@ -253,3 +272,107 @@ class CkanResourceProbe:
             "fetched_at": now,
             "probed_at": now,
         }
+
+    def _error_record(self, dataset: str, exc: Exception) -> dict:
+        """One `error` record for a dataset that could not be listed.
+
+        No resource exists, so the required fields carry the dataset slug.
+        """
+        now = _now_iso()
+        dataset_url = f"{self.portal}/dataset/{dataset}"
+        return {
+            "key": f"CKAN|{self.host}|{dataset}|{dataset}",
+            "kind": "ckan_resource",
+            "record_type": "ckan_resource",
+            "source_family": "ckan",
+            "portal": self.portal,
+            "dataset": dataset,
+            "dataset_title": dataset,
+            "organization": None,
+            "license": None,
+            "dataset_url": dataset_url,
+            "resource_id": dataset,
+            "resource_name": None,
+            "format": "",
+            "resource_last_modified": None,
+            "filename": dataset,
+            "dest": str(self.out_dir / self.host / dataset),
+            "url": dataset_url,
+            "status": "error",
+            "media_type": _FALLBACK_MEDIA_TYPE,
+            "fetched_at": now,
+            "probed_at": now,
+            "error": str(exc),
+        }
+
+    @staticmethod
+    def _finalize(record: dict, dest: Path, body: bytes) -> None:
+        record["bytes"] = len(body)
+        if record["media_type"] == "application/pdf" or dest.suffix.lower() == ".pdf":
+            note_text_layer(record, dest, body, min_chars=TEXT_LAYER_MIN_CHARS)
+        else:
+            record["sha256"] = hashlib.sha256(body).hexdigest()
+
+    def download(self, record: dict, *, dry_run: bool) -> dict:
+        """Fetch one resource to `record["dest"]` and return the updated record.
+
+        A dry run makes no request. A non-empty file already at `dest` is kept
+        and recorded as `skipped_exists`. A failed fetch becomes an `error`
+        record; it never raises. The download keeps the robots.txt check.
+        """
+        if dry_run:
+            return {**record, "status": "dry_run"}
+        record = dict(record)
+        dest = Path(record["dest"])
+        if dest.exists() and dest.stat().st_size > 0:
+            record["status"] = "skipped_exists"
+            self._finalize(record, dest, dest.read_bytes())
+            return record
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        tmp_path = _private_tmp_path(dest)
+        try:
+            resp = self.session.get(record["url"], timeout=180, stream=True)
+            status = getattr(resp, "status_code", 200)
+            record["http_status"] = status
+            resp.raise_for_status()
+            body = read_capped_response(resp)
+            tmp_path.write_bytes(body)
+            os.replace(tmp_path, dest)
+        except Exception as exc:  # noqa: BLE001 - one bad resource must not end the run
+            record["status"] = "error"
+            record["error"] = str(exc)
+            return record
+        finally:
+            tmp_path.unlink(missing_ok=True)
+        headers = getattr(resp, "headers", None) or {}
+        content_type = headers.get("Content-Type")
+        if content_type:
+            record["media_type"] = content_type.split(";", 1)[0].strip()
+        record["status"] = "downloaded"
+        self._finalize(record, dest, body)
+        return record
+
+    def append_manifest(self, record: dict) -> None:
+        self.out_dir.mkdir(parents=True, exist_ok=True)
+        with self.manifest.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+    def probe(self, datasets: list[str], *, dry_run: bool = False) -> list[dict]:
+        """Discover and download every kept resource of each dataset.
+
+        A dataset that cannot be listed yields one `error` record; the other
+        datasets still run. Records are appended to `manifest.jsonl` unless
+        `dry_run`.
+        """
+        records: list[dict] = []
+        for dataset in datasets:
+            try:
+                found = self.discover(dataset)
+            except CkanError as exc:
+                records.append(self._error_record(dataset, exc))
+                continue
+            records.extend(self.download(r, dry_run=dry_run) for r in found)
+        if not dry_run:
+            for record in records:
+                self.append_manifest(record)
+        return records

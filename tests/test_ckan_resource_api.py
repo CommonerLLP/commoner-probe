@@ -297,3 +297,192 @@ def test_schema_accepts_download_fields_and_rejects_bad_status(tmp_path):
 def test_every_schema_field_survives_the_typed_api():
     declared = set(sc.load("manifest_ckan_resource")["properties"])
     assert declared <= {f.name for f in fields(R.ManifestCkanResourceRecord)}
+
+
+# --- download and probe ---------------------------------------------------
+
+
+class DownloadResponse(FakeResponse):
+    def __init__(self, body=b"", status=200, content_type=None):
+        super().__init__(content=body, status=status)
+        self.headers = {"Content-Type": content_type} if content_type else {}
+
+    def iter_content(self, chunk_size=16384):
+        for i in range(0, len(self.content), chunk_size):
+            yield self.content[i : i + chunk_size]
+
+
+class RoutedSession:
+    """Package URLs answer JSON; resource URLs answer `file_body` or an HTTP status."""
+
+    def __init__(self, packages, file_body=b"PK\x03\x04 fake xlsx", file_status=200, content_type=None):
+        self.packages = packages  # slug -> payload dict, or int status
+        self.file_body = file_body
+        self.file_status = file_status
+        self.content_type = content_type
+        self.calls: list[tuple[str, dict]] = []
+
+    def get(self, url, **kwargs):
+        self.calls.append((url, {k: kwargs[k] for k in ("respect_robots", "stream") if k in kwargs}))
+        if "/api/3/action/package_show" in url:
+            slug = url.rsplit("id=", 1)[1]
+            entry = self.packages[slug]
+            if isinstance(entry, int):
+                return FakeResponse(text=json.dumps({"success": False}), status=entry)
+            return FakeResponse(text=json.dumps(entry))
+        return DownloadResponse(self.file_body, self.file_status, self.content_type)
+
+
+def _packages(**extra):
+    return {GBA: _load(f"package_show_{GBA}.json"), **extra}
+
+
+def test_download_writes_file_with_sha256_and_skips_existing(tmp_path):
+    import hashlib
+
+    body = b"PK\x03\x04 fake xlsx"
+    session = RoutedSession(_packages(), body)
+    probe = CkanResourceProbe(tmp_path, PORTAL, session=session, formats={"XLSX"}, sleep=0)
+    records = probe.probe([GBA])
+    done = [r for r in records if r["status"] == "downloaded"]
+    assert len(done) == 5
+    first = next(r for r in done if r["resource_id"] == TABLES_ID)
+    assert first["sha256"] == hashlib.sha256(body).hexdigest() and first["bytes"] == len(body)
+    assert Path(first["dest"]).read_bytes() == body
+    assert [json.loads(line) for line in (tmp_path / "manifest.jsonl").read_text().splitlines()] == records
+    # The Action API skips robots; no resource download does.
+    flags = {url: kw.get("respect_robots") for url, kw in session.calls}
+    assert all(v is False for u, v in flags.items() if "/api/3/action/" in u)
+    assert all(v is None for u, v in flags.items() if "/api/3/action/" not in u)
+    again = probe.probe([GBA])
+    assert {r["status"] for r in again} == {"skipped_exists"}
+    assert next(r for r in again if r["resource_id"] == TABLES_ID)["sha256"] == first["sha256"]
+
+
+def test_download_takes_media_type_from_content_type(tmp_path):
+    session = RoutedSession(_packages(), content_type="application/octet-stream; charset=binary")
+    records = CkanResourceProbe(tmp_path, PORTAL, session=session, formats={"XLSX"}, sleep=0).probe([GBA])
+    assert {r["media_type"] for r in records} == {"application/octet-stream"}
+
+
+def test_pdf_resources_record_text_layer(tmp_path):
+    session = RoutedSession(_packages(), b"%PDF-1.4 not really a pdf")
+    records = CkanResourceProbe(tmp_path, PORTAL, session=session, formats={"PDF"}, sleep=0).probe([GBA])
+    assert len(records) == 14 and {r["status"] for r in records} == {"downloaded"}
+    assert all("text_layer" in r and r["text_layer"] in (True, False, None) for r in records)
+    assert all(len(r["sha256"]) == 64 for r in records)
+    # A non-PDF carries no text_layer claim.
+    xlsx = CkanResourceProbe(tmp_path / "x", PORTAL, session=session, formats={"XLSX"}, sleep=0).probe([GBA])
+    assert all("text_layer" not in r for r in xlsx)
+
+
+def test_dataset_error_is_a_record_not_a_crash(tmp_path):
+    session = RoutedSession(_packages(**{"gone-dataset": 404}))
+    records = CkanResourceProbe(tmp_path, PORTAL, session=session, sleep=0).probe(["gone-dataset", GBA])
+    gone = [r for r in records if r["dataset"] == "gone-dataset"]
+    assert len(gone) == 1 and gone[0]["status"] == "error" and "not found" in gone[0]["error"]
+    assert sum(r["status"] == "downloaded" for r in records) == 19
+    assert validate_corpus(tmp_path, log=lambda _: None)
+
+
+def test_http_error_on_a_resource_is_an_error_record(tmp_path):
+    session = RoutedSession(_packages(), file_status=503)
+    records = CkanResourceProbe(tmp_path, PORTAL, session=session, formats={"XLSX"}, sleep=0).probe([GBA])
+    assert {r["status"] for r in records} == {"error"}
+    assert all(r["http_status"] == 503 and "503" in r["error"] for r in records)
+    assert not list(tmp_path.rglob("*.xlsx")) and not list(tmp_path.rglob("*.tmp"))
+
+
+def test_resource_blocked_by_robots_is_an_error_record_not_a_crash(tmp_path):
+    class Blocked(RoutedSession):
+        def get(self, url, **kwargs):
+            if "/api/3/action/" not in url:
+                raise PermissionError(f"Disallowed by robots.txt: {url}")
+            return super().get(url, **kwargs)
+
+    records = CkanResourceProbe(
+        tmp_path, PORTAL, session=Blocked(_packages()), formats={"XLSX"}, sleep=0
+    ).probe([GBA])
+    assert len(records) == 5 and {r["status"] for r in records} == {"error"}
+    assert "robots" in records[0]["error"]
+
+
+def test_dry_run_downloads_nothing_and_writes_no_manifest(tmp_path):
+    session = RoutedSession(_packages())
+    records = CkanResourceProbe(tmp_path, PORTAL, session=session, formats={"XLSX"}, sleep=0).probe(
+        [GBA], dry_run=True
+    )
+    assert len(records) == 5 and {r["status"] for r in records} == {"dry_run"}
+    assert len(session.calls) == 1  # package_show only
+    assert not (tmp_path / "manifest.jsonl").exists()
+
+
+def _two_resource_payload(first="r1", second="r2", name="Budget", urls=("https://x/a.csv", "https://x/b.csv")):
+    return {
+        "success": True,
+        "result": {
+            "title": "T",
+            "resources": [
+                {"id": first, "name": name, "format": "CSV", "url": urls[0]},
+                {"id": second, "name": name, "format": "CSV", "url": urls[1]},
+                {"id": "r3", "name": "Other", "format": "CSV", "url": "https://x/c.csv"},
+            ],
+        },
+    }
+
+
+def test_colliding_filenames_are_disambiguated_with_the_resource_id(tmp_path):
+    session = RoutedSession({"dup": _two_resource_payload()})
+    probe = CkanResourceProbe(tmp_path, PORTAL, session=session, sleep=0)
+    pending = probe.discover("dup")
+    assert [r["filename"] for r in pending] == ["Budget_r1.csv", "Budget_r2.csv", "Other.csv"]
+    assert len({r["dest"] for r in pending}) == 3
+    records = probe.probe(["dup"])
+    assert {r["status"] for r in records} == {"downloaded"}
+    assert len({Path(r["dest"]) for r in records}) == 3 and all(Path(r["dest"]).exists() for r in records)
+
+
+def test_filenames_that_collide_only_in_case_are_disambiguated(tmp_path):
+    payload = _two_resource_payload()
+    payload["result"]["resources"][1]["name"] = "BUDGET"
+    records = CkanResourceProbe(tmp_path, PORTAL, session=RoutedSession({"dup": payload}), sleep=0).discover("dup")
+    assert [r["filename"] for r in records][:2] == ["Budget_r1.csv", "BUDGET_r2.csv"]
+
+
+def test_fixture_filenames_stay_unique_and_undisambiguated(tmp_path):
+    session = RoutedSession({GBA: _load(f"package_show_{GBA}.json"), CHENNAI: _load(f"package_show_{CHENNAI}.json")})
+    probe = CkanResourceProbe(tmp_path, PORTAL, session=session, sleep=0)
+    for slug, count in ((GBA, 19), (CHENNAI, 14)):
+        records = probe.discover(slug)
+        assert len({r["filename"] for r in records}) == count
+        assert all(r["filename"] == resource_filename(_resource_for(r, slug)) for r in records)
+
+
+def _resource_for(record, slug):
+    payload = _load(f"package_show_{slug}.json")
+    resources = parse_package(payload, portal=PORTAL, dataset=slug)
+    return next(r for r in resources if r.resource_id == record["resource_id"])
+
+
+def test_ckan_cli_dry_run_prints_records_without_manifest(tmp_path, capsys, monkeypatch):
+    from commoner_probe.cli import build_parser
+
+    payload = _load(f"package_show_{GBA}.json")
+    monkeypatch.setattr(CkanClient, "package_show", lambda self, dataset: payload)
+    args = build_parser().parse_args(
+        ["ckan", "--out", str(tmp_path), "--base-url", PORTAL, "--dataset", GBA, "--formats", "XLSX", "--dry-run"]
+    )
+    assert args.sleep == 10.0
+    args.func(args)
+    lines = capsys.readouterr().out.splitlines()
+    assert len(lines) == 5 and json.loads(lines[0])["status"] == "dry_run"
+    assert not (tmp_path / "manifest.jsonl").exists()
+
+
+def test_ckan_cli_takes_repeated_datasets():
+    from commoner_probe.cli import build_parser
+
+    args = build_parser().parse_args(
+        ["ckan", "--out", "o", "--base-url", PORTAL, "--dataset", "a", "--dataset", "b"]
+    )
+    assert args.dataset == ["a", "b"] and args.formats is None and args.dry_run is False

@@ -472,6 +472,37 @@ Traps, all measured:
 
 Outputs: `manifest.jsonl` (`kind: orgi_census_resource`) + `rows/<surface>__<id>.jsonl`.
 
+## OpenCity CKAN (`ckan`)
+
+Publisher: the body named in each dataset's `organization`, for example the
+Greater Bengaluru Authority or the Greater Chennai Corporation. data.opencity.in,
+operated by Oorvani Foundation, is a CKAN mirror. Contract verified
+2026-11-04.
+
+Source contract:
+
+- dataset: `GET https://data.opencity.in/api/3/action/package_show?id=<slug>`
+- search:  `GET https://data.opencity.in/api/3/action/package_search?q=<q>&rows=<n>`
+- resource: the `url` of each entry in `result.resources`, for example
+  `https://data.opencity.in/dataset/<dataset-uuid>/resource/<resource-uuid>/download/<file>`
+
+Auth: none. The Action API answers `{"success": true, "result": {...}}`.
+
+robots.txt: `Disallow: /api/` and `Crawl-Delay: 10`. The probe calls the
+Action API with `respect_robots=False` (owner decision A, November 12, 2026)
+and keeps the robots check on every resource download. See
+[`CLI.md`](CLI.md#commoner-probe-ckan--ckan-open-data-portal-resources).
+
+Traps:
+
+- A slug that no longer exists answers HTTP 404 with `success: false`. The probe
+  turns it into one `error` record and goes on to the next dataset.
+- Two resources in one dataset can share a `name`. The filename gets the
+  resource ID appended so the files don't collide.
+
+Outputs: `manifest.jsonl` (`kind: ckan_resource`) + one file per resource under
+`<host>/<dataset>/`.
+
 ## NITI Aayog Annual Reports (`niti-annual-report`)
 
 Publisher: NITI Aayog. Contract verified live 2026-07-30. Carries the "Young

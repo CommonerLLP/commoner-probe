@@ -19,6 +19,7 @@ from .attendance_json_api import AttendanceProbe
 from .audit_pdf_index import CAG_ACCOUNTS_STATES, CAGAccountsProbe, get_state
 from .bill_catalog_api import BILLS_API, BillsProbe
 from .budget import RBI_STATE_FINANCES_URL, BudgetProbe
+from .ckan_resource_api import CKAN_CRAWL_DELAY_SEC, CkanResourceProbe
 from .committee_report_api import CommitteeProbe, resolve_committees
 from .csr.dpe import SEARCHES, DpeCsrProbe
 from .csr.mca import McaCsrProbe
@@ -1338,6 +1339,17 @@ def budget_cmd(args: argparse.Namespace) -> None:
         print(json.dumps(record, ensure_ascii=False))
 
 
+def ckan_cmd(args: argparse.Namespace) -> None:
+    probe = CkanResourceProbe(
+        Path(args.out),
+        args.base_url,
+        sleep=args.sleep,
+        formats=set(_split_csv(args.formats) or []) or None,
+    )
+    for record in probe.probe(args.dataset, dry_run=args.dry_run):
+        print(json.dumps(record, ensure_ascii=False))
+
+
 def udise_docs_cmd(args: argparse.Namespace) -> None:
     out = Path(args.out)
     probe = UdiseDocumentProbe(out, sleep=args.sleep, log=print)
@@ -2612,6 +2624,43 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     budget.set_defaults(func=budget_cmd)
+
+    ckan = sub.add_parser(
+        "ckan",
+        help="Download the resources of datasets on a CKAN open-data portal, such as data.opencity.in.",
+    )
+    ckan.add_argument("--out", required=True, help="Output directory")
+    ckan.add_argument(
+        "--base-url",
+        required=True,
+        help="CKAN portal root, for example https://data.opencity.in",
+    )
+    ckan.add_argument(
+        "--dataset",
+        action="append",
+        required=True,
+        help="Dataset slug. Repeat the flag for more than one dataset.",
+    )
+    ckan.add_argument(
+        "--formats",
+        default=None,
+        help="Comma-separated resource formats to keep, for example CSV,XLSX. Default: every format.",
+    )
+    ckan.add_argument(
+        "--sleep",
+        type=float,
+        default=CKAN_CRAWL_DELAY_SEC,
+        help="Seconds between requests. Default: %(default)s, the portal's crawl delay.",
+    )
+    ckan.add_argument(
+        "--dry-run",
+        action="store_true",
+        help=(
+            "Print manifest records without downloading or writing manifest.jsonl. "
+            "Still calls the portal's package_show to list each dataset."
+        ),
+    )
+    ckan.set_defaults(func=ckan_cmd)
 
     udise_docs = sub.add_parser(
         "udise-docs",
