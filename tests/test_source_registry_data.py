@@ -19,10 +19,12 @@ from commoner_probe.academia.parsers import PARSERS
 from commoner_probe.annual_report_index import NitiAnnualReportProbe, parse_listing
 from commoner_probe.budget.probe import BudgetProbe
 from commoner_probe.catalogue_search_api import AbhilekhPatalProbe
+from commoner_probe.ckan_resource_api import CkanClient
 from commoner_probe.csr.dpe import DpeCsrProbe
 from commoner_probe.csr.mca import McaCsrProbe
 from commoner_probe.koha import KohaProbe
 from commoner_probe.ministry_pdf_index import MinistryDDGProbe, parse_ddg_listing_card
+from commoner_probe.municipal_budget_index import MunicipalBudgetProbe
 from commoner_probe.nada import NadaClient, NadaProbe
 from commoner_probe.pay_report_index import DoePayAllowancesProbe
 from commoner_probe.rest_dataset_api import MospiClient
@@ -67,7 +69,7 @@ def _clear_caches(tmp_path, monkeypatch):
     monkeypatch.setattr(dp, "SCRATCH", tmp_path)
     cached = (dp._budget_probe, dp._nada_client, dp._nada_search, dp._dchb_rows, dp._mospi_rows,
               dp._shrug_tables, dp._doe_reports, dp._koha_result, dp._nai_probe,
-              dp._wayback_captures)
+              dp._wayback_captures, dp._opencity_gba_records)
     for fn in cached:
         fn.cache_clear()
     yield
@@ -531,3 +533,92 @@ def test_academic_entries_take_their_host_from_the_bundled_registry():
     assert BY_ID["academic-jobs-iit-kanpur"].host == "iitk.ac.in"
     assert BY_ID["academic-jobs-private-university"].host == "careers.ashoka.edu.in"
     assert all(BY_ID[f"academic-jobs-{p.replace('_', '-')}"].freshness == () for p, _ in dp._ACADEMIA)
+
+
+# -- OpenCity CKAN and municipal finance index pages -----------------------------
+
+_OPENCITY_FIXTURE = (Path(__file__).parent / "fixtures" / "opencity"
+                     / "package_show_gba-corporation-budgets-2026-27.json")
+
+
+def _opencity_package() -> dict:
+    return json.loads(_OPENCITY_FIXTURE.read_text(encoding="utf-8"))["result"]
+
+
+def test_opencity_gba_lists_every_resource_of_every_matching_package(monkeypatch):
+    package = _opencity_package()
+    queries = []
+
+    def package_search(self, q, *, rows=20):
+        queries.append(q)
+        return [package]
+
+    monkeypatch.setattr(CkanClient, "package_search", package_search)
+    source = BY_ID["ckan-opencity-gba"]
+    records = source.fetch()
+    assert queries == ['title:"GBA Corporation Budgets"']
+    assert len(records) == len(package["resources"]) > 1
+    assert all(_complete(source, r) and r["status"] == "pending" for r in records)
+    assert {r["dataset"] for r in records} == {package["name"]}
+
+
+def test_opencity_gba_checks_the_first_xlsx_and_reads_the_dataset_year(monkeypatch):
+    package = _opencity_package()
+    monkeypatch.setattr(CkanClient, "package_search", lambda self, q, *, rows=20: [package])
+    source = BY_ID["ckan-opencity-gba"]
+    records = source.fetch()
+    xlsx = next(r["url"] for r in records if r["format"] == "XLSX")
+    # The newest record can be a PDF book, so the document is the first XLSX, not its own URL.
+    assert source.document(records[-1]) == xlsx
+    assert source.document_kind == "spreadsheet"
+    assert source.document_rate_limit_sec == 10.0
+    assert source.record_date(records[0]) == records[0]["resource_last_modified"][:10]
+    rule = _edition_rule("ckan-opencity-gba")
+    assert rule.edition_of(records[0]) == "2026-27"
+    # The 120 days of grace after April 1 run to July 30.
+    assert _evaluate(rule, records, date(2026, 7, 29)).ok
+    assert not _evaluate(rule, records, date(2027, 8, 15)).ok
+
+
+def test_opencity_gba_record_date_survives_a_resource_with_no_date():
+    assert BY_ID["ckan-opencity-gba"].record_date({"resource_last_modified": None}) == ""
+
+
+def _municipal_record(**fields) -> dict:
+    return {"key": "k", "title": "Budget at a Glance 2026-27", "url": "https://x/doc.pdf",
+            "status": "pending", "fiscal_year": "2026-27", **fields}
+
+
+def test_municipal_budget_entries_return_only_pending_records(monkeypatch):
+    records = [_municipal_record(),
+               _municipal_record(key="e", status="error", error="boom")]
+    monkeypatch.setattr(MunicipalBudgetProbe, "discover", lambda self: records)
+    source = BY_ID["municipal-budget-gnctd"]
+    assert [r["key"] for r in source.fetch()] == ["k"]
+
+
+@pytest.mark.parametrize("source_id", ["municipal-budget-gnctd", "municipal-budget-mcd"])
+def test_municipal_budget_entry_raises_when_every_page_failed(monkeypatch, source_id):
+    failed = [_municipal_record(status="error", error="HTTP 503")]
+    monkeypatch.setattr(MunicipalBudgetProbe, "discover", lambda self: failed)
+    with pytest.raises(ValueError, match="HTTP 503"):
+        BY_ID[source_id].fetch()
+
+
+def test_gnctd_skips_robots_on_its_own_host_only():
+    respect = BY_ID["municipal-budget-gnctd"].document_respect_robots
+    assert respect("https://finance.delhi.gov.in/sites/default/files/x.pdf") is False
+    assert respect("https://mcdonline.nic.in/x.pdf") is True
+
+
+def test_gnctd_edition_rule_expects_the_march_budget():
+    rule = _edition_rule("municipal-budget-gnctd")
+    records = [_municipal_record()]
+    assert _evaluate(rule, records, date(2026, 5, 29)).ok
+    assert not _evaluate(rule, records, date(2027, 6, 5)).ok
+    assert not _evaluate(rule, [_municipal_record(fiscal_year=None)], date(2026, 5, 29)).ok
+
+
+def test_mcd_has_no_edition_rule_and_amc_is_not_registered():
+    assert BY_ID["municipal-budget-mcd"].freshness == ()
+    assert "municipal-budget-amc" not in BY_ID
