@@ -622,6 +622,44 @@ class ManifestBudgetRecord:
 
 
 @dataclass
+class ManifestCkanResourceRecord:
+    """One file listed on a CKAN open-data portal dataset."""
+
+    key: str
+    kind: str
+    record_type: str
+    source_family: str
+    portal: str
+    dataset: str
+    dataset_title: str
+    resource_id: str
+    format: str
+    filename: str
+    dest: str
+    url: str
+    status: str
+    media_type: str
+    fetched_at: str
+    probed_at: str
+    organization: str | None = None
+    license: str | None = None
+    dataset_url: str | None = None
+    resource_name: str | None = None
+    resource_last_modified: str | None = None
+    sha256: str | None = None
+    bytes: int | None = None
+    #: True or False once a PDF was read; None when the file isn't a PDF or the
+    #: text could not be extracted. None is unknown, not False.
+    text_layer: bool | None = None
+    http_status: int | None = None
+    error: str | None = None
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "ManifestCkanResourceRecord":
+        return _from_dict(cls, d)
+
+
+@dataclass
 class ManifestAcademicJobRecord:
     """One Indian HEI faculty-recruitment advertisement / coverage record."""
 
@@ -1544,6 +1582,7 @@ __all__ = [
     "ManifestRenderedPageRecord",
     "ManifestTabledPaperRecord",
     "ManifestBudgetRecord",
+    "ManifestCkanResourceRecord",
     "ManifestAcademicJobRecord",
     "ManifestFloorDebateRecord",
     "ManifestBillRecord",

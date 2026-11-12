@@ -921,6 +921,45 @@ One request to a state RERA portal listing. Schema:
 | `status` | string | yes | `downloaded` \| `error` | rera adapters |
 | `error` | string\|null | yes | Why a request failed, else null | rera adapters |
 
+## `manifest.jsonl` — CKAN resource (`kind = "ckan_resource"`)
+
+One file listed on a CKAN open-data portal dataset, written by the CKAN
+adapter. Schema: `manifest_ckan_resource.schema.json`. The first live-verified
+portal is data.opencity.in, a mirror: the publisher of a file is the dataset's
+`organization`, not the portal.
+
+| Field | Type | Required | Notes | Provenance |
+|---|---|---|---|---|
+| `key` | string | yes | `CKAN\|{host}\|{dataset}\|{resource_id}` | ckan_resource_api.py |
+| `kind` | string | yes | `const: "ckan_resource"` | ckan_resource_api.py |
+| `record_type` | string | yes | `const: "ckan_resource"` | ckan_resource_api.py |
+| `source_family` | string | yes | `const: "ckan"` | ckan_resource_api.py |
+| `portal` | string | yes | Scheme and host of the portal, no path | ckan_resource_api.py |
+| `dataset` | string | yes | The dataset slug | ckan_resource_api.py |
+| `dataset_title` | string | yes | The dataset's title as the portal prints it | ckan_resource_api.py |
+| `organization` | string\|null | no | The publishing body, for example `Greater Bengaluru Authority (GBA)`. Cite this, not the portal | ckan_resource_api.py |
+| `license` | string\|null | no | The dataset's licence title as the portal prints it | ckan_resource_api.py |
+| `dataset_url` | string | no | The dataset's page on the portal | ckan_resource_api.py |
+| `resource_id` | string | yes | CKAN's resource UUID, stable across pulls | ckan_resource_api.py |
+| `resource_name` | string\|null | no | The resource's name as the portal prints it | ckan_resource_api.py |
+| `format` | string | yes | Upper-cased CKAN format, such as `PDF` or `XLSX`. Empty when the portal gives none | ckan_resource_api.py |
+| `resource_last_modified` | string\|null | no | CKAN `last_modified`, else `created`, as the portal prints it (no timezone) | ckan_resource_api.py |
+| `filename` | string | yes | Safe local name: the resource name plus the extension from the URL, else from `format` | ckan_resource_api.py |
+| `dest` | string | yes | `{out}/{host}/{dataset}/{filename}` | ckan_resource_api.py |
+| `url` | string | yes | The resource's download URL | ckan_resource_api.py |
+| `status` | string | yes | `pending` \| `dry_run` \| `downloaded` \| `skipped_exists` \| `error` | ckan_resource_api.py |
+| `media_type` | string | yes | From the extension; `application/octet-stream` when unknown | ckan_resource_api.py |
+| `fetched_at` | string | yes | When the record was written | ckan_resource_api.py |
+| `probed_at` | string | yes | When the record was written | ckan_resource_api.py |
+| `sha256` | string | cond | SHA-256 of the file, present once it is on disk | ckan_resource_api.py |
+| `bytes` | integer | cond | Size of the file in bytes, present once it is on disk | ckan_resource_api.py |
+| `text_layer` | boolean\|null | cond | For a PDF: whether it carries a text layer. Null is unknown, not false | ckan_resource_api.py |
+| `http_status` | integer | cond | The HTTP status of a failed request | ckan_resource_api.py |
+| `error` | string | cond | Why a request failed | ckan_resource_api.py |
+
+**`text_layer` is the only extractability signal the probe supplies.** Reading
+a figure from a file stays downstream.
+
 ## `manifest.jsonl` — NADA study (`kind = "nada_study"`)
 
 One record per study acquired from a NADA (National Data Archive) instance,

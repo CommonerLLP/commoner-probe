@@ -53,6 +53,7 @@ from .records import (
     ManifestBillRecord,
     ManifestBudgetRecord,
     ManifestCagStateAccountRecord,
+    ManifestCkanResourceRecord,
     ManifestCommitteeReportRecord,
     ManifestCourtRecord,
     ManifestDchbTownReleaseRecord,
@@ -246,6 +247,12 @@ class Corpus:
         for d in _iter_jsonl(self.out_dir / "manifest.jsonl"):
             if d.get("kind") == "budget_source_file":
                 yield ManifestBudgetRecord.from_dict(d)
+
+    def manifest_ckan_resources(self) -> Iterator[ManifestCkanResourceRecord]:
+        """Stream CKAN dataset-resource records from manifest.jsonl."""
+        for d in _iter_jsonl(self.out_dir / "manifest.jsonl"):
+            if d.get("kind") == "ckan_resource":
+                yield ManifestCkanResourceRecord.from_dict(d)
 
     def manifest_academic_jobs(self) -> Iterator[ManifestAcademicJobRecord]:
         """Stream academic job-posting records from manifest.jsonl."""
