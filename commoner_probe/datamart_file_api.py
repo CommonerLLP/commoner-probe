@@ -91,7 +91,10 @@ def list_path(session: Any, path: str, *, max_bytes: int = 5_000_000) -> list[Da
 
 
 def fetch_file(session: Any, path: str, out_dir: Path, *, max_bytes: int) -> dict:
-    """Download one file to ``out_dir/<path>`` and append a record to ``manifest.jsonl``.
+    """Download one file to ``out_dir/run-<UTC time>/<path>`` and append a record to ``manifest.jsonl``.
+
+    Each call writes under its own run directory, so a rerun never overwrites an
+    earlier file and an earlier record's sha256 stays true.
 
     Returns the record: ``source_url``, ``path``, ``fetched_at``, ``sha256``,
     ``bytes``, ``status`` (``downloaded``), plus ``dest``. Raises
@@ -107,7 +110,8 @@ def fetch_file(session: Any, path: str, out_dir: Path, *, max_bytes: int) -> dic
     if _is_not_found(body):
         raise DatamartError(f"Path not found: {path!r} ({url})")
 
-    dest = out_dir.joinpath(*(safe_filename_segment(part) for part in path.split("/") if part))
+    run_dir = out_dir / datetime.now(timezone.utc).strftime("run-%Y%m%dT%H%M%S%fZ")
+    dest = run_dir.joinpath(*(safe_filename_segment(part) for part in path.split("/") if part))
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = _private_tmp_path(dest)
     try:

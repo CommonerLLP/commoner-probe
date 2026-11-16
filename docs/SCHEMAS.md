@@ -933,7 +933,7 @@ A record exists only for a file that was downloaded.
 | `source_family` | string | yes | `const: "datamart"` | datamart_file_api.py |
 | `source_url` | string | yes | The `/api/file?path=...` URL that was requested | datamart_file_api.py |
 | `path` | string | yes | The Datamart path, no leading slash | datamart_file_api.py |
-| `dest` | string | yes | `{out}/{path}`, each segment made filename-safe | datamart_file_api.py |
+| `dest` | string | yes | `{out}/run-<UTC time>/{path}`, each segment made filename-safe; each fetch has its own run directory | datamart_file_api.py |
 | `fetched_at` | string | yes | UTC time the file arrived | datamart_file_api.py |
 | `sha256` | string | yes | SHA-256 of the file | datamart_file_api.py |
 | `bytes` | integer | yes | Size of the file in bytes | datamart_file_api.py |

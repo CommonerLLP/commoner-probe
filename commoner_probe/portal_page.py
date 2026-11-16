@@ -20,25 +20,12 @@ import json
 import os
 from datetime import datetime, timezone
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any
 
 from commoner_probe.base import _private_tmp_path
-from commoner_probe.http_client import ChallengeDetected, get_capped, refuse_challenge
+from commoner_probe.http_client import ChallengeDetected, get_capped_response
 
 EXPECTATIONS = {"html": "page.html", "json": "page.json"}
-
-
-class _Recorder:
-    """Pass requests through and keep the last response, for its headers."""
-
-    def __init__(self, session: Any):
-        self._session = session
-        self.last: Any = None
-
-    def get(self, url: str, **kwargs: Any) -> Any:
-        self.last = self._session.get(url, **kwargs)
-        return self.last
 
 
 def _header(headers: Any, name: str) -> str:
@@ -66,16 +53,9 @@ def fetch_page(
     """
     if expect not in EXPECTATIONS:
         raise ValueError(f"expect must be 'html' or 'json', got {expect!r}")
-    recorder = _Recorder(session)
-    body = get_capped(recorder, url, max_bytes=max_bytes, timeout=60)
-    resp = recorder.last
+    resp, body = get_capped_response(session, url, max_bytes=max_bytes, refuse_challenges=True, timeout=60)
     headers = getattr(resp, "headers", None) or {}
     text = body.decode("utf-8", errors="replace")
-    refuse_challenge(
-        SimpleNamespace(headers=headers, status_code=getattr(resp, "status_code", None), text=text),
-        url,
-        expect_body=True,
-    )
     if expect == "json":
         try:
             json.loads(body)

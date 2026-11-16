@@ -139,3 +139,12 @@ def test_datamart_cli_fetches_and_prints_record(tmp_path, capsys, monkeypatch):
     record = json.loads(capsys.readouterr().out)
     assert record["sha256"] == hashlib.sha256(body).hexdigest()
     assert (tmp_path / "manifest.jsonl").exists()
+
+
+def test_rerun_keeps_earlier_file_and_hash_valid(tmp_path):
+    fetch_file(StubSession(b"first body"), ZIP_PATH, tmp_path, max_bytes=1000)
+    fetch_file(StubSession(b"second, changed body"), ZIP_PATH, tmp_path, max_bytes=1000)
+    recs = [json.loads(line) for line in (tmp_path / "manifest.jsonl").read_text().splitlines()]
+    assert len(recs) == 2 and recs[0]["dest"] != recs[1]["dest"]
+    for rec in recs:
+        assert hashlib.sha256(Path(rec["dest"]).read_bytes()).hexdigest() == rec["sha256"]
