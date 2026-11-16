@@ -49,6 +49,7 @@ from .municipal_budget_index import (
 from .municipal_budget_index import get_portal as get_municipal_portal
 from .parliament_qa_api import SansadProbe
 from .pay_report_index import DoePayAllowancesProbe
+from .portal_page import fetch_page as portal_fetch_page
 from .question_list_api import QuestionsListProbe
 from .rera import STATES as RERA_STATES
 from .rera.common import MIN_SLEEP_SEC as RERA_MIN_SLEEP_SEC
@@ -1404,6 +1405,12 @@ def sec_submissions_cmd(args: argparse.Namespace) -> None:
     session = make_session(user_agent=sec_user_agent(args.contact))
     data = sec_fetch_submissions(session, args.cik, Path(args.out), contact=args.contact)
     print(json.dumps({"cik": args.cik, "name": data["name"], "out": args.out}))
+
+
+def portal_page_cmd(args: argparse.Namespace) -> None:
+    session = make_session()
+    record = portal_fetch_page(session, args.url, Path(args.out), expect=args.expect)
+    print(json.dumps({"url": args.url, "bytes": record["bytes"], "sha256": record["sha256"], "out": args.out}))
 
 
 def municipal_budget_cmd(args: argparse.Namespace) -> None:
@@ -2808,6 +2815,20 @@ def build_parser() -> argparse.ArgumentParser:
         help="Email or URL for the User-Agent. SEC requires it.",
     )
     sec_submissions.set_defaults(func=sec_submissions_cmd)
+
+    portal_page = sub.add_parser(
+        "portal-page",
+        help="Store one public web page (HTML or JSON) exactly as received.",
+    )
+    portal_page.add_argument("--url", required=True, help="Page URL.")
+    portal_page.add_argument("--out", required=True, help="Output directory.")
+    portal_page.add_argument(
+        "--expect",
+        required=True,
+        choices=["html", "json"],
+        help="What the page should be. A JSON expectation refuses an HTML or challenge page.",
+    )
+    portal_page.set_defaults(func=portal_page_cmd)
 
     municipal_budget = sub.add_parser(
         "municipal-budget",

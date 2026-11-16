@@ -101,6 +101,7 @@ class CliCommandSyncTests(unittest.TestCase):
                 "datamart",
                 "arcgis-query",
                 "sec-submissions",
+                "portal-page",
                 "municipal-budget",
                 "academic-jobs",
                 "debates",

@@ -75,6 +75,7 @@ def _parse_docs_fields(schema_name: str) -> set[str]:
         "manifest_datamart_file": ['kind = "datamart_file"'],
         "manifest_arcgis_query": ['kind = "arcgis_query_page"'],
         "manifest_sec_submissions": ['kind = "sec_edgar_submissions"'],
+        "manifest_portal_page": ['kind = "portal_page"'],
         "manifest_municipal_budget": ['kind = "municipal_budget_document"'],
         "runs": ["_runs.jsonl"],
         "windows": ["_windows.jsonl"],
@@ -571,6 +572,7 @@ _ANSWERS_COMMON_FIELDS = {
     "manifest_datamart_file",
     "manifest_arcgis_query",
     "manifest_sec_submissions",
+    "manifest_portal_page",
     "manifest_municipal_budget",
 ])
 def test_docs_fields_match_schema_properties(schema_name):

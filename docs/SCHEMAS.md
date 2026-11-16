@@ -982,6 +982,27 @@ that was fully received, parsed and stored.
 | `bytes` | integer | yes | Size of the stored file in bytes | sec_edgar_submissions.py |
 | `status` | string | yes | `const: "downloaded"` | sec_edgar_submissions.py |
 
+## `manifest.jsonl` — portal page (`kind = "portal_page"`)
+
+One public web page, HTML or JSON, written by `portal_page.fetch_page`. Schema:
+`manifest_portal_page.schema.json`. The body is stored as received and is not
+parsed. Each run stores its own file, so a rerun adds a record and never changes
+an earlier one. A record exists only for a body that was fully received, checked
+and stored.
+
+| Field | Type | Required | Notes | Provenance |
+|---|---|---|---|---|
+| `kind` | string | yes | `const: "portal_page"` | portal_page.py |
+| `source_family` | string | yes | `const: "portal_page"` | portal_page.py |
+| `source_url` | string | yes | The URL requested | portal_page.py |
+| `expect` | string | yes | `html` or `json`, as the caller declared | portal_page.py |
+| `content_type` | string | yes | The `Content-Type` header, or an empty string when absent | portal_page.py |
+| `dest` | string | yes | `{out}/run-<UTC time>/page.html` or `page.json` | portal_page.py |
+| `fetched_at` | string | yes | UTC time the body arrived | portal_page.py |
+| `sha256` | string | yes | SHA-256 of the stored file | portal_page.py |
+| `bytes` | integer | yes | Size of the stored file in bytes | portal_page.py |
+| `status` | string | yes | `const: "downloaded"` | portal_page.py |
+
 ## `manifest.jsonl` — CKAN resource (`kind = "ckan_resource"`)
 
 One file listed on a CKAN open-data portal dataset, written by the CKAN
