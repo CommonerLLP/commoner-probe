@@ -10,6 +10,7 @@ All tests monkeypatch urlopen — no network, no real robots.txt fetch.
 from __future__ import annotations
 
 import socket
+import types
 import urllib.error
 
 import pytest
@@ -848,3 +849,15 @@ def test_get_capped_response_refuses_an_empty_body_only_when_asked():
         hc.get_capped_response(session, "https://example.gov.in/p", refuse_challenges=True)
     _, body = hc.get_capped_response(session, "https://example.gov.in/p")
     assert body == b""
+
+
+def test_get_capped_works_when_requests_is_the_stdlib_stub(monkeypatch):
+    # The stdlib-fallback branch rebinds `requests` to a SimpleNamespace with
+    # only `Session`, so `requests is not None` is true yet `requests.exceptions`
+    # does not exist. A default install (no `[http]` extra) hit AttributeError
+    # on every get_capped call (same trap as the marker above, Codex, PR #97).
+    monkeypatch.setattr(hc, "requests", types.SimpleNamespace(Session=hc.StdlibSession))
+    resp = _Resp([b"ab", b"cd"], {"Content-Type": "text/html"})
+    assert hc.get_capped(_OneResp(resp), "https://example.gov.in/p") == b"abcd"
+    got, body = hc.get_capped_response(_OneResp(resp), "https://example.gov.in/p")
+    assert got is resp and body == b"abcd"

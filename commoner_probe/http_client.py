@@ -392,8 +392,11 @@ def get_capped_response(
     # whole GET is retried here, up to MAX_RETRIES attempts with the same
     # backoff. ResponseTooLarge is not a connection error and is never retried.
     reset_errors: tuple[type[BaseException], ...] = (ConnectionError,)
-    if requests is not None:
-        reset_errors += (requests.exceptions.ChunkedEncodingError, requests.exceptions.ConnectionError)
+    # Without the [http] extra `requests` is a SimpleNamespace with only
+    # `Session`, so test for `exceptions`, not for None.
+    req_exc = getattr(requests, "exceptions", None)
+    if req_exc is not None:
+        reset_errors += (req_exc.ChunkedEncodingError, req_exc.ConnectionError)
     for attempt in range(MAX_RETRIES):
         resp = session.get(url, **kwargs)
         resp.raise_for_status()
