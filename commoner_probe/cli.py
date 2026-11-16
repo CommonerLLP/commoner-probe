@@ -1394,8 +1394,7 @@ def arcgis_query_cmd(args: argparse.Namespace) -> None:
         page_size=args.page_size,
         out_dir=Path(args.out),
     )
-    pages = len((Path(args.out) / "manifest.jsonl").read_text().splitlines())
-    print(json.dumps({"features": len(result["features"]), "pages": pages, "out": args.out}))
+    print(json.dumps({"features": len(result["features"]), "pages": result["pages"], "out": args.out}))
 
 
 def municipal_budget_cmd(args: argparse.Namespace) -> None:

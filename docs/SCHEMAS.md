@@ -955,7 +955,7 @@ a page that parsed without an error object.
 | `page` | integer | yes | Page number, from 1 | arcgis_rest_query.py |
 | `result_offset` | integer | yes | The `resultOffset` sent for this page | arcgis_rest_query.py |
 | `feature_count` | integer | yes | Features in this page | arcgis_rest_query.py |
-| `dest` | string | yes | `{out}/page-NNNN.geojson` | arcgis_rest_query.py |
+| `dest` | string | yes | `{out}/run-<UTC time>/page-NNNN.geojson`; each run has its own directory | arcgis_rest_query.py |
 | `fetched_at` | string | yes | UTC time the page arrived | arcgis_rest_query.py |
 | `sha256` | string | yes | SHA-256 of the page file | arcgis_rest_query.py |
 | `bytes` | integer | yes | Size of the page file in bytes | arcgis_rest_query.py |

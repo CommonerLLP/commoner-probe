@@ -155,3 +155,33 @@ def test_arcgis_cli_prints_summary(tmp_path, capsys, monkeypatch):
     out = json.loads(capsys.readouterr().out)
     assert out["features"] == 2
     assert out["pages"] == 1
+
+
+def test_repeated_page_raises(tmp_path):
+    same = _page(0, 2, flag="top")
+    with pytest.raises(ArcGISError, match="repeated a page"):
+        query_layer(StubSession([same, same]), LAYER, page_size=2, out_dir=tmp_path)
+    assert not (tmp_path / "manifest.jsonl").exists()
+
+
+def test_page_ceiling_raises(tmp_path):
+    pages = [_page(i * 2, 2, flag="top") for i in range(5)]
+    with pytest.raises(ArcGISError, match="more than 3 pages"):
+        query_layer(StubSession(pages), LAYER, page_size=2, max_pages=3, out_dir=tmp_path)
+
+
+def test_rerun_keeps_both_runs_and_hashes_match(tmp_path):
+    query_layer(StubSession([_page(0, 2)]), LAYER, out_dir=tmp_path)
+    query_layer(StubSession([_page(5, 3)]), LAYER, out_dir=tmp_path)
+    records = [json.loads(x) for x in (tmp_path / "manifest.jsonl").read_text().splitlines()]
+    assert len(records) == 2
+    assert records[0]["dest"] != records[1]["dest"]
+    for rec in records:
+        assert hashlib.sha256(Path(rec["dest"]).read_bytes()).hexdigest() == rec["sha256"]
+
+
+def test_failure_on_page_two_leaves_no_records(tmp_path):
+    err = {"error": {"code": 500, "message": "boom"}}
+    with pytest.raises(ArcGISError):
+        query_layer(StubSession([_page(0, 2, flag="top"), err]), LAYER, page_size=2, out_dir=tmp_path)
+    assert not (tmp_path / "manifest.jsonl").exists()

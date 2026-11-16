@@ -87,22 +87,32 @@ def query_layer(
     page_size: int = 2000,
     out_dir: Path,
     max_bytes: int = 200_000_000,
+    max_pages: int = 1000,
 ) -> dict:
     """Return the merged GeoJSON FeatureCollection for one layer query.
 
     ``geometry`` is an envelope ``{"xmin", "ymin", "xmax", "ymax"}`` in WGS84
-    (or in ``geometry["inSR"]``). Each page goes to ``out_dir/page-NNNN.geojson``
-    and one record per page goes to ``out_dir/manifest.jsonl``. Raises
-    :class:`ArcGISError` on an error object (including a layer without
-    pagination support) and never returns a partial set.
+    (or in ``geometry["inSR"]``). Each run writes its pages to its own
+    subdirectory ``out_dir/run-<UTC time>/page-NNNN.geojson``, so a rerun never
+    overwrites an earlier page. The per-page records are appended to
+    ``out_dir/manifest.jsonl`` only after the last page succeeds; a failed run
+    leaves no record. Raises :class:`ArcGISError` on an error object (including
+    a layer without pagination support), on a page identical to the one before
+    it (a server that ignores ``resultOffset``), and after ``max_pages`` pages.
+    Never returns a partial set. The result carries ``pages``, the page count.
     """
     out_dir = Path(out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
+    run_dir = out_dir / datetime.now(timezone.utc).strftime("run-%Y%m%dT%H%M%S%fZ")
+    run_dir.mkdir(parents=True, exist_ok=True)
+    records: list[dict] = []
+    previous_sha = None
     base = layer_url.rstrip("/") + "/query"
     features: list[dict] = []
     offset = 0
     page_no = 0
     while True:
+        if page_no >= max_pages:
+            raise ArcGISError(f"more than {max_pages} pages for {layer_url}; raise max_pages if intended")
         query = urllib.parse.urlencode(
             _params(where, out_fields, geometry, return_geometry, out_sr, offset, page_size)
         )
@@ -121,12 +131,16 @@ def query_layer(
         page_features = page.get("features")
         if not isinstance(page_features, list):
             raise ArcGISError(f"response has no features list: {url}")
+        sha = hashlib.sha256(body).hexdigest()
+        if sha == previous_sha:
+            raise ArcGISError(f"the server repeated a page; it is ignoring resultOffset: {url}")
+        previous_sha = sha
         more = _truncated(page)
         if more and not page_features:
             raise ArcGISError(f"transfer limit exceeded but the page has no features: {url}")
 
         page_no += 1
-        dest = out_dir / f"page-{page_no:04d}.geojson"
+        dest = run_dir / f"page-{page_no:04d}.geojson"
         tmp = _private_tmp_path(dest)
         try:
             tmp.write_bytes(body)
@@ -143,14 +157,16 @@ def query_layer(
             "feature_count": len(page_features),
             "dest": str(dest),
             "fetched_at": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
-            "sha256": hashlib.sha256(body).hexdigest(),
+            "sha256": sha,
             "bytes": len(body),
             "status": "downloaded",
         }
-        with (out_dir / "manifest.jsonl").open("a", encoding="utf-8") as f:
-            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+        records.append(record)
 
         features.extend(page_features)
         if not more:
-            return {"type": "FeatureCollection", "features": features}
+            with (out_dir / "manifest.jsonl").open("a", encoding="utf-8") as f:
+                for rec in records:
+                    f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+            return {"type": "FeatureCollection", "features": features, "pages": len(records)}
         offset += len(page_features)
