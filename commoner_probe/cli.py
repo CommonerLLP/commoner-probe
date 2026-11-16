@@ -1403,8 +1403,8 @@ def arcgis_query_cmd(args: argparse.Namespace) -> None:
 def sec_submissions_cmd(args: argparse.Namespace) -> None:
     # Default rate limit is 1 request/s, inside SEC's 10 requests/s cap.
     session = make_session(user_agent=sec_user_agent(args.contact))
-    data = sec_fetch_submissions(session, args.cik, Path(args.out), contact=args.contact)
-    print(json.dumps({"cik": args.cik, "name": data["name"], "out": args.out}))
+    record = sec_fetch_submissions(session, args.cik, Path(args.out), contact=args.contact)
+    print(json.dumps({"cik": record["cik"], "name": record["entity_name"], "out": args.out}))
 
 
 def portal_page_cmd(args: argparse.Namespace) -> None:

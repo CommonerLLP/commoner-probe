@@ -102,7 +102,9 @@ def query_layer(
     leaves no record. Raises :class:`ArcGISError` on an error object (including
     a layer without pagination support), on a page identical to the one before
     it (a server that ignores ``resultOffset``), and after ``max_pages`` pages.
-    Never returns a partial set. The result carries ``pages``, the page count.
+    Never returns a partial set. Besides ``type`` and ``features`` the result
+    carries ``records``, the list of page manifest records as appended to
+    ``manifest.jsonl``, and ``pages``, which is ``len(records)``.
     """
     out_dir = Path(out_dir)
     run_dir = out_dir / datetime.now(timezone.utc).strftime("run-%Y%m%dT%H%M%S%fZ")
@@ -171,5 +173,5 @@ def query_layer(
             with (out_dir / "manifest.jsonl").open("a", encoding="utf-8") as f:
                 for rec in records:
                     f.write(json.dumps(rec, ensure_ascii=False) + "\n")
-            return {"type": "FeatureCollection", "features": features, "pages": len(records)}
+            return {"type": "FeatureCollection", "features": features, "records": records, "pages": len(records)}
         offset += len(page_features)

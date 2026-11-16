@@ -69,6 +69,10 @@ def test_pages_until_transfer_limit_clears(tmp_path):
     assert [f["properties"]["id"] for f in result["features"]] == [0, 1, 2]
     assert result["type"] == "FeatureCollection"
     assert len(session.urls) == 2
+    assert [r["page"] for r in result["records"]] == [1, 2]
+    assert result["pages"] == len(result["records"]) == 2
+    manifest = [json.loads(x) for x in (tmp_path / "manifest.jsonl").read_text().splitlines()]
+    assert result["records"] == manifest
     assert session.params(0)["resultOffset"] == "0"
     assert session.params(0)["resultRecordCount"] == "2"
     assert session.params(1)["resultOffset"] == "2"

@@ -47,7 +47,9 @@ def fetch_submissions(
     contact: str | None,
     max_bytes: int = 50_000_000,
 ) -> dict:
-    """Fetch and store the submissions JSON for *cik*; return the parsed body.
+    """Fetch and store the submissions JSON for *cik*; return the manifest record.
+
+    The record carries ``dest``, the stored file. Read the body from there.
 
     The file is written to ``out_dir/run-<UTC time>/CIK<10 digits>.json``, so a
     rerun never overwrites an earlier file. The record is appended to
@@ -93,4 +95,4 @@ def fetch_submissions(
     }
     with (out_dir / "manifest.jsonl").open("a", encoding="utf-8") as f:
         f.write(json.dumps(record, ensure_ascii=False) + "\n")
-    return data
+    return record

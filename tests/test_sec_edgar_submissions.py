@@ -71,8 +71,10 @@ def test_non_numeric_cik_raises(tmp_path):
 
 def test_result_and_manifest_record(tmp_path):
     result = fetch_submissions(StubSession(), "0000049938", tmp_path, contact=CONTACT)
-    assert result["name"] == "IMPERIAL OIL LTD"
     rec = json.loads((tmp_path / "manifest.jsonl").read_text().splitlines()[0])
+    assert result == rec
+    assert result["entity_name"] == "IMPERIAL OIL LTD"
+    assert json.loads(open(result["dest"], "rb").read())["name"] == "IMPERIAL OIL LTD"
     assert rec["kind"] == "sec_edgar_submissions"
     assert rec["cik"] == "0000049938"
     assert rec["status"] == "downloaded"
@@ -102,3 +104,15 @@ def test_body_without_name_raises(tmp_path):
     with pytest.raises(ValueError):
         fetch_submissions(StubSession(b'{"a": 1}'), "49938", tmp_path, contact=CONTACT)
     assert not (tmp_path / "manifest.jsonl").exists()
+
+
+def test_sec_cli_prints_name_from_the_record(tmp_path, capsys, monkeypatch):
+    from commoner_probe import cli
+
+    monkeypatch.setattr(cli, "make_session", lambda **kw: StubSession())
+    args = cli.build_parser().parse_args(
+        ["sec-submissions", "--cik", "49938", "--contact", CONTACT, "--out", str(tmp_path)]
+    )
+    args.func(args)
+    out = json.loads(capsys.readouterr().out)
+    assert out["name"] == "IMPERIAL OIL LTD"
