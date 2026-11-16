@@ -1377,7 +1377,7 @@ def datamart_cmd(args: argparse.Namespace) -> None:
         raise SystemExit("--out is required with --path")
     for path in args.path:
         record = datamart_fetch_file(
-            session, path, Path(args.out), max_bytes=int(args.max_mb * 1024 * 1024)
+            session, path, Path(args.out), max_bytes=int(args.max_mb * 1024 * 1024), refresh=args.refresh
         )
         print(json.dumps(record, ensure_ascii=False))
 
@@ -2780,6 +2780,11 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=500.0,
         help="Refuse a file larger than this many MiB. Default: %(default)s.",
+    )
+    datamart.add_argument(
+        "--refresh",
+        action="store_true",
+        help="Fetch again even when the file is already stored and intact. The new copy goes in a new run directory.",
     )
     datamart.set_defaults(func=datamart_cmd)
 

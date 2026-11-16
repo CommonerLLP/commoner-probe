@@ -925,7 +925,10 @@ One request to a state RERA portal listing. Schema:
 
 One file fetched from the Environment and Climate Change Canada Datamart file
 API by `datamart_file_api.fetch_file`. Schema: `manifest_datamart_file.schema.json`.
-A record exists only for a file that was downloaded.
+A record exists only for a file that was downloaded. A rerun for a `path` whose
+earlier file still exists and matches its `sha256` makes no request and appends
+no record; it returns the earlier record. `--refresh` (`refresh=True`) fetches
+again and appends a new record.
 
 | Field | Type | Required | Notes | Provenance |
 |---|---|---|---|---|

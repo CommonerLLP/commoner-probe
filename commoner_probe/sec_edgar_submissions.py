@@ -11,6 +11,9 @@ adapter refuses to run without a contact and sends
 rate limit (one request per second) is already inside the SEC cap; a caller
 must not pass a faster one.
 
+A submissions file is a live snapshot. Every call fetches fresh into a new run
+directory; nothing is skipped because an earlier run exists.
+
 Acquisition only. The body is stored as received, with a sha256 in the manifest.
 """
 

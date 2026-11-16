@@ -143,8 +143,67 @@ def test_datamart_cli_fetches_and_prints_record(tmp_path, capsys, monkeypatch):
 
 def test_rerun_keeps_earlier_file_and_hash_valid(tmp_path):
     fetch_file(StubSession(b"first body"), ZIP_PATH, tmp_path, max_bytes=1000)
-    fetch_file(StubSession(b"second, changed body"), ZIP_PATH, tmp_path, max_bytes=1000)
+    fetch_file(StubSession(b"second, changed body"), ZIP_PATH, tmp_path, max_bytes=1000, refresh=True)
     recs = [json.loads(line) for line in (tmp_path / "manifest.jsonl").read_text().splitlines()]
     assert len(recs) == 2 and recs[0]["dest"] != recs[1]["dest"]
     for rec in recs:
         assert hashlib.sha256(Path(rec["dest"]).read_bytes()).hexdigest() == rec["sha256"]
+
+
+def test_rerun_skips_a_file_already_stored_and_intact(tmp_path):
+    first = fetch_file(StubSession(b"first body"), ZIP_PATH, tmp_path, max_bytes=1000)
+    second_session = StubSession(b"a later, different body")
+    second = fetch_file(second_session, ZIP_PATH, tmp_path, max_bytes=1000)
+    assert second_session.urls == []
+    assert second == first
+    assert len((tmp_path / "manifest.jsonl").read_text().splitlines()) == 1
+    assert len(list(tmp_path.glob("run-*"))) == 1
+
+
+def test_refresh_forces_a_new_fetch_into_a_new_run_dir(tmp_path):
+    first = fetch_file(StubSession(b"first body"), ZIP_PATH, tmp_path, max_bytes=1000)
+    session = StubSession(b"second body")
+    second = fetch_file(session, ZIP_PATH, tmp_path, max_bytes=1000, refresh=True)
+    assert len(session.urls) == 1
+    assert second["dest"] != first["dest"]
+    assert Path(second["dest"]).read_bytes() == b"second body"
+    assert len(list(tmp_path.glob("run-*"))) == 2
+    assert len((tmp_path / "manifest.jsonl").read_text().splitlines()) == 2
+
+
+def test_a_tampered_stored_file_is_fetched_fresh(tmp_path):
+    first = fetch_file(StubSession(b"first body"), ZIP_PATH, tmp_path, max_bytes=1000)
+    Path(first["dest"]).write_bytes(b"tampered")
+    session = StubSession(b"first body")
+    second = fetch_file(session, ZIP_PATH, tmp_path, max_bytes=1000)
+    assert len(session.urls) == 1
+    assert second["dest"] != first["dest"]
+
+
+def test_a_missing_stored_file_is_fetched_fresh(tmp_path):
+    first = fetch_file(StubSession(b"first body"), ZIP_PATH, tmp_path, max_bytes=1000)
+    Path(first["dest"]).unlink()
+    session = StubSession(b"first body")
+    second = fetch_file(session, ZIP_PATH, tmp_path, max_bytes=1000)
+    assert len(session.urls) == 1
+    assert Path(second["dest"]).exists()
+
+
+def test_a_different_path_is_not_skipped(tmp_path):
+    fetch_file(StubSession(b"one"), ZIP_PATH, tmp_path, max_bytes=1000)
+    session = StubSession(b"two")
+    fetch_file(session, ZIP_PATH + ".other", tmp_path, max_bytes=1000)
+    assert len(session.urls) == 1
+
+
+def test_datamart_cli_refresh_flag(tmp_path, monkeypatch):
+    from commoner_probe import cli
+
+    sessions = [StubSession(b"abc") for _ in range(3)]
+    monkeypatch.setattr(cli, "make_session", lambda: sessions.pop(0))
+    base = ["datamart", "--path", ZIP_PATH, "--out", str(tmp_path)]
+    for argv in (base, base, base + ["--refresh"]):
+        args = cli.build_parser().parse_args(argv)
+        args.func(args)
+    # first fetches, second is skipped, third is forced
+    assert len((tmp_path / "manifest.jsonl").read_text().splitlines()) == 2

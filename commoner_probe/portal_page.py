@@ -8,6 +8,9 @@ notice, a LEGISinfo bill in JSON. This adapter fetches that page and keeps the
 bytes unchanged, with the content type and a sha256. It does not parse. The
 caller reads the stored file.
 
+A page is a live snapshot. Every call fetches fresh into a new run directory;
+nothing is skipped because an earlier run exists.
+
 The caller says what it expects. A JSON expectation that gets an HTML page, an
 empty body, or a WAF challenge is refused rather than stored: a challenge page
 saved under a ``.json`` name would pass for the record.

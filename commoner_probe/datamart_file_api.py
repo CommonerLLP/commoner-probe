@@ -90,11 +90,44 @@ def list_path(session: Any, path: str, *, max_bytes: int = 5_000_000) -> list[Da
         raise DatamartError(f"unexpected path_contents response for {path!r}: {url}") from exc
 
 
-def fetch_file(session: Any, path: str, out_dir: Path, *, max_bytes: int) -> dict:
+def _stored_record(out_dir: Path, path: str) -> dict | None:
+    """The newest ``downloaded`` record for *path* whose file is still intact, else None."""
+    manifest = out_dir / "manifest.jsonl"
+    if not manifest.is_file():
+        return None
+    found = None
+    for line in manifest.read_text(encoding="utf-8").splitlines():
+        try:
+            rec = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(rec, dict) or rec.get("kind") != "datamart_file":
+            continue
+        if rec.get("path") != path or rec.get("status") != "downloaded":
+            continue
+        dest = Path(str(rec.get("dest", "")))
+        try:
+            intact = dest.is_file() and hashlib.sha256(dest.read_bytes()).hexdigest() == rec.get("sha256")
+        except OSError:
+            intact = False
+        if intact:
+            found = rec
+    return found
+
+
+def fetch_file(
+    session: Any, path: str, out_dir: Path, *, max_bytes: int, refresh: bool = False
+) -> dict:
     """Download one file to ``out_dir/run-<UTC time>/<path>`` and append a record to ``manifest.jsonl``.
 
-    Each call writes under its own run directory, so a rerun never overwrites an
-    earlier file and an earlier record's sha256 stays true.
+    A file that is already stored is not fetched again. When the manifest holds a
+    ``downloaded`` record for the same Datamart ``path`` and that record's file
+    still exists and matches its sha256, that earlier record is returned and no
+    request is made. A missing or changed file is fetched fresh. Pass
+    ``refresh=True`` to fetch again anyway into a new run directory.
+
+    Each fetch writes under its own run directory, so a refresh never overwrites
+    an earlier file and an earlier record's sha256 stays true.
 
     Returns the record: ``source_url``, ``path``, ``fetched_at``, ``sha256``,
     ``bytes``, ``status`` (``downloaded``), plus ``dest``. Raises
@@ -105,6 +138,10 @@ def fetch_file(session: Any, path: str, out_dir: Path, *, max_bytes: int) -> dic
     """
     out_dir = Path(out_dir)
     path = path.lstrip("/")
+    if not refresh:
+        existing = _stored_record(out_dir, path)
+        if existing is not None:
+            return existing
     url = _url("file", path)
     body = get_capped(session, url, max_bytes=max_bytes, timeout=180)
     if _is_not_found(body):

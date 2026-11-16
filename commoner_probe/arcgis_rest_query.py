@@ -16,6 +16,9 @@ matter:
   that does not support pagination answers this way to ``resultOffset``. Both
   cases raise :class:`ArcGISError`.
 
+A query is a live snapshot. Every call fetches fresh into a new run directory;
+nothing is skipped because an earlier run exists.
+
 Acquisition only. Each page is stored as received, with a sha256 in the
 manifest. The adapter does not read a figure from any feature.
 """
