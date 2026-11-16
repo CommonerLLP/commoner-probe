@@ -1,5 +1,44 @@
 # Changelog
 
+## 0.26.0 — 2026-11-16
+
+**This release is a MINOR.** Four subcommands and four manifest kinds are
+added, and `http_client.get_capped` gains a retry. Nothing that shipped before
+changes.
+
+### Added
+
+- **`commoner-probe datamart`.** List and download files from the ECCC Datamart
+  file API. Writes one `datamart_file` manifest record per file.
+
+- **`commoner-probe arcgis-query`.** Page through an ArcGIS REST query past the
+  server transfer limit. Stops on a repeated page, stores each run in its own
+  directory, and writes one `arcgis_query_page` manifest record per page, only
+  after the page is stored.
+
+- **`commoner-probe sec-submissions`.** Fetch the SEC EDGAR submissions JSON for
+  one company by CIK. It refuses to run without `--contact` and sends
+  `commoner-probe/<version> (<contact>)` as the User-Agent. Writes one
+  `sec_edgar_submissions` manifest record.
+
+- **`commoner-probe portal-page`.** Store one public web page, HTML or JSON,
+  exactly as received. With `--expect json` it refuses a WAF challenge, an empty
+  body or an HTML page, and writes nothing. Writes one `portal_page` manifest
+  record.
+
+- **`datamart_file`, `arcgis_query_page`, `sec_edgar_submissions` and
+  `portal_page` manifest kinds.** Each kind has a public schema that pins its
+  `kind` with a `const`. The manifests are append-only, and each fetch is stored
+  under a run-specific name, so a rerun never leaves a stale sha256.
+
+### Fixed
+
+- **`http_client.get_capped` retries a connection reset during the body read.**
+  A server can reset the connection after the headers, when the session retry
+  loop has already returned. `get_capped` now repeats the whole GET, up to
+  `MAX_RETRIES` attempts with the same backoff. `ResponseTooLarge` is not
+  retried.
+
 ## 0.25.0 — 2026-11-13
 
 **This release is a MINOR.** `ckan` and `municipal-budget` add two public
