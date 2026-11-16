@@ -10,10 +10,11 @@ of published files. Two calls matter:
 - ``GET /api/file?path=/<file>`` returns the bytes of one file. It may answer
   302 first; the session follows redirects.
 
-An unknown path does not return HTTP 404. It returns the JSON string
-``"Path not found."`` with a success status, so a caller that only checks the
-status would save that string as if it were the file. Both calls here treat it
-as an error.
+An unknown path on ``/api/file`` returns a real HTTP 404, which the session
+reports as an error. The JSON string ``"Path not found."`` with a success
+status is a second guard, for a server that answers that way: a caller that
+only checks the status would save that string as if it were the file. Both
+calls here treat the string as an error too.
 
 Acquisition only. The adapter writes bytes and a manifest record. It does not
 read a figure from any file.
@@ -144,10 +145,11 @@ def fetch_file(
             return existing
     url = _url("file", path)
     body = get_capped(session, url, max_bytes=max_bytes, timeout=180)
+    arrived = datetime.now(timezone.utc)
     if _is_not_found(body):
         raise DatamartError(f"Path not found: {path!r} ({url})")
 
-    run_dir = out_dir / datetime.now(timezone.utc).strftime("run-%Y%m%dT%H%M%S%fZ")
+    run_dir = out_dir / arrived.strftime("run-%Y%m%dT%H%M%S%fZ")
     dest = run_dir.joinpath(*(safe_filename_segment(part) for part in path.split("/") if part))
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = _private_tmp_path(dest)
@@ -163,7 +165,7 @@ def fetch_file(
         "source_url": url,
         "path": path,
         "dest": str(dest),
-        "fetched_at": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
+        "fetched_at": arrived.isoformat(timespec="seconds").replace("+00:00", "Z"),
         "sha256": hashlib.sha256(body).hexdigest(),
         "bytes": len(body),
         "status": "downloaded",

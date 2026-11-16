@@ -64,6 +64,7 @@ def fetch_submissions(
     cik_int = int(cik_text)
     url = SUBMISSIONS_URL.format(cik=cik_int)
     body = get_capped(session, url, max_bytes=max_bytes, timeout=60, headers={"User-Agent": ua})
+    arrived = datetime.now(timezone.utc)
     try:
         data = json.loads(body)
     except ValueError as exc:
@@ -72,7 +73,7 @@ def fetch_submissions(
         raise ValueError(f"response is not a submissions object: {url}")
 
     out_dir = Path(out_dir)
-    run_dir = out_dir / datetime.now(timezone.utc).strftime("run-%Y%m%dT%H%M%S%fZ")
+    run_dir = out_dir / arrived.strftime("run-%Y%m%dT%H%M%S%fZ")
     run_dir.mkdir(parents=True, exist_ok=True)
     dest = run_dir / f"CIK{cik_int:010d}.json"
     tmp = _private_tmp_path(dest)
@@ -88,7 +89,7 @@ def fetch_submissions(
         "cik": f"{cik_int:010d}",
         "entity_name": data["name"],
         "dest": str(dest),
-        "fetched_at": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
+        "fetched_at": arrived.isoformat(timespec="seconds").replace("+00:00", "Z"),
         "sha256": hashlib.sha256(body).hexdigest(),
         "bytes": len(body),
         "status": "downloaded",

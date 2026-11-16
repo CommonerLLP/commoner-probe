@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from datetime import datetime
 
 import pytest
 
@@ -116,3 +117,30 @@ def test_sec_cli_prints_name_from_the_record(tmp_path, capsys, monkeypatch):
     args.func(args)
     out = json.loads(capsys.readouterr().out)
     assert out["name"] == "IMPERIAL OIL LTD"
+
+
+class _Clock(datetime):
+    """A datetime whose now() moves one second per call, so two calls differ."""
+
+    calls = 0
+
+    @classmethod
+    def now(cls, tz=None):
+        cls.calls += 1
+        return datetime(2026, 11, 16, 12, 0, cls.calls, tzinfo=tz)
+
+
+def _stamp(fetched_at: str) -> str:
+    return fetched_at.replace("-", "").replace(":", "").rstrip("Z")
+
+
+def test_run_dir_and_fetched_at_share_one_timestamp(tmp_path, monkeypatch):
+    from pathlib import Path
+
+    from commoner_probe import sec_edgar_submissions
+
+    _Clock.calls = 0
+    monkeypatch.setattr(sec_edgar_submissions, "datetime", _Clock)
+    rec = fetch_submissions(StubSession(), "49938", tmp_path, contact=CONTACT)
+    run = Path(rec["dest"]).relative_to(tmp_path).parts[0]
+    assert run.startswith("run-" + _stamp(rec["fetched_at"]))

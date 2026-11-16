@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+from datetime import datetime
+from pathlib import Path
 
 import pytest
 
@@ -108,3 +110,36 @@ def test_rerun_keeps_earlier_file_and_hash_valid(tmp_path):
     for rec in recs:
         with open(rec["dest"], "rb") as f:
             assert hashlib.sha256(f.read()).hexdigest() == rec["sha256"]
+
+
+def test_non_json_non_html_body_is_a_value_error_not_a_challenge(tmp_path):
+    xml = b'<?xml version="1.0"?><feed><entry/></feed>'
+    with pytest.raises(ValueError, match="not JSON") as exc:
+        fetch_page(StubSession(xml), "https://example.org/p", tmp_path, expect="json")
+    assert not isinstance(exc.value, ChallengeDetected)
+    assert not (tmp_path / "manifest.jsonl").exists()
+
+
+class _Clock(datetime):
+    """A datetime whose now() moves one second per call, so two calls differ."""
+
+    calls = 0
+
+    @classmethod
+    def now(cls, tz=None):
+        cls.calls += 1
+        return datetime(2026, 11, 16, 12, 0, cls.calls, tzinfo=tz)
+
+
+def _stamp(fetched_at: str) -> str:
+    return fetched_at.replace("-", "").replace(":", "").rstrip("Z")
+
+
+def test_run_dir_and_fetched_at_share_one_timestamp(tmp_path, monkeypatch):
+    from commoner_probe import portal_page
+
+    _Clock.calls = 0
+    monkeypatch.setattr(portal_page, "datetime", _Clock)
+    rec = fetch_page(StubSession(HTML), "https://example.org/p", tmp_path, expect="html")
+    run = Path(rec["dest"]).relative_to(tmp_path).parts[0]
+    assert run.startswith("run-" + _stamp(rec["fetched_at"]))

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -207,3 +208,28 @@ def test_datamart_cli_refresh_flag(tmp_path, monkeypatch):
         args.func(args)
     # first fetches, second is skipped, third is forced
     assert len((tmp_path / "manifest.jsonl").read_text().splitlines()) == 2
+
+
+class _Clock(datetime):
+    """A datetime whose now() moves one second per call, so two calls differ."""
+
+    calls = 0
+
+    @classmethod
+    def now(cls, tz=None):
+        cls.calls += 1
+        return datetime(2026, 11, 16, 12, 0, cls.calls, tzinfo=tz)
+
+
+def _stamp(fetched_at: str) -> str:
+    return fetched_at.replace("-", "").replace(":", "").rstrip("Z")
+
+
+def test_run_dir_and_fetched_at_share_one_timestamp(tmp_path, monkeypatch):
+    from commoner_probe import datamart_file_api
+
+    _Clock.calls = 0
+    monkeypatch.setattr(datamart_file_api, "datetime", _Clock)
+    rec = fetch_file(StubSession(b"abc"), ZIP_PATH, tmp_path, max_bytes=1000)
+    run = Path(rec["dest"]).relative_to(tmp_path).parts[0]
+    assert run.startswith("run-" + _stamp(rec["fetched_at"]))

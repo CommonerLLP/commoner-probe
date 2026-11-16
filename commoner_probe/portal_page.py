@@ -14,6 +14,11 @@ nothing is skipped because an earlier run exists.
 The caller says what it expects. A JSON expectation that gets an HTML page, an
 empty body, or a WAF challenge is refused rather than stored: a challenge page
 saved under a ``.json`` name would pass for the record.
+
+With ``expect="html"`` only two checks run: the WAF response headers and an
+empty body. A WAF block page that comes back with status 200 and no WAF header,
+for example Imperva's "Request unsuccessful", is stored as ``downloaded``.
+The caller must check the stored content.
 """
 
 from __future__ import annotations
@@ -57,18 +62,19 @@ def fetch_page(
     if expect not in EXPECTATIONS:
         raise ValueError(f"expect must be 'html' or 'json', got {expect!r}")
     resp, body = get_capped_response(session, url, max_bytes=max_bytes, refuse_challenges=True, timeout=60)
+    arrived = datetime.now(timezone.utc)
     headers = getattr(resp, "headers", None) or {}
     text = body.decode("utf-8", errors="replace")
     if expect == "json":
         try:
             json.loads(body)
         except ValueError as exc:
-            if text.lstrip().lower().startswith(("<!doctype", "<html", "<")):
+            if text.lstrip().lower().startswith(("<!doctype", "<html")):
                 raise ChallengeDetected(f"{url}: an HTML page came back where JSON was expected") from exc
             raise ValueError(f"response is not JSON: {url}") from exc
 
     out_dir = Path(out_dir)
-    run_dir = out_dir / datetime.now(timezone.utc).strftime("run-%Y%m%dT%H%M%S%fZ")
+    run_dir = out_dir / arrived.strftime("run-%Y%m%dT%H%M%S%fZ")
     run_dir.mkdir(parents=True, exist_ok=True)
     dest = run_dir / EXPECTATIONS[expect]
     tmp = _private_tmp_path(dest)
@@ -84,7 +90,7 @@ def fetch_page(
         "expect": expect,
         "content_type": _header(headers, "Content-Type"),
         "dest": str(dest),
-        "fetched_at": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
+        "fetched_at": arrived.isoformat(timespec="seconds").replace("+00:00", "Z"),
         "sha256": hashlib.sha256(body).hexdigest(),
         "bytes": len(body),
         "status": "downloaded",

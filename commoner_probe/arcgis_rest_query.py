@@ -96,8 +96,9 @@ def query_layer(
 
     ``geometry`` is an envelope ``{"xmin", "ymin", "xmax", "ymax"}`` in WGS84
     (or in ``geometry["inSR"]``). Each run writes its pages to its own
-    subdirectory ``out_dir/run-<UTC time>/page-NNNN.geojson``, so a rerun never
-    overwrites an earlier page. The per-page records are appended to
+    subdirectory ``out_dir/run-<UTC time>/page-NNNN.geojson``, created when the
+    first page is stored, so a rerun never overwrites an earlier page and an
+    invalid query leaves no empty directory. The per-page records are appended to
     ``out_dir/manifest.jsonl`` only after the last page succeeds; a failed run
     leaves no record. Raises :class:`ArcGISError` on an error object (including
     a layer without pagination support), on a page identical to the one before
@@ -107,8 +108,7 @@ def query_layer(
     ``manifest.jsonl``, and ``pages``, which is ``len(records)``.
     """
     out_dir = Path(out_dir)
-    run_dir = out_dir / datetime.now(timezone.utc).strftime("run-%Y%m%dT%H%M%S%fZ")
-    run_dir.mkdir(parents=True, exist_ok=True)
+    run_dir: Path | None = None
     records: list[dict] = []
     previous_sha = None
     base = layer_url.rstrip("/") + "/query"
@@ -123,6 +123,7 @@ def query_layer(
         )
         url = f"{base}?{query}"
         body = get_capped(session, url, max_bytes=max_bytes, timeout=120)
+        arrived = datetime.now(timezone.utc)
         try:
             page = json.loads(body)
         except ValueError as exc:
@@ -145,6 +146,10 @@ def query_layer(
             raise ArcGISError(f"transfer limit exceeded but the page has no features: {url}")
 
         page_no += 1
+        if run_dir is None:
+            # First stored page: parameters are valid and the server answered.
+            run_dir = out_dir / arrived.strftime("run-%Y%m%dT%H%M%S%fZ")
+            run_dir.mkdir(parents=True, exist_ok=True)
         dest = run_dir / f"page-{page_no:04d}.geojson"
         tmp = _private_tmp_path(dest)
         try:
@@ -161,7 +166,7 @@ def query_layer(
             "result_offset": offset,
             "feature_count": len(page_features),
             "dest": str(dest),
-            "fetched_at": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
+            "fetched_at": arrived.isoformat(timespec="seconds").replace("+00:00", "Z"),
             "sha256": sha,
             "bytes": len(body),
             "status": "downloaded",

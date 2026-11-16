@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from datetime import datetime
 import urllib.parse
 from pathlib import Path
 
@@ -189,3 +190,44 @@ def test_failure_on_page_two_leaves_no_records(tmp_path):
     with pytest.raises(ArcGISError):
         query_layer(StubSession([_page(0, 2, flag="top"), err]), LAYER, page_size=2, out_dir=tmp_path)
     assert not (tmp_path / "manifest.jsonl").exists()
+
+
+class _Clock(datetime):
+    """A datetime whose now() moves one second per call, so two calls differ."""
+
+    calls = 0
+
+    @classmethod
+    def now(cls, tz=None):
+        cls.calls += 1
+        return datetime(2026, 11, 16, 12, 0, cls.calls, tzinfo=tz)
+
+
+def _stamp(fetched_at: str) -> str:
+    return fetched_at.replace("-", "").replace(":", "").rstrip("Z")
+
+
+def test_bad_bbox_leaves_no_run_dir(tmp_path):
+    session = StubSession([_page(0, 1)])
+    with pytest.raises(ValueError, match="envelope"):
+        query_layer(session, LAYER, geometry={"xmin": 1, "ymin": 2}, out_dir=tmp_path)
+    assert session.urls == []
+    assert list(tmp_path.glob("run-*")) == []
+
+
+def test_first_page_error_leaves_no_run_dir(tmp_path):
+    err = {"error": {"code": 400, "message": "bad"}}
+    with pytest.raises(ArcGISError):
+        query_layer(StubSession([err]), LAYER, out_dir=tmp_path)
+    assert list(tmp_path.glob("run-*")) == []
+
+
+def test_run_dir_and_fetched_at_share_one_timestamp(tmp_path, monkeypatch):
+    from commoner_probe import arcgis_rest_query
+
+    _Clock.calls = 0
+    monkeypatch.setattr(arcgis_rest_query, "datetime", _Clock)
+    result = query_layer(StubSession([_page(0, 1)]), LAYER, out_dir=tmp_path)
+    rec = result["records"][0]
+    run = Path(rec["dest"]).relative_to(tmp_path).parts[0]
+    assert run.startswith("run-" + _stamp(rec["fetched_at"]))
