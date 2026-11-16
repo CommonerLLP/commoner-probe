@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.24.0 — 2026-11-11
+
+**This release is a MINOR.** `rera` adds a public subcommand, a row schema, and
+a manifest kind. Nothing that shipped before changes.
+
+### Added
+
+- **`commoner-probe rera --state KA|HR|TN`.** Download the project listing from
+  a state Real Estate Regulatory Authority (RERA) portal and write one
+  `rera_project_row` per project. Karnataka reads the Bengaluru Urban listing
+  by default (`--district`, `--all-districts`, `--list-districts`). Haryana
+  reads the Gurugram or Panchkula authority table (`--authority`) and types
+  `registration_valid_until` and `lapsed`. Tamil Nadu reads registered
+  buildings and layouts (`--kind`, `--year`) and types the CMDA and Greater
+  Chennai Corporation permit numbers and the coordinates. The probe records the
+  dates the portal publishes and never computes delay. A state that isn't
+  registered exits non-zero and lists the ones that are.
+
+- **`rera_project_row` and `manifest_rera_listing` public schemas.** The row
+  carries a thin shared core and keeps every column the portal publishes in
+  `fields`, so state-specific columns stay state-specific. Each request writes
+  one `rera_listing` manifest record.
+
+- **`rera-karnataka`, `rera-haryana`, and `rera-tamil-nadu` freshness
+  entries.** The source freshness check watches the Bengaluru Urban listing,
+  the Gurugram listing, and the current-year Tamil Nadu building list.
+
 ## 0.23.0 — 2026-11-04
 
 **This release is a MINOR, and it moves published records.** Re-run

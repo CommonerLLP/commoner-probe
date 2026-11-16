@@ -177,6 +177,105 @@ commoner-probe mines-dmft \
   --sources mines-gov-in,odisha
 ```
 
+## State RERA project listings (`rera`)
+
+`commoner-probe rera` downloads the project listing of a state Real Estate
+Regulatory Authority portal. Karnataka (`--state KA`), Haryana (`--state HR`),
+and Tamil Nadu (`--state TN`) are verified against the live portals on
+November 11, 2026.
+
+Source contract (Karnataka, `https://rera.karnataka.gov.in`):
+
+- form page: `GET /viewAllProjects` (HTTP 200, about 6.5 MB). `GET
+  /projectViewDetails` answers HTTP 405.
+- listing: `POST /projectViewDetails` as `application/x-www-form-urlencoded`
+  with `project=&firm=&appNo=&regNo=&district=<option value>&subdistrict=0&btn1=Search`.
+  The `district` value is the option's `value` attribute exactly, and
+  `Bengaluru  Rural` has two spaces.
+- no token, cookie, login, or CAPTCHA. `robots.txt` answers 404.
+- every response carries about 6.5 MB of page chrome. The adapter waits at
+  least 5 seconds between requests and reads the form page only for
+  `--all-districts` and `--list-districts`.
+
+Outputs:
+
+- `manifest.jsonl` records with `kind = "rera_listing"`
+- `rera_project_rows.jsonl` rows with `kind = "rera_project_row"`
+- the stored response for each request under `listings/IN-KA/`
+
+The parser reads the `<table id="approvedTable">` and anchors every column on
+its exact header string. A missing header raises, so a portal redesign fails
+instead of returning mislabelled rows. The schemas are in
+[SCHEMAS.md](SCHEMAS.md), and the captured fixture and header list are in
+`tests/fixtures/rera_karnataka/README.md`.
+
+Example:
+
+```bash
+commoner-probe rera --state KA --out data/rera
+```
+
+Source contract (Haryana, `https://haryanarera.gov.in`, `--state HR`, verified
+November 11, 2026):
+
+- listing: `GET /admincontrol/registered_projects/2` is the Gurugram authority
+  (1,086 rows, about 2.6 MB), and `GET /admincontrol/registered_projects/1` is
+  the Panchkula authority, which covers every other Haryana district (1,132
+  rows). Select one with `--authority gurugram|panchkula`.
+- the whole table is in the HTML (the DataTable paginates in the browser). No
+  token, cookie, login, or CAPTCHA. `robots.txt` answers 404.
+- `Project ID` is `NA` for 37 Gurugram projects, so the row key is the
+  registration certificate number. The adapter splits that cell into
+  `registration_no`, `approved_on` (the `DATED` date), and `lapsed`.
+- the `View Quarterly Progress` link opens an index of quarters with a `POST`
+  form per quarter. The adapter records the link in `fields` and never fetches
+  it, or any other link in a row.
+
+The parser reads `<table id="compliant_hearing">` and anchors every column on
+its exact header string. The captured fixtures and header list are in
+`tests/fixtures/rera_haryana/README.md`.
+
+```bash
+commoner-probe rera --state HR --out data/rera
+```
+
+Source contract (Tamil Nadu, `https://rera.tn.gov.in`, `--state TN`, verified
+November 11, 2026):
+
+- listings: `GET /registered-building/tn` (402 rows for 2026, about 1.4 MB) and
+  `GET /registered-layout/tn` (3,945 rows, about 11 MB). Select one with
+  `--kind building|layout`. The whole table is in the HTML. No login or CAPTCHA.
+- an older year: the page has a `year` select (2026, 2025, and 2024) in a
+  `POST` form with a Laravel `_token`. `POST _token=<token>&year=<year>` to the
+  same URL, in the same session, returns that year (428 building rows for 2025).
+  The adapter raises when the page has no token. A session that keeps no cookies
+  gets HTTP 419, so an older year needs `commoner-probe[http]`. Select it with
+  `--year`.
+- `robots.txt` has `Disallow: /uploads/` and `Disallow: /*.pdf$`.
+  `make_session` enforces only the first, because `urllib.robotparser` ignores
+  the `*` wildcard. The adapter refuses both before any request, and records
+  every PDF link in `fields` without fetching it.
+- the `/building/offline/<year>` pages (2017 to 2025) are static archives with 8
+  columns and PDF links, not a token form. The adapter doesn't read them.
+- the "Last Updated on" stamp beside the year form equals the newest
+  registration date in that year's list (10/11/2026 for 2026, 29/12/2025 for
+  2025), so the freshness check uses the registration date.
+- `Approval Details` is free text. The adapter types the CMDA planning-permission
+  number and the Greater Chennai Corporation building-permission number when the
+  text gives them in the usual shape, and the coordinates when they are decimal
+  degrees. 212 of 222 CMDA rows and 162 of 169 Greater Chennai Corporation rows
+  of the 2026 building list get a typed number, and 333 of 402 rows get
+  coordinates. The full text stays in `fields`.
+
+The parser reads `<table id="example1">` and anchors every column on its exact
+header string. The captured fixtures and header list are in
+`tests/fixtures/rera_tamil_nadu/README.md`.
+
+```bash
+commoner-probe rera --state TN --out data/rera
+commoner-probe rera --state TN --kind layout --year 2025 --out data/rera
+```
+
 ## DMFT Evidence Bundle
 
 `commoner-probe evidence dmft` combines executive disclosure and parliamentary

@@ -78,11 +78,13 @@ from .records import (
     ManifestQaRecord,
     ManifestQuestionListRecord,
     ManifestRenderedPageRecord,
+    ManifestReraListingRecord,
     ManifestTabledPaperRecord,
     ManifestWaybackCaptureRecord,
     NevaDistrictRowRecord,
     OutsourcingRowRecord,
     QuestionListRowRecord,
+    ReraProjectRowRecord,
     RunRecord,
     VacancyRowRecord,
 )
@@ -198,6 +200,22 @@ class Corpus:
         for d in _iter_jsonl(self.out_dir / "town_amenity_rows.jsonl"):
             if d.get("kind") == "dchb_town_amenity":
                 yield DchbTownAmenityRecord.from_dict(d)
+
+    def manifest_rera_listings(self) -> Iterator[ManifestReraListingRecord]:
+        """Stream RERA listing-capture records from manifest.jsonl."""
+        for d in _iter_jsonl(self.out_dir / "manifest.jsonl"):
+            if d.get("kind") == "rera_listing":
+                yield ManifestReraListingRecord.from_dict(d)
+
+    def rera_project_rows(self) -> Iterator[ReraProjectRowRecord]:
+        """Stream RERA project rows from rera_project_rows.jsonl, any state.
+
+        Dates are as the portal publishes them, never a computed delay. An
+        extension is a range: `_end` is None when the portal lists no end date.
+        """
+        for d in _iter_jsonl(self.out_dir / "rera_project_rows.jsonl"):
+            if d.get("kind") == "rera_project_row":
+                yield ReraProjectRowRecord.from_dict(d)
 
     def manifest_nada_studies(self) -> Iterator[ManifestNadaStudyRecord]:
         """Stream NADA study records from manifest.jsonl."""
