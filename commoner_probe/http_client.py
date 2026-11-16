@@ -373,9 +373,23 @@ def get_capped(session: Any, url: str, *, max_bytes: int | None = None, **kwargs
     applies the same ceiling to its own read.
     """
     kwargs.setdefault("stream", True)
-    resp = session.get(url, **kwargs)
-    resp.raise_for_status()
-    return read_capped_response(resp, max_bytes=max_bytes)
+    # A server can reset the connection after the headers, while the body is
+    # being read. The session's own retry loop has returned by then, so the
+    # whole GET is retried here, up to MAX_RETRIES attempts with the same
+    # backoff. ResponseTooLarge is not a connection error and is never retried.
+    reset_errors: tuple[type[BaseException], ...] = (ConnectionError,)
+    if requests is not None:
+        reset_errors += (requests.exceptions.ChunkedEncodingError, requests.exceptions.ConnectionError)
+    for attempt in range(MAX_RETRIES):
+        resp = session.get(url, **kwargs)
+        resp.raise_for_status()
+        try:
+            return read_capped_response(resp, max_bytes=max_bytes)
+        except reset_errors:
+            if attempt == MAX_RETRIES - 1:
+                raise
+            time.sleep(_retry_delay(attempt, None))
+    raise AssertionError("unreachable")  # pragma: no cover
 
 
 class StdlibSession:

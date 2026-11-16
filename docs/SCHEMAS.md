@@ -921,6 +921,24 @@ One request to a state RERA portal listing. Schema:
 | `status` | string | yes | `downloaded` \| `error` | rera adapters |
 | `error` | string\|null | yes | Why a request failed, else null | rera adapters |
 
+## `manifest.jsonl` — Datamart file (`kind = "datamart_file"`)
+
+One file fetched from the Environment and Climate Change Canada Datamart file
+API by `datamart_file_api.fetch_file`. Schema: `manifest_datamart_file.schema.json`.
+A record exists only for a file that was downloaded.
+
+| Field | Type | Required | Notes | Provenance |
+|---|---|---|---|---|
+| `kind` | string | yes | `const: "datamart_file"` | datamart_file_api.py |
+| `source_family` | string | yes | `const: "datamart"` | datamart_file_api.py |
+| `source_url` | string | yes | The `/api/file?path=...` URL that was requested | datamart_file_api.py |
+| `path` | string | yes | The Datamart path, no leading slash | datamart_file_api.py |
+| `dest` | string | yes | `{out}/{path}`, each segment made filename-safe | datamart_file_api.py |
+| `fetched_at` | string | yes | UTC time the file arrived | datamart_file_api.py |
+| `sha256` | string | yes | SHA-256 of the file | datamart_file_api.py |
+| `bytes` | integer | yes | Size of the file in bytes | datamart_file_api.py |
+| `status` | string | yes | `const: "downloaded"` | datamart_file_api.py |
+
 ## `manifest.jsonl` — CKAN resource (`kind = "ckan_resource"`)
 
 One file listed on a CKAN open-data portal dataset, written by the CKAN

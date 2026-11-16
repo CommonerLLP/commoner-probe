@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CommonerLLP/commoner-probe/schemas/v1/manifest_datamart_file.json",
+  "title": "manifest.jsonl — Datamart file",
+  "description": "One file fetched from the Environment and Climate Change Canada Datamart file API. A record is written only for a file that was downloaded; an unknown path or an oversize file raises and writes nothing.",
+  "type": "object",
+  "required": [
+    "kind",
+    "source_family",
+    "source_url",
+    "path",
+    "dest",
+    "fetched_at",
+    "sha256",
+    "bytes",
+    "status"
+  ],
+  "properties": {
+    "kind": {
+      "type": "string",
+      "const": "datamart_file"
+    },
+    "source_family": {
+      "type": "string",
+      "const": "datamart"
+    },
+    "source_url": {
+      "type": "string",
+      "format": "uri"
+    },
+    "path": {
+      "type": "string"
+    },
+    "dest": {
+      "type": "string"
+    },
+    "fetched_at": {
+      "type": "string"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "bytes": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "status": {
+      "type": "string",
+      "const": "downloaded"
+    }
+  }
+}

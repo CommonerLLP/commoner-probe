@@ -753,3 +753,51 @@ def test_retry_session_robots_check_still_blocks_the_default_user_agent(monkeypa
     session = _waf_session(monkeypatch)
     with pytest.raises(PermissionError, match="robots.txt"):
         session.get("https://waf.example/doc.xlsx")
+
+
+class _ResetOnce:
+    """First body read dies with a connection reset; later reads succeed."""
+
+    def __init__(self):
+        self.gets = 0
+
+    def get(self, url, **kwargs):
+        self.gets += 1
+        resp = _Streaming([b"ab", b"cd"])
+        if self.gets == 1:
+            def broken(chunk_size=16384):
+                yield b"a"
+                raise ConnectionResetError("reset by peer")
+            resp.iter_content = broken
+        return resp
+
+
+def test_get_capped_retries_a_connection_reset_mid_body(monkeypatch):
+    slept = []
+    monkeypatch.setattr(hc.time, "sleep", lambda s: slept.append(s))
+    session = _ResetOnce()
+    assert hc.get_capped(session, "https://example.gov.in/f.zip") == b"abcd"
+    assert session.gets == 2
+    assert len(slept) == 1
+
+
+def test_get_capped_gives_up_after_max_retries_on_resets(monkeypatch):
+    monkeypatch.setattr(hc.time, "sleep", lambda s: None)
+
+    class _AlwaysReset:
+        gets = 0
+
+        def get(self, url, **kwargs):
+            self.gets += 1
+            resp = _Streaming([])
+
+            def broken(chunk_size=16384):
+                raise ConnectionResetError("reset by peer")
+                yield b""
+            resp.iter_content = broken
+            return resp
+
+    session = _AlwaysReset()
+    with pytest.raises(ConnectionResetError):
+        hc.get_capped(session, "https://example.gov.in/f.zip")
+    assert session.gets == hc.MAX_RETRIES

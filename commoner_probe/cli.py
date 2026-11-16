@@ -20,6 +20,9 @@ from .audit_pdf_index import CAG_ACCOUNTS_STATES, CAGAccountsProbe, get_state
 from .bill_catalog_api import BILLS_API, BillsProbe
 from .budget import RBI_STATE_FINANCES_URL, BudgetProbe
 from .ckan_resource_api import CKAN_CRAWL_DELAY_SEC, CkanResourceProbe
+from .datamart_file_api import fetch_file as datamart_fetch_file
+from .datamart_file_api import list_path as datamart_list_path
+from .http_client import make_session
 from .committee_report_api import CommitteeProbe, resolve_committees
 from .csr.dpe import SEARCHES, DpeCsrProbe
 from .csr.mca import McaCsrProbe
@@ -1354,6 +1357,24 @@ def ckan_cmd(args: argparse.Namespace) -> None:
         formats=set(_split_csv(args.formats) or []) or None,
     )
     for record in probe.probe(args.dataset, dry_run=args.dry_run):
+        print(json.dumps(record, ensure_ascii=False))
+
+
+def datamart_cmd(args: argparse.Namespace) -> None:
+    session = make_session()
+    if args.list:
+        for entry in datamart_list_path(session, args.list):
+            kind = "dir " if entry.is_directory else "file"
+            print(f"{kind}\t{entry.content_length}\t{entry.last_modified}\t{entry.path}")
+        return
+    if not args.path:
+        raise SystemExit("give --path (a file to fetch) or --list (a directory to list)")
+    if not args.out:
+        raise SystemExit("--out is required with --path")
+    for path in args.path:
+        record = datamart_fetch_file(
+            session, path, Path(args.out), max_bytes=int(args.max_mb * 1024 * 1024)
+        )
         print(json.dumps(record, ensure_ascii=False))
 
 
@@ -2702,6 +2723,30 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     ckan.set_defaults(func=ckan_cmd)
+
+    datamart = sub.add_parser(
+        "datamart",
+        help="List or fetch files from the Environment and Climate Change Canada Datamart file API.",
+    )
+    datamart.add_argument("--out", default=None, help="Output directory (required with --path)")
+    datamart.add_argument(
+        "--path",
+        action="append",
+        help="Datamart file path, no leading slash. Repeat the flag for more than one file.",
+    )
+    datamart.add_argument(
+        "--list",
+        metavar="DIR",
+        default=None,
+        help="List one Datamart directory instead of fetching.",
+    )
+    datamart.add_argument(
+        "--max-mb",
+        type=float,
+        default=500.0,
+        help="Refuse a file larger than this many MiB. Default: %(default)s.",
+    )
+    datamart.set_defaults(func=datamart_cmd)
 
     municipal_budget = sub.add_parser(
         "municipal-budget",
