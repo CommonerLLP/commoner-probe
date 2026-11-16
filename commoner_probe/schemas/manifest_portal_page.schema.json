@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CommonerLLP/commoner-probe/schemas/v1/manifest_portal_page.json",
+  "title": "manifest.jsonl — portal page",
+  "description": "One public web page, HTML or JSON, stored exactly as received. A record is written only for a body that was fully received, checked and stored.",
+  "type": "object",
+  "required": [
+    "kind",
+    "source_family",
+    "source_url",
+    "expect",
+    "content_type",
+    "dest",
+    "fetched_at",
+    "sha256",
+    "bytes",
+    "status"
+  ],
+  "properties": {
+    "kind": {"type": "string", "const": "portal_page"},
+    "source_family": {"type": "string", "const": "portal_page"},
+    "source_url": {"type": "string", "format": "uri"},
+    "expect": {"type": "string", "enum": ["html", "json"]},
+    "content_type": {"type": "string"},
+    "dest": {"type": "string"},
+    "fetched_at": {"type": "string"},
+    "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "bytes": {"type": "integer", "minimum": 0},
+    "status": {"type": "string", "const": "downloaded"}
+  }
+}

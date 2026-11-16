@@ -921,6 +921,91 @@ One request to a state RERA portal listing. Schema:
 | `status` | string | yes | `downloaded` \| `error` | rera adapters |
 | `error` | string\|null | yes | Why a request failed, else null | rera adapters |
 
+## `manifest.jsonl` — Datamart file (`kind = "datamart_file"`)
+
+One file fetched from the Environment and Climate Change Canada Datamart file
+API by `datamart_file_api.fetch_file`. Schema: `manifest_datamart_file.schema.json`.
+A record exists only for a file that was downloaded. A rerun for a `path` whose
+earlier file still exists and matches its `sha256` makes no request and appends
+no record; it returns the earlier record. `--refresh` (`refresh=True`) fetches
+again and appends a new record.
+
+| Field | Type | Required | Notes | Provenance |
+|---|---|---|---|---|
+| `kind` | string | yes | `const: "datamart_file"` | datamart_file_api.py |
+| `source_family` | string | yes | `const: "datamart"` | datamart_file_api.py |
+| `source_url` | string | yes | The `/api/file?path=...` URL that was requested | datamart_file_api.py |
+| `path` | string | yes | The Datamart path, no leading slash | datamart_file_api.py |
+| `dest` | string | yes | `{out}/run-<UTC time>/{path}`, each segment made filename-safe; each fetch has its own run directory | datamart_file_api.py |
+| `fetched_at` | string | yes | UTC time the file arrived | datamart_file_api.py |
+| `sha256` | string | yes | SHA-256 of the file | datamart_file_api.py |
+| `bytes` | integer | yes | Size of the file in bytes | datamart_file_api.py |
+| `status` | string | yes | `const: "downloaded"` | datamart_file_api.py |
+
+## `manifest.jsonl` — ArcGIS query page (`kind = "arcgis_query_page"`)
+
+One page of an ArcGIS REST layer query, written by
+`arcgis_rest_query.query_layer`. Schema: `manifest_arcgis_query.schema.json`.
+A query that needs three pages writes three records. A record exists only for
+a page that parsed without an error object.
+
+| Field | Type | Required | Notes | Provenance |
+|---|---|---|---|---|
+| `kind` | string | yes | `const: "arcgis_query_page"` | arcgis_rest_query.py |
+| `source_family` | string | yes | `const: "arcgis"` | arcgis_rest_query.py |
+| `source_url` | string | yes | The full `.../query?...` URL of this page | arcgis_rest_query.py |
+| `layer_url` | string | yes | The layer URL as given, without `/query` | arcgis_rest_query.py |
+| `page` | integer | yes | Page number, from 1 | arcgis_rest_query.py |
+| `result_offset` | integer | yes | The `resultOffset` sent for this page | arcgis_rest_query.py |
+| `feature_count` | integer | yes | Features in this page | arcgis_rest_query.py |
+| `dest` | string | yes | `{out}/run-<UTC time>/page-NNNN.geojson`; each run has its own directory | arcgis_rest_query.py |
+| `fetched_at` | string | yes | UTC time the page arrived | arcgis_rest_query.py |
+| `sha256` | string | yes | SHA-256 of the page file | arcgis_rest_query.py |
+| `bytes` | integer | yes | Size of the page file in bytes | arcgis_rest_query.py |
+| `status` | string | yes | `const: "downloaded"` | arcgis_rest_query.py |
+
+## `manifest.jsonl` — SEC EDGAR submissions (`kind = "sec_edgar_submissions"`)
+
+The submissions JSON for one company, written by
+`sec_edgar_submissions.fetch_submissions`. Schema:
+`manifest_sec_submissions.schema.json`. Each run stores its own file, so a rerun
+adds a record and never changes an earlier one. A record exists only for a body
+that was fully received, parsed and stored.
+
+| Field | Type | Required | Notes | Provenance |
+|---|---|---|---|---|
+| `kind` | string | yes | `const: "sec_edgar_submissions"` | sec_edgar_submissions.py |
+| `source_family` | string | yes | `const: "sec_edgar"` | sec_edgar_submissions.py |
+| `source_url` | string | yes | The `data.sec.gov/submissions/CIK##########.json` URL | sec_edgar_submissions.py |
+| `cik` | string | yes | CIK zero-padded to 10 digits | sec_edgar_submissions.py |
+| `entity_name` | string | yes | The `name` field of the body | sec_edgar_submissions.py |
+| `dest` | string | yes | `{out}/run-<UTC time>/CIK##########.json` | sec_edgar_submissions.py |
+| `fetched_at` | string | yes | UTC time the body arrived | sec_edgar_submissions.py |
+| `sha256` | string | yes | SHA-256 of the stored file | sec_edgar_submissions.py |
+| `bytes` | integer | yes | Size of the stored file in bytes | sec_edgar_submissions.py |
+| `status` | string | yes | `const: "downloaded"` | sec_edgar_submissions.py |
+
+## `manifest.jsonl` — portal page (`kind = "portal_page"`)
+
+One public web page, HTML or JSON, written by `portal_page.fetch_page`. Schema:
+`manifest_portal_page.schema.json`. The body is stored as received and is not
+parsed. Each run stores its own file, so a rerun adds a record and never changes
+an earlier one. A record exists only for a body that was fully received, checked
+and stored.
+
+| Field | Type | Required | Notes | Provenance |
+|---|---|---|---|---|
+| `kind` | string | yes | `const: "portal_page"` | portal_page.py |
+| `source_family` | string | yes | `const: "portal_page"` | portal_page.py |
+| `source_url` | string | yes | The URL requested | portal_page.py |
+| `expect` | string | yes | `html` or `json`, as the caller declared | portal_page.py |
+| `content_type` | string | yes | The `Content-Type` header, or an empty string when absent | portal_page.py |
+| `dest` | string | yes | `{out}/run-<UTC time>/page.html` or `page.json` | portal_page.py |
+| `fetched_at` | string | yes | UTC time the body arrived | portal_page.py |
+| `sha256` | string | yes | SHA-256 of the stored file | portal_page.py |
+| `bytes` | integer | yes | Size of the stored file in bytes | portal_page.py |
+| `status` | string | yes | `const: "downloaded"` | portal_page.py |
+
 ## `manifest.jsonl` — CKAN resource (`kind = "ckan_resource"`)
 
 One file listed on a CKAN open-data portal dataset, written by the CKAN

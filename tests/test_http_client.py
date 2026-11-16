@@ -10,6 +10,7 @@ All tests monkeypatch urlopen — no network, no real robots.txt fetch.
 from __future__ import annotations
 
 import socket
+import types
 import urllib.error
 
 import pytest
@@ -753,3 +754,110 @@ def test_retry_session_robots_check_still_blocks_the_default_user_agent(monkeypa
     session = _waf_session(monkeypatch)
     with pytest.raises(PermissionError, match="robots.txt"):
         session.get("https://waf.example/doc.xlsx")
+
+
+class _ResetOnce:
+    """First body read dies with a connection reset; later reads succeed."""
+
+    def __init__(self):
+        self.gets = 0
+
+    def get(self, url, **kwargs):
+        self.gets += 1
+        resp = _Streaming([b"ab", b"cd"])
+        if self.gets == 1:
+            def broken(chunk_size=16384):
+                yield b"a"
+                raise ConnectionResetError("reset by peer")
+            resp.iter_content = broken
+        return resp
+
+
+def test_get_capped_retries_a_connection_reset_mid_body(monkeypatch):
+    slept = []
+    monkeypatch.setattr(hc.time, "sleep", lambda s: slept.append(s))
+    session = _ResetOnce()
+    assert hc.get_capped(session, "https://example.gov.in/f.zip") == b"abcd"
+    assert session.gets == 2
+    assert len(slept) == 1
+
+
+def test_get_capped_gives_up_after_max_retries_on_resets(monkeypatch):
+    monkeypatch.setattr(hc.time, "sleep", lambda s: None)
+
+    class _AlwaysReset:
+        gets = 0
+
+        def get(self, url, **kwargs):
+            self.gets += 1
+            resp = _Streaming([])
+
+            def broken(chunk_size=16384):
+                raise ConnectionResetError("reset by peer")
+                yield b""
+            resp.iter_content = broken
+            return resp
+
+    session = _AlwaysReset()
+    with pytest.raises(ConnectionResetError):
+        hc.get_capped(session, "https://example.gov.in/f.zip")
+    assert session.gets == hc.MAX_RETRIES
+
+
+class _Resp:
+    def __init__(self, chunks, headers=None, status=200):
+        self._chunks, self.headers, self.status_code = chunks, headers or {}, status
+
+    def raise_for_status(self):
+        pass
+
+    def iter_content(self, chunk_size=16384):
+        yield from self._chunks
+
+
+class _OneResp:
+    def __init__(self, resp):
+        self.resp, self.gets = resp, 0
+
+    def get(self, url, **kwargs):
+        self.gets += 1
+        return self.resp
+
+
+def test_get_capped_response_returns_response_and_body():
+    resp = _Resp([b"ab", b"cd"], {"Content-Type": "text/html"})
+    got, body = hc.get_capped_response(_OneResp(resp), "https://example.gov.in/p")
+    assert got is resp and body == b"abcd"
+
+
+def test_get_capped_response_retries_a_reset_mid_body(monkeypatch):
+    monkeypatch.setattr(hc.time, "sleep", lambda s: None)
+    session = _ResetOnce()
+    _, body = hc.get_capped_response(session, "https://example.gov.in/f.zip")
+    assert body == b"abcd" and session.gets == 2
+
+
+def test_get_capped_response_refuses_a_waf_header():
+    resp = _Resp([b"{}"], {"x-amzn-waf-action": "challenge"})
+    with pytest.raises(hc.ChallengeDetected):
+        hc.get_capped_response(_OneResp(resp), "https://example.gov.in/p", refuse_challenges=True)
+
+
+def test_get_capped_response_refuses_an_empty_body_only_when_asked():
+    session = _OneResp(_Resp([]))
+    with pytest.raises(hc.ChallengeDetected):
+        hc.get_capped_response(session, "https://example.gov.in/p", refuse_challenges=True)
+    _, body = hc.get_capped_response(session, "https://example.gov.in/p")
+    assert body == b""
+
+
+def test_get_capped_works_when_requests_is_the_stdlib_stub(monkeypatch):
+    # The stdlib-fallback branch rebinds `requests` to a SimpleNamespace with
+    # only `Session`, so `requests is not None` is true yet `requests.exceptions`
+    # does not exist. A default install (no `[http]` extra) hit AttributeError
+    # on every get_capped call (same trap as the marker above, Codex, PR #97).
+    monkeypatch.setattr(hc, "requests", types.SimpleNamespace(Session=hc.StdlibSession))
+    resp = _Resp([b"ab", b"cd"], {"Content-Type": "text/html"})
+    assert hc.get_capped(_OneResp(resp), "https://example.gov.in/p") == b"abcd"
+    got, body = hc.get_capped_response(_OneResp(resp), "https://example.gov.in/p")
+    assert got is resp and body == b"abcd"

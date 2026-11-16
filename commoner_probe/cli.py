@@ -12,6 +12,7 @@ from . import nada as nada_mod
 from .academia import AcademicJobsProbe
 from .affidavit_pages import MyNetaProbe
 from .answers import extract_answers
+from .arcgis_rest_query import query_layer as arcgis_query_layer
 from .assembly_portal import StateAssemblyCrawler
 from .assembly_portal_registry import NevaPortal, iter_portals
 from .atr_linkage import extract_atr_linkages
@@ -23,12 +24,15 @@ from .ckan_resource_api import CKAN_CRAWL_DELAY_SEC, CkanResourceProbe
 from .committee_report_api import CommitteeProbe, resolve_committees
 from .csr.dpe import SEARCHES, DpeCsrProbe
 from .csr.mca import McaCsrProbe
+from .datamart_file_api import fetch_file as datamart_fetch_file
+from .datamart_file_api import list_path as datamart_list_path
 from .dmft.mines import MinesDmftProbe
 from .drupal_publication_index import PRS_CRAWL_DELAY_SEC, PrsProbe
 from .dspace import DEFAULT_HANDLE_PREFIX, LegacyDSpaceProbe
 from .evidence import build_dmft_evidence_bundle
 from .example_topics import list_example_topics, load_example_topic_text
 from .extract_debates import extract_debates
+from .http_client import make_session
 from .koha import KohaProbe
 from .ministry_pdf_index import (
     MINISTRY_DDG_PORTALS,
@@ -45,6 +49,7 @@ from .municipal_budget_index import (
 from .municipal_budget_index import get_portal as get_municipal_portal
 from .parliament_qa_api import SansadProbe
 from .pay_report_index import DoePayAllowancesProbe
+from .portal_page import fetch_page as portal_fetch_page
 from .question_list_api import QuestionsListProbe
 from .rera import STATES as RERA_STATES
 from .rera.common import MIN_SLEEP_SEC as RERA_MIN_SLEEP_SEC
@@ -52,6 +57,8 @@ from .rera.common import ReraError
 from .rera.haryana import resolve_authority as resolve_haryana_authority
 from .rera.tamil_nadu import resolve_kind as resolve_tamil_nadu_kind
 from .rest_dataset_api import MospiClient, MospiProbe
+from .sec_edgar_submissions import fetch_submissions as sec_fetch_submissions
+from .sec_edgar_submissions import user_agent as sec_user_agent
 from .site_mirror import SiteMirror, verify_manifest
 from .spa_jwt_api import UdiseDocumentProbe
 from .stats import compute_stats, print_stats
@@ -1355,6 +1362,55 @@ def ckan_cmd(args: argparse.Namespace) -> None:
     )
     for record in probe.probe(args.dataset, dry_run=args.dry_run):
         print(json.dumps(record, ensure_ascii=False))
+
+
+def datamart_cmd(args: argparse.Namespace) -> None:
+    session = make_session()
+    if args.list:
+        for entry in datamart_list_path(session, args.list):
+            kind = "dir " if entry.is_directory else "file"
+            print(f"{kind}\t{entry.content_length}\t{entry.last_modified}\t{entry.path}")
+        return
+    if not args.path:
+        raise SystemExit("give --path (a file to fetch) or --list (a directory to list)")
+    if not args.out:
+        raise SystemExit("--out is required with --path")
+    for path in args.path:
+        record = datamart_fetch_file(
+            session, path, Path(args.out), max_bytes=int(args.max_mb * 1024 * 1024), refresh=args.refresh
+        )
+        print(json.dumps(record, ensure_ascii=False))
+
+
+def arcgis_query_cmd(args: argparse.Namespace) -> None:
+    geometry = None
+    if args.bbox:
+        geometry = dict(zip(("xmin", "ymin", "xmax", "ymax"), args.bbox))
+    result = arcgis_query_layer(
+        make_session(),
+        args.layer_url,
+        where=args.where,
+        out_fields=args.out_fields,
+        geometry=geometry,
+        return_geometry=not args.no_geometry,
+        out_sr=args.out_sr,
+        page_size=args.page_size,
+        out_dir=Path(args.out),
+    )
+    print(json.dumps({"features": len(result["features"]), "pages": result["pages"], "out": args.out}))
+
+
+def sec_submissions_cmd(args: argparse.Namespace) -> None:
+    # Default rate limit is 1 request/s, inside SEC's 10 requests/s cap.
+    session = make_session(user_agent=sec_user_agent(args.contact))
+    record = sec_fetch_submissions(session, args.cik, Path(args.out), contact=args.contact)
+    print(json.dumps({"cik": record["cik"], "name": record["entity_name"], "out": args.out}))
+
+
+def portal_page_cmd(args: argparse.Namespace) -> None:
+    session = make_session()
+    record = portal_fetch_page(session, args.url, Path(args.out), expect=args.expect)
+    print(json.dumps({"url": args.url, "bytes": record["bytes"], "sha256": record["sha256"], "out": args.out}))
 
 
 def municipal_budget_cmd(args: argparse.Namespace) -> None:
@@ -2702,6 +2758,82 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     ckan.set_defaults(func=ckan_cmd)
+
+    datamart = sub.add_parser(
+        "datamart",
+        help="List or fetch files from the Environment and Climate Change Canada Datamart file API.",
+    )
+    datamart.add_argument("--out", default=None, help="Output directory (required with --path)")
+    datamart.add_argument(
+        "--path",
+        action="append",
+        help="Datamart file path, no leading slash. Repeat the flag for more than one file.",
+    )
+    datamart.add_argument(
+        "--list",
+        metavar="DIR",
+        default=None,
+        help="List one Datamart directory instead of fetching.",
+    )
+    datamart.add_argument(
+        "--max-mb",
+        type=float,
+        default=500.0,
+        help="Refuse a file larger than this many MiB. Default: %(default)s.",
+    )
+    datamart.add_argument(
+        "--refresh",
+        action="store_true",
+        help="Fetch again even when the file is already stored and intact. The new copy goes in a new run directory.",
+    )
+    datamart.set_defaults(func=datamart_cmd)
+
+    arcgis = sub.add_parser(
+        "arcgis-query",
+        help="Query an ArcGIS REST layer, paging until every feature is stored.",
+    )
+    arcgis.add_argument("--layer-url", required=True, help="Layer URL, without /query.")
+    arcgis.add_argument("--out", required=True, help="Output directory.")
+    arcgis.add_argument("--where", default="1=1", help="SQL where clause. Default: %(default)s.")
+    arcgis.add_argument("--out-fields", default="*", help="Fields to return. Default: %(default)s.")
+    arcgis.add_argument(
+        "--bbox",
+        nargs=4,
+        type=float,
+        metavar=("XMIN", "YMIN", "XMAX", "YMAX"),
+        help="Envelope filter in WGS84.",
+    )
+    arcgis.add_argument("--no-geometry", action="store_true", help="Do not return geometry.")
+    arcgis.add_argument("--out-sr", type=int, default=4326, help="Output spatial reference. Default: %(default)s.")
+    arcgis.add_argument("--page-size", type=int, default=2000, help="Records per page. Default: %(default)s.")
+    arcgis.set_defaults(func=arcgis_query_cmd)
+
+    sec_submissions = sub.add_parser(
+        "sec-submissions",
+        help="Fetch the SEC EDGAR submissions JSON for one company (CIK).",
+    )
+    sec_submissions.add_argument("--cik", required=True, help="Company CIK. Zero-padded to 10 digits.")
+    sec_submissions.add_argument("--out", required=True, help="Output directory.")
+    sec_submissions.add_argument(
+        "--contact",
+        required=True,
+        help="Email or URL for the User-Agent. SEC requires it.",
+    )
+    sec_submissions.set_defaults(func=sec_submissions_cmd)
+
+    portal_page = sub.add_parser(
+        "portal-page",
+        help="Store one public web page (HTML or JSON) exactly as received.",
+    )
+    portal_page.add_argument("--url", required=True, help="Page URL.")
+    portal_page.add_argument("--out", required=True, help="Output directory.")
+    portal_page.add_argument(
+        "--expect",
+        required=True,
+        choices=["html", "json"],
+        help="What the page should be. A JSON expectation refuses an HTML or challenge page.",
+    )
+    portal_page.set_defaults(func=portal_page_cmd)
 
     municipal_budget = sub.add_parser(
         "municipal-budget",

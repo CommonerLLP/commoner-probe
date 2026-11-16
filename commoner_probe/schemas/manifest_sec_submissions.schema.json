@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CommonerLLP/commoner-probe/schemas/v1/manifest_sec_submissions.json",
+  "title": "manifest.jsonl — SEC EDGAR submissions",
+  "description": "The submissions JSON for one company, stored as received. A record is written only for a body that was fully received, parsed and stored.",
+  "type": "object",
+  "required": [
+    "kind",
+    "source_family",
+    "source_url",
+    "cik",
+    "entity_name",
+    "dest",
+    "fetched_at",
+    "sha256",
+    "bytes",
+    "status"
+  ],
+  "properties": {
+    "kind": {"type": "string", "const": "sec_edgar_submissions"},
+    "source_family": {"type": "string", "const": "sec_edgar"},
+    "source_url": {"type": "string", "format": "uri"},
+    "cik": {"type": "string", "pattern": "^[0-9]{10}$"},
+    "entity_name": {"type": "string"},
+    "dest": {"type": "string"},
+    "fetched_at": {"type": "string"},
+    "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "bytes": {"type": "integer", "minimum": 0},
+    "status": {"type": "string", "const": "downloaded"}
+  }
+}

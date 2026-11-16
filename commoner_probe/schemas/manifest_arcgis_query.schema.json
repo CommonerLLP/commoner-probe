@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CommonerLLP/commoner-probe/schemas/v1/manifest_arcgis_query.json",
+  "title": "manifest.jsonl — ArcGIS query page",
+  "description": "One page of an ArcGIS REST layer query, stored as received. A record is written only for a page that parsed as GeoJSON without an error object.",
+  "type": "object",
+  "required": [
+    "kind",
+    "source_family",
+    "source_url",
+    "layer_url",
+    "page",
+    "result_offset",
+    "feature_count",
+    "dest",
+    "fetched_at",
+    "sha256",
+    "bytes",
+    "status"
+  ],
+  "properties": {
+    "kind": {"type": "string", "const": "arcgis_query_page"},
+    "source_family": {"type": "string", "const": "arcgis"},
+    "source_url": {"type": "string", "format": "uri"},
+    "layer_url": {"type": "string", "format": "uri"},
+    "page": {"type": "integer", "minimum": 1},
+    "result_offset": {"type": "integer", "minimum": 0},
+    "feature_count": {"type": "integer", "minimum": 0},
+    "dest": {"type": "string"},
+    "fetched_at": {"type": "string"},
+    "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "bytes": {"type": "integer", "minimum": 0},
+    "status": {"type": "string", "const": "downloaded"}
+  }
+}

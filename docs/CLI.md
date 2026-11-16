@@ -1131,6 +1131,104 @@ Two gaps are deliberate. The Detailed Demands volumes whose file names are bare
 demand numbers, such as `d-1_8.pdf`, are dropped, as sevent4 drops them; the
 follow-up is `commoner-probe-6e7`. The Drupal `?page=N` pagers are not followed.
 
+### `commoner-probe datamart` — Environment and Climate Change Canada Datamart files
+
+```bash
+commoner-probe datamart --list air/monitor/national-air-pollution-surveillance-naps-program
+
+commoner-probe datamart \
+  --out data/datamart \
+  --path air/monitor/national-air-pollution-surveillance-naps-program/Data-Donnees/2024/IntegratedData-DonneesPonctuelles/2024_VOC-COV.zip
+```
+
+| Flag | Default | What it does |
+|---|---|---|
+| `--list DIR` | off | List one Datamart directory, one entry per line, instead of fetching. |
+| `--path` | none | Datamart file path, no leading slash. Repeat the flag for more than one file. |
+| `--out` | none | Output directory. Required with `--path`. Files land in `<out>/run-<UTC time>/<path>`. |
+| `--max-mb` | `500` | Refuse a file larger than this many MiB. |
+| `--refresh` | off | Fetch again even when the file is already stored and intact. The new copy goes in a new run directory. |
+
+Each fetch appends one `datamart_file` record to `<out>/manifest.jsonl` with
+`sha256`, `bytes` and `fetched_at`. A rerun for a path whose stored file still
+exists and matches its `sha256` makes no request and prints the earlier record.
+A missing or changed file is fetched again. An unknown path is an error and
+writes nothing. A file above `--max-mb` is an error that names the cap.
+
+### `commoner-probe arcgis-query` — ArcGIS REST layer features
+
+```bash
+commoner-probe arcgis-query \
+  --layer-url https://example.org/arcgis/rest/services/Boundaries/MapServer/0 \
+  --out data/arcgis \
+  --where "adminAreaId='06194'" \
+  --bbox -82.5 42.8 -82.3 43.0
+```
+
+| Flag | Default | What it does |
+|---|---|---|
+| `--layer-url` | required | Layer URL, without `/query`. |
+| `--out` | required | Output directory. Pages land in `<out>/run-<UTC time>/page-NNNN.geojson`. |
+| `--where` | `1=1` | SQL where clause. |
+| `--out-fields` | `*` | Fields to return. |
+| `--bbox XMIN YMIN XMAX YMAX` | none | Envelope filter in WGS84. |
+| `--no-geometry` | off | Do not return geometry. |
+| `--out-sr` | `4326` | Output spatial reference. |
+| `--page-size` | `2000` | Records per page. |
+
+The command pages with `resultOffset` until the server stops reporting
+`exceededTransferLimit`, and prints the feature count and page count. It stores
+each page as received and appends one `arcgis_query_page` record per page to
+`<out>/manifest.jsonl`, only after every page has succeeded. An error object, a
+page that repeats the one before it, or a layer without pagination support
+stops the run with an error and writes no record. Every call is a live
+snapshot and fetches fresh.
+
+### `commoner-probe sec-submissions` — SEC EDGAR filings index for one company
+
+```bash
+commoner-probe sec-submissions \
+  --cik 49938 \
+  --contact research@example.org \
+  --out data/sec
+```
+
+| Flag | Default | What it does |
+|---|---|---|
+| `--cik` | required | Company CIK, 1 to 10 digits. Zero-padded to 10. |
+| `--contact` | required | Email or URL for the User-Agent. SEC's fair-access policy requires it. |
+| `--out` | required | Output directory. The file lands in `<out>/run-<UTC time>/CIK<10 digits>.json`. |
+
+The probe refuses to run without `--contact` and sends
+`commoner-probe/<version> (<contact>)` on every request. It appends one
+`sec_edgar_submissions` record to `<out>/manifest.jsonl` after the body is
+parsed and stored, and prints the CIK, the entity name and the output
+directory. Every call is a live snapshot and fetches fresh.
+
+### `commoner-probe portal-page` — one public web page
+
+```bash
+commoner-probe portal-page \
+  --url https://www.parl.ca/legisinfo/en/bill/45-1/c-5/json \
+  --expect json \
+  --out data/portal-pages
+```
+
+| Flag | Default | What it does |
+|---|---|---|
+| `--url` | required | Page URL. |
+| `--expect` | required | `html` or `json`. |
+| `--out` | required | Output directory. The page lands in `<out>/run-<UTC time>/page.<html\|json>`. |
+
+The body is stored unchanged, with its content type and `sha256`, and one
+`portal_page` record is appended to `<out>/manifest.jsonl`. With `--expect json`
+the probe refuses a WAF challenge, an empty body, or an HTML page, and writes
+nothing; a body that is neither JSON nor HTML is a `ValueError`. With
+`--expect html` only the WAF-header and empty-body checks run, so a WAF block
+page that answers 200 with no WAF header, such as Imperva's "Request
+unsuccessful", is stored as `downloaded`. Check the stored content. Every call is
+a live snapshot and fetches fresh.
+
 ### `commoner-probe academic-jobs` — HEI faculty-recruitment ads
 
 ```bash
