@@ -961,6 +961,27 @@ a page that parsed without an error object.
 | `bytes` | integer | yes | Size of the page file in bytes | arcgis_rest_query.py |
 | `status` | string | yes | `const: "downloaded"` | arcgis_rest_query.py |
 
+## `manifest.jsonl` — SEC EDGAR submissions (`kind = "sec_edgar_submissions"`)
+
+The submissions JSON for one company, written by
+`sec_edgar_submissions.fetch_submissions`. Schema:
+`manifest_sec_submissions.schema.json`. Each run stores its own file, so a rerun
+adds a record and never changes an earlier one. A record exists only for a body
+that was fully received, parsed and stored.
+
+| Field | Type | Required | Notes | Provenance |
+|---|---|---|---|---|
+| `kind` | string | yes | `const: "sec_edgar_submissions"` | sec_edgar_submissions.py |
+| `source_family` | string | yes | `const: "sec_edgar"` | sec_edgar_submissions.py |
+| `source_url` | string | yes | The `data.sec.gov/submissions/CIK##########.json` URL | sec_edgar_submissions.py |
+| `cik` | string | yes | CIK zero-padded to 10 digits | sec_edgar_submissions.py |
+| `entity_name` | string | yes | The `name` field of the body | sec_edgar_submissions.py |
+| `dest` | string | yes | `{out}/run-<UTC time>/CIK##########.json` | sec_edgar_submissions.py |
+| `fetched_at` | string | yes | UTC time the body arrived | sec_edgar_submissions.py |
+| `sha256` | string | yes | SHA-256 of the stored file | sec_edgar_submissions.py |
+| `bytes` | integer | yes | Size of the stored file in bytes | sec_edgar_submissions.py |
+| `status` | string | yes | `const: "downloaded"` | sec_edgar_submissions.py |
+
 ## `manifest.jsonl` — CKAN resource (`kind = "ckan_resource"`)
 
 One file listed on a CKAN open-data portal dataset, written by the CKAN

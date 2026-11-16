@@ -56,6 +56,8 @@ from .rera.common import ReraError
 from .rera.haryana import resolve_authority as resolve_haryana_authority
 from .rera.tamil_nadu import resolve_kind as resolve_tamil_nadu_kind
 from .rest_dataset_api import MospiClient, MospiProbe
+from .sec_edgar_submissions import fetch_submissions as sec_fetch_submissions
+from .sec_edgar_submissions import user_agent as sec_user_agent
 from .site_mirror import SiteMirror, verify_manifest
 from .spa_jwt_api import UdiseDocumentProbe
 from .stats import compute_stats, print_stats
@@ -1395,6 +1397,13 @@ def arcgis_query_cmd(args: argparse.Namespace) -> None:
         out_dir=Path(args.out),
     )
     print(json.dumps({"features": len(result["features"]), "pages": result["pages"], "out": args.out}))
+
+
+def sec_submissions_cmd(args: argparse.Namespace) -> None:
+    # Default rate limit is 1 request/s, inside SEC's 10 requests/s cap.
+    session = make_session(user_agent=sec_user_agent(args.contact))
+    data = sec_fetch_submissions(session, args.cik, Path(args.out), contact=args.contact)
+    print(json.dumps({"cik": args.cik, "name": data["name"], "out": args.out}))
 
 
 def municipal_budget_cmd(args: argparse.Namespace) -> None:
@@ -2786,6 +2795,19 @@ def build_parser() -> argparse.ArgumentParser:
     arcgis.add_argument("--out-sr", type=int, default=4326, help="Output spatial reference. Default: %(default)s.")
     arcgis.add_argument("--page-size", type=int, default=2000, help="Records per page. Default: %(default)s.")
     arcgis.set_defaults(func=arcgis_query_cmd)
+
+    sec_submissions = sub.add_parser(
+        "sec-submissions",
+        help="Fetch the SEC EDGAR submissions JSON for one company (CIK).",
+    )
+    sec_submissions.add_argument("--cik", required=True, help="Company CIK. Zero-padded to 10 digits.")
+    sec_submissions.add_argument("--out", required=True, help="Output directory.")
+    sec_submissions.add_argument(
+        "--contact",
+        required=True,
+        help="Email or URL for the User-Agent. SEC requires it.",
+    )
+    sec_submissions.set_defaults(func=sec_submissions_cmd)
 
     municipal_budget = sub.add_parser(
         "municipal-budget",
