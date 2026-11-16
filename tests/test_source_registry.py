@@ -41,7 +41,8 @@ def test_only_committees_rs_skips_robots_and_only_on_the_rs_bucket():
     assert respect("https://sansad.in/getFile/rs/174.pdf") is True
     assert respect("https://bucketapi.rajyasabha.digital.evil.example/x.pdf") is True
     assert all(s.document_respect_robots is True
-               for s in SOURCES if s.id not in ("committees-rs", "shrug"))
+               for s in SOURCES
+               if s.id not in ("committees-rs", "shrug", "municipal-budget-gnctd"))
 
 
 def test_only_shrug_skips_robots_and_only_on_the_shrug_bucket():

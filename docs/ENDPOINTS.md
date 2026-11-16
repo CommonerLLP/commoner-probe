@@ -472,6 +472,82 @@ Traps, all measured:
 
 Outputs: `manifest.jsonl` (`kind: orgi_census_resource`) + `rows/<surface>__<id>.jsonl`.
 
+## OpenCity CKAN (`ckan`)
+
+Publisher: the body named in each dataset's `organization`, for example the
+Greater Bengaluru Authority or the Greater Chennai Corporation. data.opencity.in,
+operated by Oorvani Foundation, is a CKAN mirror. Contract verified
+2026-11-04.
+
+Source contract:
+
+- dataset: `GET https://data.opencity.in/api/3/action/package_show?id=<slug>`
+- search:  `GET https://data.opencity.in/api/3/action/package_search?q=<q>&rows=<n>`
+- resource: the `url` of each entry in `result.resources`, for example
+  `https://data.opencity.in/dataset/<dataset-uuid>/resource/<resource-uuid>/download/<file>`
+
+Auth: none. The Action API answers `{"success": true, "result": {...}}`.
+
+robots.txt: `Disallow: /api/` and `Crawl-Delay: 10`. The probe calls the
+Action API with `respect_robots=False` (owner decision A, November 12, 2026)
+and keeps the robots check on every resource download. See
+[`CLI.md`](CLI.md#commoner-probe-ckan--ckan-open-data-portal-resources).
+
+Traps:
+
+- A slug that no longer exists answers HTTP 404 with `success: false`. The probe
+  turns it into one `error` record and goes on to the next dataset.
+- Two resources in one dataset can share a `name`. The filename gets the
+  resource ID appended so the files don't collide.
+
+Outputs: `manifest.jsonl` (`kind: ckan_resource`) + one file per resource under
+`<host>/<dataset>/`.
+
+## Municipal finance index pages (`municipal-budget`)
+
+Publishers: the Government of NCT of Delhi Finance Department
+(`finance.delhi.gov.in`) and the Municipal Corporation of Delhi
+(`mcdonline.nic.in`). Contract verified
+2026-11-12. Auth: none.
+
+Source contract:
+
+- GNCTD listings: `GET https://finance.delhi.gov.in/finance/{budget-glance,receipts-budget,budget-speech,gender-budget}`.
+  A Drupal `generic_multiple_files` view with one PDF per fiscal year.
+- GNCTD Detailed Demands, two hops: `GET .../finance/detailed-demands-grants-0`
+  lists one detail page per year (`.../detailed-demands-grants-2026-27`, 22 on
+  2026-11-12), and each detail page lists that year's volumes.
+- MCD menu API: `GET https://mcdonline.nic.in/portal/{showSubMenu,showContent,showPDFContent}?menuguide=<guid>`.
+  The probe starts from two guides, follows child menus whose title looks like a
+  budget menu, and stops at `--max-menu-guides` guides. The document table is an
+  HTML string inside the `menuName` field of the JSON.
+
+robots.txt: `finance.delhi.gov.in/robots.txt` answers 403 to every User-Agent
+while the pages answer 200. The probe skips the check for that host only (owner
+decision B, November 12, 2026). See
+[`CLI.md`](CLI.md#commoner-probe-municipal-budget--city-budget-documents).
+
+Ahmedabad Municipal Corporation (`ahmedabadcity.gov.in`) is not in the registry.
+Its host needs legacy TLS renegotiation and omits its intermediate certificate
+(owner decision, November 13, 2026; parked in `commoner-probe-h7k`).
+`parse_anchor_index` and the `anchor_index` template stay for it.
+
+Traps:
+
+- A `ViewFile` link can answer an HTML page. The probe records
+  `error: "body isn't a PDF"` and writes nothing.
+- On a GNCTD Detailed Demands detail page the volumes carry bare numbers as file
+  names and the title carries no year, so the parser drops them (sevent4
+  parity; follow-up `commoner-probe-6e7`).
+- A GNCTD title can carry a malformed year, `Budget Speech Hindi 2026-26`. The
+  year comes from the file URL instead.
+- MCD titles span two fiscal years, for example `RBE 22-23 BE 2023-24`. The
+  first year wins.
+- Drupal `?page=N` pagers are not followed.
+
+Outputs: `manifest.jsonl` (`kind: municipal_budget_document`) + one PDF per
+document under `<portal-code>/`.
+
 ## NITI Aayog Annual Reports (`niti-annual-report`)
 
 Publisher: NITI Aayog. Contract verified live 2026-07-30. Carries the "Young

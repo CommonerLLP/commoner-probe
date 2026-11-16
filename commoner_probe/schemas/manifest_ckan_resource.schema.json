@@ -1,0 +1,113 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CommonerLLP/commoner-probe/schemas/v1/manifest_ckan_resource.json",
+  "title": "manifest.jsonl — CKAN dataset resource",
+  "description": "One file listed on a CKAN open-data portal dataset, with where it came from and where it is stored. `status` is `pending` after discovery, then `downloaded`, `skipped_exists`, or `error`. `sha256`, `bytes`, `text_layer`, `http_status`, and `error` appear only once a download has been attempted.",
+  "type": "object",
+  "required": [
+    "key",
+    "kind",
+    "record_type",
+    "source_family",
+    "portal",
+    "dataset",
+    "dataset_title",
+    "resource_id",
+    "format",
+    "filename",
+    "dest",
+    "url",
+    "status",
+    "media_type",
+    "fetched_at",
+    "probed_at"
+  ],
+  "properties": {
+    "key": {
+      "type": "string",
+      "pattern": "^CKAN\\|[a-z0-9.-]+\\|[a-z0-9_-]+\\|.+$"
+    },
+    "kind": {
+      "type": "string",
+      "const": "ckan_resource"
+    },
+    "record_type": {
+      "type": "string",
+      "const": "ckan_resource"
+    },
+    "source_family": {
+      "type": "string",
+      "const": "ckan"
+    },
+    "portal": {
+      "type": "string"
+    },
+    "dataset": {
+      "type": "string"
+    },
+    "dataset_title": {
+      "type": "string"
+    },
+    "organization": {
+      "type": ["string", "null"]
+    },
+    "license": {
+      "type": ["string", "null"]
+    },
+    "dataset_url": {
+      "type": "string"
+    },
+    "resource_id": {
+      "type": "string"
+    },
+    "resource_name": {
+      "type": ["string", "null"]
+    },
+    "format": {
+      "type": "string"
+    },
+    "resource_last_modified": {
+      "type": ["string", "null"]
+    },
+    "filename": {
+      "type": "string"
+    },
+    "dest": {
+      "type": "string"
+    },
+    "url": {
+      "type": "string",
+      "format": "uri"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["pending", "dry_run", "downloaded", "skipped_exists", "error"]
+    },
+    "media_type": {
+      "type": "string"
+    },
+    "fetched_at": {
+      "type": "string"
+    },
+    "probed_at": {
+      "type": "string"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "bytes": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "text_layer": {
+      "type": ["boolean", "null"]
+    },
+    "http_status": {
+      "type": "integer"
+    },
+    "error": {
+      "type": "string"
+    }
+  }
+}

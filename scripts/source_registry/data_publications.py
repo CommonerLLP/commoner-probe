@@ -18,6 +18,11 @@ from commoner_probe.academia.registry import load_registry
 from commoner_probe.annual_report_index import NITI_UA, NitiAnnualReportProbe
 from commoner_probe.budget.probe import BUDGET_USER_AGENT, BudgetProbe
 from commoner_probe.catalogue_search_api import AbhilekhPatalProbe, parse_totals
+from commoner_probe.ckan_resource_api import (
+    CKAN_CRAWL_DELAY_SEC,
+    CkanResourceProbe,
+    parse_package,
+)
 from commoner_probe.csr.dpe import DpeCsrProbe
 from commoner_probe.csr.mca import McaCsrProbe
 from commoner_probe.koha import KohaProbe
@@ -26,6 +31,9 @@ from commoner_probe.ministry_pdf_index import (
     MinistryDDGProbe,
     get_portal,
 )
+from commoner_probe.municipal_budget_index import MunicipalBudgetProbe
+from commoner_probe.municipal_budget_index import get_portal as get_municipal_portal
+from commoner_probe.municipal_budget_index import respect_robots_for as municipal_respect_robots_for
 from commoner_probe.nada import NadaProbe
 from commoner_probe.ogd_town_release import DchbTownProbe
 from commoner_probe.pay_report_index import DoePayAllowancesProbe
@@ -391,6 +399,52 @@ def _academic_source(parser: str, institution_id: str) -> Source:
         freshness=())
 
 
+# -- OpenCity CKAN and municipal finance index pages ---------------------------
+
+_OPENCITY_URL = "https://data.opencity.in"
+_OPENCITY_GBA_QUERY = 'title:"GBA Corporation Budgets"'
+_FISCAL_YEAR = re.compile(r"20\d{2}-\d{2}")
+
+
+@functools.cache
+def _opencity_gba_records() -> tuple[dict, ...]:
+    """One dry-run record per resource of every dataset that matches the GBA search.
+
+    `package_search` already returns each package's resources, so one request lists
+    them all, and the 10-second crawl delay is paid once, not once per dataset. The
+    fetch and the document check share the result.
+    """
+    probe = CkanResourceProbe(SCRATCH / "ckan-opencity", _OPENCITY_URL, sleep=CKAN_CRAWL_DELAY_SEC)
+    records: list[dict] = []
+    for package in probe.client.package_search(_OPENCITY_GBA_QUERY):
+        dataset = package.get("name") or ""
+        resources = parse_package({"success": True, "result": package},
+                                  portal=probe.portal, dataset=dataset)
+        records.extend(probe._record(res, status="pending") for res in resources)
+    return tuple(records)
+
+
+def _opencity_gba_xlsx(_record: dict) -> str:
+    """The first XLSX resource's URL. The newest record can be a PDF budget book."""
+    return next((r["url"] for r in _opencity_gba_records() if r["format"] == "XLSX"), "")
+
+
+def _municipal_budget_records(code: str) -> list[dict]:
+    """The pending records of one portal. Raise when it yields none.
+
+    The probe turns a failed page into an `error` record that has a key, a title, and
+    a URL, so the contract check would pass on one.
+    """
+    probe = MunicipalBudgetProbe(
+        SCRATCH / f"municipal-budget-{code}", portal=get_municipal_portal(code), sleep=0)
+    records = probe.discover()
+    pending = [r for r in records if r["status"] == "pending"]
+    if not pending:
+        first = records[0] if records else {}
+        raise ValueError(f"{code} yielded no documents: {first.get('error') or 'no records'}")
+    return pending
+
+
 # -- Entries -------------------------------------------------------------------
 
 SOURCES = [
@@ -561,5 +615,36 @@ SOURCES = [
            # docstring cites. It only proves that a known capture is still listed.
            freshness=(Sentinel(_wayback_sentinel, lambda r: r["original"], "AN_PAB_2018_2019"),
                       CountFloor())),
+    Source(id="ckan-opencity-gba", label="OpenCity GBA corporation budgets (CKAN)",
+           host="data.opencity.in",
+           fetch=lambda: list(_opencity_gba_records()),
+           required=("key", "url", "format", "dataset"),
+           record_date=lambda r: (r.get("resource_last_modified") or "")[:10],
+           document=_opencity_gba_xlsx, document_kind="spreadsheet",
+           document_rate_limit_sec=CKAN_CRAWL_DELAY_SEC,
+           # GBA's 2026-27 dataset was created on March 30, 2026, so the rule allows
+           # until July 30. The dataset slug carries the fiscal year.
+           freshness=(ExpectedEdition(
+               release_month=4, grace_days=120, edition=_budget_edition,
+               edition_of=lambda r: _FISCAL_YEAR.search(r["dataset"]).group(0)),)),
+    Source(id="municipal-budget-gnctd", label="GNCTD Budget at a Glance (finance.delhi.gov.in)",
+           host="finance.delhi.gov.in",
+           fetch=lambda: _municipal_budget_records("gnctd-budget-at-a-glance"),
+           required=("key", "title", "url"),
+           document=lambda r: r["url"], document_headers={"User-Agent": BUDGET_USER_AGENT},
+           # finance.delhi.gov.in answers 403 for robots.txt, which the HTTP client reads
+           # as disallow-all, so the document check skips robots for this one host.
+           document_respect_robots=municipal_respect_robots_for,
+           # The Delhi Budget is presented in March, and the 90 days of grace run to May 30.
+           freshness=(ExpectedEdition(release_month=3, grace_days=90, edition=_budget_edition,
+                                      edition_of=lambda r: r["fiscal_year"] or ""),)),
+    Source(id="municipal-budget-mcd", label="MCD budget documents (mcdonline.nic.in)",
+           host="mcdonline.nic.in",
+           fetch=lambda: _municipal_budget_records("mcd-budget-documents"),
+           required=("key", "title", "url"),
+           document=lambda r: r["url"], document_headers={"User-Agent": BUDGET_USER_AGENT},
+           # MCD titles span two fiscal years, so the first-year heuristic can't anchor an
+           # edition rule. Only the contract and document checks apply.
+           freshness=()),
     *(_academic_source(parser, institution_id) for parser, institution_id in _ACADEMIA),
 ]
