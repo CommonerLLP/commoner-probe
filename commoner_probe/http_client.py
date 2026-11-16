@@ -378,7 +378,8 @@ def get_capped_response(
     For a caller that needs the response's headers or status as well as the
     bytes, for example to pass it to :func:`refuse_challenge`. The streamed
     body is already read, so use the returned bytes, not ``response.content``.
-    A connection reset during the body read is retried as in :func:`get_capped`.
+    With ``commoner-probe[http]`` a connection reset during the body read is
+    retried, as in :func:`get_capped`. Without the extra it is not.
 
     With ``refuse_challenges=True`` the response is checked by
     :func:`refuse_challenge` with ``expect_body=True`` once the body is read,
@@ -387,10 +388,13 @@ def get_capped_response(
     can no longer give.
     """
     kwargs.setdefault("stream", True)
-    # A server can reset the connection after the headers, while the body is
-    # being read. The session's own retry loop has returned by then, so the
-    # whole GET is retried here, up to MAX_RETRIES attempts with the same
-    # backoff. ResponseTooLarge is not a connection error and is never retried.
+    # With commoner-probe[http], a server can reset the connection after the
+    # headers, while the body is being read. The session's own retry loop has
+    # returned by then, so the whole GET is retried here, up to MAX_RETRIES
+    # attempts with the same backoff. ResponseTooLarge is not a connection
+    # error and is never retried. StdlibSession reads the whole body inside
+    # session.get, outside this try, so on a default install a truncated body
+    # raises http.client.IncompleteRead and is not retried.
     reset_errors: tuple[type[BaseException], ...] = (ConnectionError,)
     # Without the [http] extra `requests` is a SimpleNamespace with only
     # `Session`, so test for `exceptions`, not for None.
@@ -424,6 +428,11 @@ def get_capped(session: Any, url: str, *, max_bytes: int | None = None, **kwargs
     For the ``body = session.get(...).content`` shape, which buffers whatever
     the server sends. Requests streams; :class:`StdlibSession` cannot, so it
     applies the same ceiling to its own read.
+
+    With ``commoner-probe[http]`` a connection reset during the body read is
+    retried, up to ``MAX_RETRIES`` attempts. Without the extra it is not:
+    :class:`StdlibSession` reads the body inside ``session.get`` and a truncated
+    body raises ``http.client.IncompleteRead``.
     """
     return get_capped_response(session, url, max_bytes=max_bytes, **kwargs)[1]
 

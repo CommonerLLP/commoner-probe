@@ -3,18 +3,21 @@
 ## 0.26.0 — 2026-11-16
 
 **This release is a MINOR.** Four subcommands and four manifest kinds are
-added, and `http_client.get_capped` gains a retry. Nothing that shipped before
-changes.
+added, and `http_client.get_capped` gains a retry. There are no interface
+changes. The behaviour of `get_capped` changes as described under "Fixed".
 
 ### Added
 
 - **`commoner-probe datamart`.** List and download files from the ECCC Datamart
-  file API. Writes one `datamart_file` manifest record per file.
+  file API. Writes one `datamart_file` manifest record per file. A file that is
+  already stored and still matches its `sha256` is not fetched again; `--refresh`
+  fetches it into a new run directory.
 
 - **`commoner-probe arcgis-query`.** Page through an ArcGIS REST query past the
   server transfer limit. Stops on a repeated page, stores each run in its own
-  directory, and writes one `arcgis_query_page` manifest record per page, only
-  after the page is stored.
+  directory, and writes one `arcgis_query_page` manifest record per page. The
+  records are appended only after every page has succeeded, so a failed run
+  leaves none.
 
 - **`commoner-probe sec-submissions`.** Fetch the SEC EDGAR submissions JSON for
   one company by CIK. It refuses to run without `--contact` and sends
@@ -26,6 +29,12 @@ changes.
   body or an HTML page, and writes nothing. Writes one `portal_page` manifest
   record.
 
+- **`http_client.get_capped_response(..., refuse_challenges=)`.** A new public
+  function. It returns `(response, body)` with the body bounded by `max_bytes`,
+  for a caller that needs the headers or status as well as the bytes. With
+  `refuse_challenges=True` it raises `ChallengeDetected` for a WAF header or an
+  empty 2xx body. `get_capped` now calls it.
+
 - **`datamart_file`, `arcgis_query_page`, `sec_edgar_submissions` and
   `portal_page` manifest kinds.** Each kind has a public schema that pins its
   `kind` with a `const`. The manifests are append-only, and each fetch is stored
@@ -33,11 +42,18 @@ changes.
 
 ### Fixed
 
-- **`http_client.get_capped` retries a connection reset during the body read.**
+- **`http_client.get_capped` retries a connection reset during the body read,
+  with `commoner-probe[http]`.**
   A server can reset the connection after the headers, when the session retry
   loop has already returned. `get_capped` now repeats the whole GET, up to
   `MAX_RETRIES` attempts with the same backoff. `ResponseTooLarge` is not
-  retried.
+  retried. Without the extra, `StdlibSession` reads the body inside
+  `session.get`, so a truncated body raises `http.client.IncompleteRead` and is
+  not retried.
+
+- **`http_client.get_capped` no longer raises `AttributeError` on a default
+  install.** Without the `[http]` extra, `requests` is a stand-in with only
+  `Session`, and the new retry read `requests.exceptions` from it.
 
 ## 0.25.0 — 2026-11-13
 

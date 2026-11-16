@@ -38,7 +38,10 @@ manifest records only.
   `committees.py`, `debates.py`, `bills.py`, `neva.py` +
   `neva_portals.py`, `indiacode.py`, `dspace.py`, `ddg.py`, `doe.py`,
   `mospi.py`, `attendance.py`, `myneta.py`, `csr/`, `dmft/`, `budget/`,
-  `academia/`, `rera/`, `ckan_resource_api.py`, `municipal_budget_index.py`. Portal/ministry registries grow one live-verified entry at
+  `academia/`, `rera/`, `ckan_resource_api.py`, `municipal_budget_index.py`,
+  `datamart_file_api.py` (ECCC Datamart file API), `arcgis_rest_query.py`
+  (ArcGIS REST layer query), `sec_edgar_submissions.py` (SEC EDGAR submissions),
+  `portal_page.py` (single portal page fetch). Portal/ministry registries grow one live-verified entry at
   a time.
 - **Contracts** — `schemas/*.schema.json` (37 schemas), the `validate`
   command, `records.py` dataclasses, `corpus.py` typed readers.
