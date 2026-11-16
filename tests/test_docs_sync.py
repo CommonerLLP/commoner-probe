@@ -99,6 +99,7 @@ class CliCommandSyncTests(unittest.TestCase):
                 "budget",
                 "ckan",
                 "datamart",
+                "arcgis-query",
                 "municipal-budget",
                 "academic-jobs",
                 "debates",

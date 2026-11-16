@@ -939,6 +939,28 @@ A record exists only for a file that was downloaded.
 | `bytes` | integer | yes | Size of the file in bytes | datamart_file_api.py |
 | `status` | string | yes | `const: "downloaded"` | datamart_file_api.py |
 
+## `manifest.jsonl` — ArcGIS query page (`kind = "arcgis_query_page"`)
+
+One page of an ArcGIS REST layer query, written by
+`arcgis_rest_query.query_layer`. Schema: `manifest_arcgis_query.schema.json`.
+A query that needs three pages writes three records. A record exists only for
+a page that parsed without an error object.
+
+| Field | Type | Required | Notes | Provenance |
+|---|---|---|---|---|
+| `kind` | string | yes | `const: "arcgis_query_page"` | arcgis_rest_query.py |
+| `source_family` | string | yes | `const: "arcgis"` | arcgis_rest_query.py |
+| `source_url` | string | yes | The full `.../query?...` URL of this page | arcgis_rest_query.py |
+| `layer_url` | string | yes | The layer URL as given, without `/query` | arcgis_rest_query.py |
+| `page` | integer | yes | Page number, from 1 | arcgis_rest_query.py |
+| `result_offset` | integer | yes | The `resultOffset` sent for this page | arcgis_rest_query.py |
+| `feature_count` | integer | yes | Features in this page | arcgis_rest_query.py |
+| `dest` | string | yes | `{out}/page-NNNN.geojson` | arcgis_rest_query.py |
+| `fetched_at` | string | yes | UTC time the page arrived | arcgis_rest_query.py |
+| `sha256` | string | yes | SHA-256 of the page file | arcgis_rest_query.py |
+| `bytes` | integer | yes | Size of the page file in bytes | arcgis_rest_query.py |
+| `status` | string | yes | `const: "downloaded"` | arcgis_rest_query.py |
+
 ## `manifest.jsonl` — CKAN resource (`kind = "ckan_resource"`)
 
 One file listed on a CKAN open-data portal dataset, written by the CKAN

@@ -12,6 +12,7 @@ from . import nada as nada_mod
 from .academia import AcademicJobsProbe
 from .affidavit_pages import MyNetaProbe
 from .answers import extract_answers
+from .arcgis_rest_query import query_layer as arcgis_query_layer
 from .assembly_portal import StateAssemblyCrawler
 from .assembly_portal_registry import NevaPortal, iter_portals
 from .atr_linkage import extract_atr_linkages
@@ -1376,6 +1377,25 @@ def datamart_cmd(args: argparse.Namespace) -> None:
             session, path, Path(args.out), max_bytes=int(args.max_mb * 1024 * 1024)
         )
         print(json.dumps(record, ensure_ascii=False))
+
+
+def arcgis_query_cmd(args: argparse.Namespace) -> None:
+    geometry = None
+    if args.bbox:
+        geometry = dict(zip(("xmin", "ymin", "xmax", "ymax"), args.bbox))
+    result = arcgis_query_layer(
+        make_session(),
+        args.layer_url,
+        where=args.where,
+        out_fields=args.out_fields,
+        geometry=geometry,
+        return_geometry=not args.no_geometry,
+        out_sr=args.out_sr,
+        page_size=args.page_size,
+        out_dir=Path(args.out),
+    )
+    pages = len((Path(args.out) / "manifest.jsonl").read_text().splitlines())
+    print(json.dumps({"features": len(result["features"]), "pages": pages, "out": args.out}))
 
 
 def municipal_budget_cmd(args: argparse.Namespace) -> None:
@@ -2747,6 +2767,26 @@ def build_parser() -> argparse.ArgumentParser:
         help="Refuse a file larger than this many MiB. Default: %(default)s.",
     )
     datamart.set_defaults(func=datamart_cmd)
+
+    arcgis = sub.add_parser(
+        "arcgis-query",
+        help="Query an ArcGIS REST layer, paging until every feature is stored.",
+    )
+    arcgis.add_argument("--layer-url", required=True, help="Layer URL, without /query.")
+    arcgis.add_argument("--out", required=True, help="Output directory.")
+    arcgis.add_argument("--where", default="1=1", help="SQL where clause. Default: %(default)s.")
+    arcgis.add_argument("--out-fields", default="*", help="Fields to return. Default: %(default)s.")
+    arcgis.add_argument(
+        "--bbox",
+        nargs=4,
+        type=float,
+        metavar=("XMIN", "YMIN", "XMAX", "YMAX"),
+        help="Envelope filter in WGS84.",
+    )
+    arcgis.add_argument("--no-geometry", action="store_true", help="Do not return geometry.")
+    arcgis.add_argument("--out-sr", type=int, default=4326, help="Output spatial reference. Default: %(default)s.")
+    arcgis.add_argument("--page-size", type=int, default=2000, help="Records per page. Default: %(default)s.")
+    arcgis.set_defaults(func=arcgis_query_cmd)
 
     municipal_budget = sub.add_parser(
         "municipal-budget",
