@@ -59,6 +59,7 @@ import types
 import urllib.error
 import urllib.request
 import urllib.robotparser
+from contextlib import nullcontext
 from pathlib import Path
 from typing import Any, Mapping
 from urllib.parse import urlencode, urlparse
@@ -98,6 +99,12 @@ _last_request_by_domain: dict[str, float] = {}
 # let the first session's result stick for every later session with a
 # different UA against the same host (Codex review, PR #41).
 _robot_parsers: dict[tuple[str, str], urllib.robotparser.RobotFileParser] = {}
+
+
+def _uncached(session: Any):
+    """Bypass an optional HTTP cache for a request that needs current bytes."""
+    disabled = getattr(session, "cache_disabled", None)
+    return disabled() if callable(disabled) else nullcontext()
 
 
 def _get_robot_parser(url: str, *, user_agent: str = USER_AGENT) -> urllib.robotparser.RobotFileParser:

@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import Any
 
 from commoner_probe.base import _private_tmp_path
-from commoner_probe.http_client import TOOL_VERSION, get_capped
+from commoner_probe.http_client import TOOL_VERSION, _uncached, get_capped
 
 SUBMISSIONS_URL = "https://data.sec.gov/submissions/CIK{cik:010d}.json"
 
@@ -63,7 +63,8 @@ def fetch_submissions(
         raise ValueError(f"CIK must be 1 to 10 digits, got {cik!r}")
     cik_int = int(cik_text)
     url = SUBMISSIONS_URL.format(cik=cik_int)
-    body = get_capped(session, url, max_bytes=max_bytes, timeout=60, headers={"User-Agent": ua})
+    with _uncached(session):
+        body = get_capped(session, url, max_bytes=max_bytes, timeout=60, headers={"User-Agent": ua})
     arrived = datetime.now(timezone.utc)
     try:
         data = json.loads(body)

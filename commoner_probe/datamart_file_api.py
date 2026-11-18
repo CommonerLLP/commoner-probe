@@ -32,7 +32,7 @@ from pathlib import Path
 from typing import Any
 
 from commoner_probe.base import _private_tmp_path, safe_filename_segment
-from commoner_probe.http_client import get_capped
+from commoner_probe.http_client import _uncached, get_capped
 
 DATAMART_BASE_URL = "https://data-donnees.az.ec.gc.ca"
 _NOT_FOUND = "Path not found."
@@ -71,7 +71,8 @@ def _is_not_found(body: bytes) -> bool:
 def list_path(session: Any, path: str, *, max_bytes: int = 5_000_000) -> list[DatamartEntry]:
     """The entries of one Datamart directory."""
     url = _url("path_contents", path)
-    body = get_capped(session, url, max_bytes=max_bytes, timeout=90)
+    with _uncached(session):
+        body = get_capped(session, url, max_bytes=max_bytes, timeout=90)
     if _is_not_found(body):
         raise DatamartError(f"Path not found: {path!r} ({url})")
     try:
@@ -144,7 +145,8 @@ def fetch_file(
         if existing is not None:
             return existing
     url = _url("file", path)
-    body = get_capped(session, url, max_bytes=max_bytes, timeout=180)
+    with _uncached(session):
+        body = get_capped(session, url, max_bytes=max_bytes, timeout=180)
     arrived = datetime.now(timezone.utc)
     if _is_not_found(body):
         raise DatamartError(f"Path not found: {path!r} ({url})")

@@ -31,7 +31,7 @@ from pathlib import Path
 from typing import Any
 
 from commoner_probe.base import _private_tmp_path
-from commoner_probe.http_client import ChallengeDetected, get_capped_response
+from commoner_probe.http_client import ChallengeDetected, _uncached, get_capped_response
 
 EXPECTATIONS = {"html": "page.html", "json": "page.json"}
 
@@ -61,7 +61,8 @@ def fetch_page(
     """
     if expect not in EXPECTATIONS:
         raise ValueError(f"expect must be 'html' or 'json', got {expect!r}")
-    resp, body = get_capped_response(session, url, max_bytes=max_bytes, refuse_challenges=True, timeout=60)
+    with _uncached(session):
+        resp, body = get_capped_response(session, url, max_bytes=max_bytes, refuse_challenges=True, timeout=60)
     arrived = datetime.now(timezone.utc)
     headers = getattr(resp, "headers", None) or {}
     text = body.decode("utf-8", errors="replace")
