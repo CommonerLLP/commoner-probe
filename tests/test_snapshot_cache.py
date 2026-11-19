@@ -101,6 +101,7 @@ def test_snapshot_requests_bypass_cache(tmp_path, run, stale, fresh, expected):
     assert session.disabled is False
 
 
+@pytest.mark.skipif(not hasattr(hc, "RetrySession"), reason="requests not installed")
 def test_cli_session_wrapper_bypasses_its_underlying_cache(tmp_path, monkeypatch):
     class AllowAll:
         def can_fetch(self, user_agent, url):
