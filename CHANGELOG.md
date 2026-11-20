@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+**Snapshot bytes may change on re-run.** Re-run `datamart --refresh`,
+`arcgis-query`, `sec-submissions`, or `portal-page` to replace a cached snapshot.
+These adapters now bypass the optional HTTP cache before recording a fresh fetch.
+Datamart directory listings also bypass it.
+
 ## 0.26.0 — 2026-11-16
 
 **This release is a MINOR.** Four subcommands and four manifest kinds are

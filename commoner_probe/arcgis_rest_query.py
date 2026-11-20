@@ -34,7 +34,7 @@ from pathlib import Path
 from typing import Any
 
 from commoner_probe.base import _private_tmp_path
-from commoner_probe.http_client import get_capped
+from commoner_probe.http_client import _uncached, get_capped
 
 _ENVELOPE_KEYS = ("xmin", "ymin", "xmax", "ymax")
 
@@ -122,7 +122,8 @@ def query_layer(
             _params(where, out_fields, geometry, return_geometry, out_sr, offset, page_size)
         )
         url = f"{base}?{query}"
-        body = get_capped(session, url, max_bytes=max_bytes, timeout=120)
+        with _uncached(session):
+            body = get_capped(session, url, max_bytes=max_bytes, timeout=120)
         arrived = datetime.now(timezone.utc)
         try:
             page = json.loads(body)
