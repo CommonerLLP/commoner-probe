@@ -111,3 +111,51 @@ def test_records_validate_against_the_shipped_schema(tmp_path):
     s = _Session(SHA_A, {(SHA_A, "a.csv"): b"1"})
     for rec in _fetch(tmp_path, s, ["a.csv", "gone.csv"]):
         jsonschema.Draft202012Validator(schema).validate(rec)
+
+
+def test_paths_that_differ_only_in_unsafe_characters_stay_distinct(tmp_path):
+    s = _Session(SHA_A, {(SHA_A, ".data.csv"): b"hidden", (SHA_A, "data.csv"): b"plain",
+                         (SHA_A, "a%20b.csv"): b"space", (SHA_A, "a_b.csv"): b"under"})
+    recs = _fetch(tmp_path, s, [".data.csv", "data.csv", "a b.csv", "a_b.csv"])
+    assert len({r["dest"] for r in recs}) == 4
+    for rec in recs:
+        assert rec["status"] == "downloaded"
+        body = (tmp_path / rec["dest"]).read_bytes()
+        assert len(body) == rec["bytes"]
+
+
+def test_raw_url_percent_encodes_reserved_characters(tmp_path):
+    s = _Session(SHA_A, {(SHA_A, "data%231.csv"): b"x"})
+    [rec] = _fetch(tmp_path, s, ["data#1.csv"])
+    assert rec["status"] == "downloaded"
+    assert rec["url"].endswith(f"/{SHA_A}/data%231.csv")
+    assert rec["path"] == "data#1.csv"
+
+
+def test_ref_lookup_bypasses_the_http_cache(tmp_path):
+    class _CachedSession(_Session):
+        def __init__(self, *a):
+            super().__init__(*a)
+            self.cache_off = False
+            self.api_calls_uncached = []
+
+        def cache_disabled(self):
+            from contextlib import contextmanager
+
+            @contextmanager
+            def off():
+                self.cache_off = True
+                try:
+                    yield
+                finally:
+                    self.cache_off = False
+            return off()
+
+        def get(self, url, **kw):
+            if url.startswith("https://api.github.com/"):
+                self.api_calls_uncached.append(self.cache_off)
+            return super().get(url, **kw)
+
+    s = _CachedSession(SHA_A, {(SHA_A, "f.csv"): b"x"})
+    _fetch(tmp_path, s, ["f.csv"])
+    assert s.api_calls_uncached == [True]

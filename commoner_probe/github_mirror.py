@@ -30,9 +30,10 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable
+from urllib.parse import quote
 
 from .base import _private_tmp_path, safe_filename_segment
-from .http_client import make_session, read_capped_response
+from .http_client import _uncached, make_session, read_capped_response
 
 API_COMMIT = "https://api.github.com/repos/{repo}/commits/{ref}"
 RAW_FILE = "https://raw.githubusercontent.com/{repo}/{sha}/{path}"
@@ -51,9 +52,11 @@ def resolve_ref(session: Any, repo: str, ref: str) -> str:
     """The 40-character commit SHA that `ref` names right now."""
     if not _REPO.match(repo) or any(part in (".", "..") for part in repo.split("/")):
         raise GitHubMirrorError(f"not an owner/repo name: {repo!r}")
-    resp = session.get(API_COMMIT.format(repo=repo, ref=ref),
-                       headers={"Accept": "application/vnd.github.sha"},
-                       respect_robots=False)
+    # A ref moves, so a cached answer can name an old commit.
+    with _uncached(session):
+        resp = session.get(API_COMMIT.format(repo=repo, ref=ref),
+                           headers={"Accept": "application/vnd.github.sha"},
+                           respect_robots=False)
     resp.raise_for_status()
     sha = resp.content.decode("ascii", "replace").strip()
     if not _SHA.match(sha):
@@ -85,8 +88,10 @@ def fetch(repo: str, ref: str, paths: Iterable[str], out_dir: Path | str, *,
     records = []
     for path in paths:
         rel = _safe_path(path)
-        url = RAW_FILE.format(repo=repo, sha=sha, path=rel.as_posix())
-        dest = root.joinpath(*(safe_filename_segment(part) for part in rel.parts))
+        url = RAW_FILE.format(repo=repo, sha=sha, path=quote(rel.as_posix(), safe="/"))
+        # _safe_path already refused traversal, so the path is kept verbatim.
+        # Sanitising it maps distinct paths (".data.csv", "data.csv") to one file.
+        dest = root.joinpath(*rel.parts)
         record: dict[str, Any] = {
             "key": f"GITHUB|{repo}|{sha}|{rel.as_posix()}",
             "kind": KIND, "record_type": KIND, "source_family": "github_mirror",
