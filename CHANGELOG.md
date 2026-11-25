@@ -7,6 +7,16 @@
 These adapters now bypass the optional HTTP cache before recording a fresh fetch.
 Datamart directory listings also bypass it.
 
+### Added
+
+- **`github_mirror.fetch`.** Fetches named files from a public GitHub
+  repository. The ref is resolved to a commit SHA first, and every file comes
+  from that commit. Writes one `github_mirror_file` manifest record per path,
+  marked `secondary: true` with the caller's `upstream_source`. A path the
+  commit lacks is recorded as `missing`. A Git LFS pointer is recorded as
+  `lfs_pointer` and is not written as data. New schema:
+  `manifest_github_mirror_file.schema.json`.
+
 ## 0.26.0 — 2026-11-16
 
 **This release is a MINOR.** Four subcommands and four manifest kinds are

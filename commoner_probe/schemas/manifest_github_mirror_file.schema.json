@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CommonerLLP/commoner-probe/schemas/v1/manifest_github_mirror_file.json",
+  "title": "manifest.jsonl — file fetched from a GitHub mirror",
+  "description": "One file fetched from a public GitHub repository at a resolved commit SHA. A mirror is a secondary source: `secondary` is always true and `upstream_source` names what the mirror copies.",
+  "type": "object",
+  "required": [
+    "key",
+    "kind",
+    "record_type",
+    "source_family",
+    "repo",
+    "ref",
+    "commit_sha",
+    "path",
+    "url",
+    "dest",
+    "secondary",
+    "upstream_source",
+    "status",
+    "fetched_at"
+  ],
+  "properties": {
+    "key": {
+      "type": "string"
+    },
+    "kind": {
+      "type": "string",
+      "const": "github_mirror_file"
+    },
+    "record_type": {
+      "type": "string",
+      "const": "github_mirror_file"
+    },
+    "source_family": {
+      "type": "string",
+      "const": "github_mirror"
+    },
+    "repo": {
+      "type": "string"
+    },
+    "ref": {
+      "type": "string"
+    },
+    "commit_sha": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "path": {
+      "type": "string"
+    },
+    "url": {
+      "type": "string"
+    },
+    "dest": {
+      "type": "string"
+    },
+    "secondary": {
+      "type": "boolean",
+      "const": true
+    },
+    "upstream_source": {
+      "type": "string"
+    },
+    "license": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "downloaded",
+        "missing",
+        "lfs_pointer",
+        "error"
+      ]
+    },
+    "fetched_at": {
+      "type": "string"
+    },
+    "sha256": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "bytes": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "http_status": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "error": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "additionalProperties": false
+}

@@ -985,6 +985,35 @@ that was fully received, parsed and stored.
 | `bytes` | integer | yes | Size of the stored file in bytes | sec_edgar_submissions.py |
 | `status` | string | yes | `const: "downloaded"` | sec_edgar_submissions.py |
 
+## `manifest.jsonl` — GitHub mirror file (`kind = "github_mirror_file"`)
+
+One file fetched from a public GitHub repository by `github_mirror.fetch`. Schema:
+`manifest_github_mirror_file.schema.json`. The ref is resolved to a commit SHA
+before any download, and every file comes from that commit. A path the commit
+does not hold gets a `missing` record; it is never skipped.
+
+| Field | Type | Required | Notes | Provenance |
+|---|---|---|---|---|
+| `key` | string | yes | `GITHUB\|{owner/repo}\|{commit_sha}\|{path}` | github_mirror.py |
+| `kind` | string | yes | `const: "github_mirror_file"` | github_mirror.py |
+| `record_type` | string | yes | `const: "github_mirror_file"` | github_mirror.py |
+| `source_family` | string | yes | `const: "github_mirror"` | github_mirror.py |
+| `repo` | string | yes | `owner/repo` of the mirror | github_mirror.py |
+| `ref` | string | yes | The ref the caller asked for, such as a branch name | github_mirror.py |
+| `commit_sha` | string | yes | The 40-character commit SHA `ref` resolved to. Every file comes from this commit | github_mirror.py |
+| `path` | string | yes | Path of the file inside the repository | github_mirror.py |
+| `url` | string | yes | raw.githubusercontent.com URL pinned to `commit_sha` | github_mirror.py |
+| `dest` | string | yes | `github/{owner}/{repo}/{commit_sha}/{path}`, relative to the output directory | github_mirror.py |
+| `secondary` | boolean | yes | `const: true`. A mirror is a secondary source | github_mirror.py |
+| `upstream_source` | string | yes | The source the mirror says it copies, as the caller states it | github_mirror.py |
+| `license` | string\|null | no | The licence the caller states for the upstream data | github_mirror.py |
+| `status` | string | yes | `downloaded`, `missing` (HTTP 404), `lfs_pointer` (Git LFS pointer, not written), or `error` | github_mirror.py |
+| `fetched_at` | string | yes | UTC time of the attempt | github_mirror.py |
+| `sha256` | string\|null | no | SHA-256 of the stored file; null unless `downloaded` | github_mirror.py |
+| `bytes` | integer\|null | no | Size of the stored file; null unless `downloaded` | github_mirror.py |
+| `http_status` | integer\|null | no | HTTP status of the file request | github_mirror.py |
+| `error` | string\|null | no | Exception text when `status` is `error` | github_mirror.py |
+
 ## `manifest.jsonl` — portal page (`kind = "portal_page"`)
 
 One public web page, HTML or JSON, written by `portal_page.fetch_page`. Schema:
