@@ -10,6 +10,7 @@ Datamart directory listings also bypass it.
 ### Added
 
 - Local PMGSY block and habitation indexes, with explicit ambiguity and match grades.
+  `BlockIndex.resolve()` takes `state=`, because six district names repeat across states.
 - Optional spatial assignment from SHRUG village polygons to assembly constituencies
   and LGD gram panchayats. Assembly split weights remain in the result.
 - Fellegi–Sunter name scores fitted from labelled pairs, plus a precision check

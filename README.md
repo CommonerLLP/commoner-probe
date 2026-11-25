@@ -554,6 +554,8 @@ blocked, or unreachable) — read before adding a new `ministry-ddg` portal.
 Both resolve names within a named district or block.
 Each lookup returns a status, candidate records, a match grade, and a score.
 An ambiguous name returns every candidate and never picks one.
+The PMGSY master is national, and six district names occur in two states.
+Pass `state=` to `BlockIndex.resolve()` to keep the other state out.
 
 `commoner_probe.admin_units_spatial.SpatialIndex.from_files()` reads local
 SHRUG village polygons and key tables, plus an LGD village extract.

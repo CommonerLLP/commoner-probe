@@ -80,7 +80,7 @@ import difflib
 import math
 import re
 import unicodedata
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 __all__ = [
@@ -547,6 +547,8 @@ class Block:
     district_id: str
     district_name: str
     census_subdistrict_code: str | None = None
+    state_id: str | None = None
+    state_name: str | None = None
 
 
 @dataclass(frozen=True)
@@ -650,14 +652,26 @@ class BlockIndex:
     blocks: dict[str, Block]
     subdistricts: dict[tuple[str, str], Subdistrict] = field(default_factory=dict)
 
-    def resolve(self, label: str, district: str) -> PlaceResolution:
+    def resolve(self, label: str, district: str, *,
+                state: str | None = None) -> PlaceResolution:
+        """Resolve a block name inside a district.
+
+        The PMGSY master is national, and six district names occur in two
+        states (Aurangabad, Balrampur, Bijapur, Bilaspur, Hamirpur,
+        Pratapgarh). Pass ``state`` (a PMGSY state id or name) to keep the
+        other state's blocks out. Without it, a shared name is AMBIGUOUS.
+        The Census fallback does not use ``state``.
+        """
         district_keys = {norm(district), _district_key(district)}
         key = norm(label)
         if not key:
             return PlaceResolution(UNRESOLVED)
+        state_key = norm(state) if state is not None else None
         blocks = tuple(b for b in self.blocks.values()
                        if district_keys & {norm(b.district_id), norm(b.district_name)}
-                       and norm(b.name) == key)
+                       and norm(b.name) == key
+                       and (state_key is None
+                            or state_key in {norm(b.state_id or ""), norm(b.state_name or "")}))
         if blocks:
             return PlaceResolution(RESOLVED if len(blocks) == 1 else AMBIGUOUS,
                                    blocks, "exact_both" if len(blocks) == 1
@@ -732,7 +746,9 @@ def build_blocks(master_xls: str | Path, *, shrid_tab: str | Path | None = None)
                 or pd.isna(row["DISTRICT_NAME"])):
             continue
         block = Block(block_id, str(row["BLOCK_NAME"]),
-                      _code(row["DISTRICT_ID"]), str(row["DISTRICT_NAME"]))
+                      _code(row["DISTRICT_ID"]), str(row["DISTRICT_NAME"]),
+                      state_id=_code(row["STATE_ID"]) if "STATE_ID" in row else None,
+                      state_name=str(row["STATE_NAME"]) if "STATE_NAME" in row else None)
         if block_id in blocks and blocks[block_id] != block:
             raise ValueError(f"PMGSY block id {block_id} names different blocks")
         blocks[block_id] = block
@@ -755,8 +771,7 @@ def build_blocks(master_xls: str | Path, *, shrid_tab: str | Path | None = None)
             key = (_district_key(block.district_name), norm(block.name))
             codes = census.get(key, set())
             if len(codes) == 1:
-                blocks[block_id] = Block(block.block_id, block.name, block.district_id,
-                                         block.district_name, next(iter(codes)))
+                blocks[block_id] = replace(block, census_subdistrict_code=next(iter(codes)))
     else:
         subdistricts = {}
     if not blocks:

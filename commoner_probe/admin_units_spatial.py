@@ -160,10 +160,17 @@ class SpatialIndex:
                                        key=lambda item: (-item.weight, item.ac08_id)))
         gps = self.gp_by_village.get(key, set())
         candidates = tuple(sorted(gps))
+        reasons = []
+        if not constituencies:
+            reasons.append("SHRUG key has no 2008 constituency row")
+        if not candidates:
+            reasons.append("village has no LGD gram panchayat row")
+        elif len(candidates) > 1:
+            reasons.append("multiple gram panchayats")
         return SpatialAssignment(
             RESOLVED, village_id=key, shrid2=shrid,
             constituencies=constituencies,
             gram_panchayat_lgd_code=candidates[0] if len(candidates) == 1 else None,
             gram_panchayat_candidates=candidates,
-            reason="multiple gram panchayats" if len(candidates) > 1 else "",
+            reason="; ".join(reasons),
         )

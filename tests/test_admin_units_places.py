@@ -181,3 +181,56 @@ def test_spatial_assignment_exposes_ambiguous_gram_panchayats():
     assigned = SpatialIndex(villages, pc11, ac, lgd).assign(0.5, 0.5)
     assert assigned.gram_panchayat_lgd_code is None
     assert assigned.gram_panchayat_candidates == ("1234", "1235")
+
+
+def test_block_state_filter_separates_shared_district_names():
+    index = au.BlockIndex({
+        "315": au.Block("315", "Aurangabad", "31", "Aurangabad",
+                        state_id="5", state_name="Bihar"),
+        "316": au.Block("316", "Aurangabad", "32", "Aurangabad",
+                        state_id="20", state_name="Maharashtra"),
+    })
+    assert index.resolve("Aurangabad", "Aurangabad").status == au.AMBIGUOUS
+    found = index.resolve("Aurangabad", "Aurangabad", state="Bihar")
+    assert found.status == au.RESOLVED
+    assert found.candidates[0].block_id == "315"
+    assert index.resolve("Aurangabad", "Aurangabad", state="20").candidates[0].block_id == "316"
+
+
+def test_build_blocks_reads_state_columns(tmp_path, monkeypatch):
+    master = pd.DataFrame([{
+        "STATE_ID": 5, "STATE_NAME": "Bihar",
+        "DISTRICT_ID": 101, "DISTRICT_NAME": "Kaimur (Bhabhua)",
+        "BLOCK_ID": 11, "BLOCK_NAME": "Bhabhua",
+    }])
+    monkeypatch.setattr(pd, "read_excel", lambda _: master)
+    block = au.build_blocks(tmp_path / "master.xls").blocks["11"]
+    assert (block.state_id, block.state_name) == ("5", "Bihar")
+
+
+def test_spatial_assignment_names_missing_constituency_and_gp():
+    gpd = pytest.importorskip("geopandas")
+    from shapely.geometry import Polygon
+
+    from commoner_probe.admin_units_spatial import SpatialIndex
+
+    villages = gpd.GeoDataFrame([{
+        "pc11_state_id": "10", "pc11_district_id": "101",
+        "pc11_subdistrict_id": "00500", "pc11_town_village_id": "000001",
+        "geometry": Polygon([(0, 0), (1, 0), (1, 1), (0, 1)]),
+    }], crs="EPSG:4326")
+    pc11 = pd.DataFrame([{
+        "pc11_state_id": "10", "pc11_district_id": "101",
+        "pc11_subdistrict_id": "00500", "pc11_village_id": "000001",
+        "shrid2": "11-10-101-00500-000001",
+    }])
+    ac = pd.DataFrame([{"shrid2": "11-10-999-00000-000000", "ac08_id": "2008-10-001",
+                        "fragment_wt_con08_norm": 1.0}])
+    lgd = [{"State Code": "10", "District Census 2011 Code": "999",
+            "Subdistrict Census 2011 Code": "0", "Village Census 2011 Code": "0",
+            "Gram Panchayat LGD Code": "1"}]
+    assigned = SpatialIndex(villages, pc11, ac, lgd).assign(0.5, 0.5)
+    assert assigned.status == au.RESOLVED
+    assert assigned.constituencies == ()
+    assert "no 2008 constituency row" in assigned.reason
+    assert "no LGD gram panchayat row" in assigned.reason
