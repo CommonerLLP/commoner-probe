@@ -54,11 +54,13 @@ from __future__ import annotations
 import json
 import os
 import random
+import ssl
 import time
 import types
 import urllib.error
 import urllib.request
 import urllib.robotparser
+import warnings
 from contextlib import nullcontext
 from pathlib import Path
 from typing import Any, Mapping
@@ -331,6 +333,34 @@ def refuse_challenge(resp: Any, url: str, *, expect_body: bool = False) -> None:
         raise ChallengeDetected(f"{url}: {reason}")
 
 
+class TLSVerificationDisabled(UserWarning):
+    """Raised as a warning whenever a session is built with ``verify=False``.
+
+    A lapsed government certificate is a real reason to fetch without checking
+    it, but the decision must show up in a run log, not hide in a monkeypatch.
+    Filter it to an error in a test or CI run that must never skip verification.
+    """
+
+
+def _tls_context(verify: bool, ca_bundle: str | None) -> ssl.SSLContext | None:
+    """The stdlib context for a verify/ca_bundle pair; ``None`` means the default."""
+    if not verify:
+        warnings.warn(
+            "TLS certificate verification is OFF for this session. Record the "
+            "reason with the run's provenance.",
+            TLSVerificationDisabled, stacklevel=3,
+        )
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        return ctx
+    if ca_bundle:
+        ctx = ssl.create_default_context()
+        ctx.load_verify_locations(cafile=ca_bundle)
+        return ctx
+    return None
+
+
 class ResponseTooLarge(RuntimeError):
     """A response body outran its ceiling. Raised, never truncated.
 
@@ -466,10 +496,15 @@ class StdlibSession:
         *,
         user_agent: str | None = None,
         rate_limit_sec: float = DEFAULT_RATE_LIMIT_SEC,
+        verify: bool = True,
+        ca_bundle: str | None = None,
     ) -> None:
         self.headers: dict[str, str] = {"User-Agent": user_agent or USER_AGENT}
         self._user_agent = user_agent or USER_AGENT
         self.rate_limit_sec = rate_limit_sec
+        # None keeps urllib's default, verifying context. Anything else is a
+        # caller decision, and verify=False warns so the run log carries it.
+        self._ssl_context = _tls_context(verify, ca_bundle)
 
     def get(self, url: str, *, respect_robots: bool = True, **kwargs: Any) -> StdlibResponse:
         return self._request("GET", url, respect_robots=respect_robots, **kwargs)
@@ -514,10 +549,20 @@ class StdlibSession:
             # conflicting header instead of keeping their own.
             if not any(k.lower() == "content-type" for k in headers):
                 headers["Content-Type"] = "application/json"
+        if isinstance(body, Mapping):
+            # A dict reached urllib unencoded and failed inside http.client
+            # with "can't concat str to bytes", which reads as a transport
+            # fault. The requests path form-encodes a dict; this one must too.
+            body = urlencode(body)
+            if not any(k.lower() == "content-type" for k in headers):
+                headers["Content-Type"] = "application/x-www-form-urlencoded"
         if isinstance(body, str):
             body = body.encode("utf-8")
         req = urllib.request.Request(url, data=body, headers=headers, method=method)
-        opener = urllib.request.build_opener(self._redirect_handler())
+        handlers: list[Any] = [self._redirect_handler()]
+        if self._ssl_context is not None:
+            handlers.append(urllib.request.HTTPSHandler(context=self._ssl_context))
+        opener = urllib.request.build_opener(*handlers)
         try:
             with opener.open(req, timeout=timeout) as resp:
                 # Bounded read: urllib buffers, so `stream=True` cannot help
@@ -580,8 +625,20 @@ if requests is not None:
         and 5xx backoff. Preserves the .get() / .headers interface.
         """
 
-        def __init__(self, rate_limit_sec: float = DEFAULT_RATE_LIMIT_SEC, *, user_agent: str | None = None) -> None:
+        def __init__(self, rate_limit_sec: float = DEFAULT_RATE_LIMIT_SEC, *, user_agent: str | None = None,
+                     verify: bool = True, ca_bundle: str | None = None) -> None:
             self._session = _make_base_session()
+            # requests lets REQUESTS_CA_BUNDLE / CURL_CA_BUNDLE override
+            # Session.verify, but not a per-request verify. So _request passes
+            # an explicit choice on every call.
+            self._verify: bool | str | None = None
+            if not verify:
+                _tls_context(False, None)  # the warning; requests needs only the flag
+                self._verify = False
+            elif ca_bundle:
+                self._verify = ca_bundle
+            if self._verify is not None:
+                self._session.verify = self._verify
             self.rate_limit_sec = rate_limit_sec
             self._user_agent = user_agent or USER_AGENT
             if user_agent:
@@ -618,6 +675,8 @@ if requests is not None:
                     raise PermissionError(f"Disallowed by robots.txt: {url}")
             domain = urlparse(url).netloc
             _rate_limit(domain, self.rate_limit_sec)
+            if self._verify is not None:
+                kwargs.setdefault("verify", self._verify)
             last_exc: Exception | None = None
             for attempt in range(MAX_RETRIES):
                 try:
@@ -681,8 +740,10 @@ if requests is not None:
                 )
             return getattr(self._session, name)
 
-    def make_session(rate_limit_sec: float = DEFAULT_RATE_LIMIT_SEC, *, user_agent: str | None = None) -> RetrySession:
-        return RetrySession(rate_limit_sec=rate_limit_sec, user_agent=user_agent)
+    def make_session(rate_limit_sec: float = DEFAULT_RATE_LIMIT_SEC, *, user_agent: str | None = None,
+                     verify: bool = True, ca_bundle: str | None = None) -> RetrySession:
+        return RetrySession(rate_limit_sec=rate_limit_sec, user_agent=user_agent,
+                            verify=verify, ca_bundle=ca_bundle)
 
 else:
     # Stdlib fallback. Same SSRF guard, robots check and rate limit as
@@ -692,5 +753,7 @@ else:
     # StdlibResponse/StdlibSession are defined at module level above.
     requests = types.SimpleNamespace(Session=StdlibSession)  # type: ignore[assignment]
 
-    def make_session(rate_limit_sec: float = DEFAULT_RATE_LIMIT_SEC, *, user_agent: str | None = None) -> StdlibSession:  # type: ignore[misc]
-        return StdlibSession(user_agent=user_agent, rate_limit_sec=rate_limit_sec)
+    def make_session(rate_limit_sec: float = DEFAULT_RATE_LIMIT_SEC, *, user_agent: str | None = None,  # type: ignore[misc]
+                     verify: bool = True, ca_bundle: str | None = None) -> StdlibSession:
+        return StdlibSession(user_agent=user_agent, rate_limit_sec=rate_limit_sec,
+                             verify=verify, ca_bundle=ca_bundle)
