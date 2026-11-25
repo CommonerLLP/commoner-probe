@@ -9,6 +9,17 @@ Datamart directory listings also bypass it.
 
 ### Added
 
+- Local PMGSY block and habitation indexes, with explicit ambiguity and match grades.
+  `BlockIndex.resolve()` takes `state=`, because six district names repeat across states.
+- Optional spatial assignment from SHRUG village polygons to assembly constituencies
+  and LGD gram panchayats. Assembly split weights remain in the result.
+- Fellegi–Sunter name scores fitted from labelled pairs, plus a precision check
+  for a separate labelled sample. The check reports its sample size.
+- **`aangan_profile`.** A preset and a parser for the Bihar ICDS centre profile
+  page (`ViewAWCProfile.aspx`). `parse_profile` returns the centre record and
+  each inspection: centre open, food cooked, children enrolled, children
+  present, rating, remark, timestamps as printed, and GPS. A missing table or a
+  moved column raises `LookupError`.
 - **`github_mirror.fetch`.** Fetches named files from a public GitHub
   repository. The ref is resolved to a commit SHA first, and every file comes
   from that commit. Writes one `github_mirror_file` manifest record per path,
