@@ -1,4 +1,3 @@
-import pandas as pd
 import pytest
 
 from commoner_probe import admin_units as au
@@ -24,6 +23,7 @@ def test_block_resolves_kaimur_district_alias():
 
 
 def test_block_matches_census_subdistrict_only_when_unique(tmp_path, monkeypatch):
+    pd = pytest.importorskip("pandas")
     master = pd.DataFrame([{
         "DISTRICT_ID": 101, "DISTRICT_NAME": "Chapra(Saran)",
         "BLOCK_ID": 11, "BLOCK_NAME": "Sadar Chapra",
@@ -56,6 +56,7 @@ def test_habitation_ambiguity_is_not_silently_resolved():
 
 
 def test_repeated_habitation_id_with_two_points_is_ambiguous():
+    pytest.importorskip("shapely")
     from shapely.geometry import Point
 
     index = au.build_habitations([
@@ -116,6 +117,7 @@ def test_labelled_pair_model_scores_and_exposes_review_candidates():
 
 
 def test_spatial_assignment_keeps_split_weights_and_gp():
+    pd = pytest.importorskip("pandas")
     gpd = pytest.importorskip("geopandas")
     from shapely.geometry import Polygon
 
@@ -154,6 +156,7 @@ def test_spatial_assignment_keeps_split_weights_and_gp():
 
 
 def test_spatial_assignment_exposes_ambiguous_gram_panchayats():
+    pd = pytest.importorskip("pandas")
     gpd = pytest.importorskip("geopandas")
     from shapely.geometry import Polygon
 
@@ -198,6 +201,7 @@ def test_block_state_filter_separates_shared_district_names():
 
 
 def test_build_blocks_reads_state_columns(tmp_path, monkeypatch):
+    pd = pytest.importorskip("pandas")
     master = pd.DataFrame([{
         "STATE_ID": 5, "STATE_NAME": "Bihar",
         "DISTRICT_ID": 101, "DISTRICT_NAME": "Kaimur (Bhabhua)",
@@ -209,6 +213,7 @@ def test_build_blocks_reads_state_columns(tmp_path, monkeypatch):
 
 
 def test_spatial_assignment_names_missing_constituency_and_gp():
+    pd = pytest.importorskip("pandas")
     gpd = pytest.importorskip("geopandas")
     from shapely.geometry import Polygon
 
@@ -234,3 +239,63 @@ def test_spatial_assignment_names_missing_constituency_and_gp():
     assert assigned.constituencies == ()
     assert "no 2008 constituency row" in assigned.reason
     assert "no LGD gram panchayat row" in assigned.reason
+
+
+def _aurangabad_master(pd):
+    return pd.DataFrame([
+        {"STATE_ID": 5, "STATE_NAME": "Bihar", "DISTRICT_ID": 31,
+         "DISTRICT_NAME": "Aurangabad", "BLOCK_ID": 1, "BLOCK_NAME": "Obra"},
+        {"STATE_ID": 20, "STATE_NAME": "Maharashtra", "DISTRICT_ID": 32,
+         "DISTRICT_NAME": "Aurangabad", "BLOCK_ID": 2, "BLOCK_NAME": "Obra"},
+    ])
+
+
+def test_census_match_refuses_shared_district_without_state(tmp_path, monkeypatch):
+    pd = pytest.importorskip("pandas")
+    monkeypatch.setattr(pd, "read_excel", lambda _: _aurangabad_master(pd))
+    shrid = tmp_path / "shrid.tab"
+    shrid.write_text("shrid2\tdistrict_name\tsubdistrict_name\n"
+                     "11-10-235-01234-000001\tAurangabad\tObra\n")
+    index = au.build_blocks(tmp_path / "master.xls", shrid_tab=shrid)
+    assert index.blocks["1"].census_subdistrict_code is None
+    assert index.blocks["2"].census_subdistrict_code is None
+
+
+def test_census_match_uses_state_name_when_extract_has_it(tmp_path, monkeypatch):
+    pd = pytest.importorskip("pandas")
+    monkeypatch.setattr(pd, "read_excel", lambda _: _aurangabad_master(pd))
+    shrid = tmp_path / "shrid.tab"
+    shrid.write_text("shrid2\tstate_name\tdistrict_name\tsubdistrict_name\n"
+                     "11-10-235-01234-000001\tBihar\tAurangabad\tObra\n")
+    index = au.build_blocks(tmp_path / "master.xls", shrid_tab=shrid)
+    assert index.blocks["1"].census_subdistrict_code == "01234"
+    assert index.blocks["2"].census_subdistrict_code is None
+
+
+def test_spatial_assignment_keeps_gp_when_shrug_key_missing():
+    pd = pytest.importorskip("pandas")
+    gpd = pytest.importorskip("geopandas")
+    from shapely.geometry import Polygon
+
+    from commoner_probe.admin_units_spatial import SpatialIndex
+
+    villages = gpd.GeoDataFrame([{
+        "pc11_state_id": "10", "pc11_district_id": "101",
+        "pc11_subdistrict_id": "00500", "pc11_town_village_id": "000001",
+        "geometry": Polygon([(0, 0), (1, 0), (1, 1), (0, 1)]),
+    }], crs="EPSG:4326")
+    pc11 = pd.DataFrame([{
+        "pc11_state_id": "10", "pc11_district_id": "101",
+        "pc11_subdistrict_id": "00500", "pc11_village_id": "000009",
+        "shrid2": "11-10-101-00500-000009",
+    }])
+    ac = pd.DataFrame([{"shrid2": "11-10-101-00500-000009", "ac08_id": "2008-10-001",
+                        "fragment_wt_con08_norm": 1.0}])
+    lgd = [{"State Code": "10", "District Census 2011 Code": "101",
+            "Subdistrict Census 2011 Code": "00500", "Village Census 2011 Code": "000001",
+            "Gram Panchayat LGD Code": "1234"}]
+    assigned = SpatialIndex(villages, pc11, ac, lgd).assign(0.5, 0.5)
+    assert assigned.shrid2 is None
+    assert assigned.constituencies == ()
+    assert assigned.gram_panchayat_lgd_code == "1234"
+    assert "no unique SHRUG key" in assigned.reason

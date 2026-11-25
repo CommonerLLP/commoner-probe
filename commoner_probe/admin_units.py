@@ -755,6 +755,7 @@ def build_blocks(master_xls: str | Path, *, shrid_tab: str | Path | None = None)
     if shrid_tab is not None:
         census = {}
         subdistricts = {}
+        tab_has_state = False
         with Path(shrid_tab).open(encoding="utf-8", errors="ignore") as fh:
             for row in csv.DictReader(fh, delimiter="\t"):
                 try:
@@ -763,13 +764,27 @@ def build_blocks(master_xls: str | Path, *, shrid_tab: str | Path | None = None)
                     continue
                 district = _cell(row, "district_name")
                 name = _cell(row, "subdistrict_name")
-                key = (_district_key(district), norm(name))
+                state = norm(_cell(row, "state_name"))
+                tab_has_state = tab_has_state or bool(state)
+                key = (state, _district_key(district), norm(name))
                 census.setdefault(key, set()).add(parts.subdistrict_code)
                 subdistricts.setdefault((_district_key(district), parts.subdistrict_code),
                                         Subdistrict(parts.subdistrict_code, name, district))
+        # A district name can occur in two states. Without state names in the
+        # extract, a block in a shared-name district gets no Census code.
+        district_states = {}
+        for block in blocks.values():
+            district_states.setdefault(_district_key(block.district_name), set()).add(
+                norm(block.state_name or block.state_id or ""))
         for block_id, block in tuple(blocks.items()):
-            key = (_district_key(block.district_name), norm(block.name))
-            codes = census.get(key, set())
+            district = _district_key(block.district_name)
+            if tab_has_state:
+                state = norm(block.state_name or "")
+            elif len(district_states[district]) > 1:
+                continue
+            else:
+                state = ""
+            codes = census.get((state, district, norm(block.name)), set())
             if len(codes) == 1:
                 blocks[block_id] = replace(block, census_subdistrict_code=next(iter(codes)))
     else:

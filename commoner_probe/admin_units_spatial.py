@@ -153,15 +153,13 @@ class SpatialIndex:
             return SpatialAssignment(AMBIGUOUS, reason="point intersects multiple villages")
         key = next(iter(keys))
         shrid = self.shrid_by_village.get(key)
-        if shrid is None:
-            return SpatialAssignment(RESOLVED, village_id=key,
-                                     reason="village has no unique SHRUG key")
         constituencies = tuple(sorted(self.ac_by_shrid.get(shrid, ()),
                                        key=lambda item: (-item.weight, item.ac08_id)))
-        gps = self.gp_by_village.get(key, set())
-        candidates = tuple(sorted(gps))
+        candidates = tuple(sorted(self.gp_by_village.get(key, set())))
         reasons = []
-        if not constituencies:
+        if shrid is None:
+            reasons.append("village has no unique SHRUG key")
+        elif not constituencies:
             reasons.append("SHRUG key has no 2008 constituency row")
         if not candidates:
             reasons.append("village has no LGD gram panchayat row")
