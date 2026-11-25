@@ -7,6 +7,14 @@
 These adapters now bypass the optional HTTP cache before recording a fresh fetch.
 Datamart directory listings also bypass it.
 
+### Added
+
+- **`aangan_profile`.** A preset and a parser for the Bihar ICDS centre profile
+  page (`ViewAWCProfile.aspx`). `parse_profile` returns the centre record and
+  each inspection: centre open, food cooked, children enrolled, children
+  present, rating, remark, timestamps as printed, and GPS. A missing table or a
+  moved column raises `LookupError`.
+
 ## 0.26.0 — 2026-11-16
 
 **This release is a MINOR.** Four subcommands and four manifest kinds are
