@@ -957,6 +957,35 @@ def test_retry_session_ca_bundle_reaches_requests():
     assert s._session.verify == "/etc/ssl/custom.pem"
 
 
+@pytest.mark.skipif(not hasattr(hc, "RetrySession"), reason="requests not installed")
+@pytest.mark.parametrize("kwargs,expected", [
+    ({"verify": False}, False),
+    ({"ca_bundle": "/etc/ssl/custom.pem"}, "/etc/ssl/custom.pem"),
+])
+def test_retry_session_tls_choice_beats_environment_ca_bundle(monkeypatch, kwargs, expected):
+    import warnings
+
+    import requests
+
+    sent = {}
+
+    def fake_send(self, request, **send_kwargs):
+        sent["verify"] = send_kwargs.get("verify")
+        response = requests.Response()
+        response.status_code = 200
+        response.request = request
+        return response
+
+    monkeypatch.setenv("REQUESTS_CA_BUNDLE", "/etc/ssl/env.pem")
+    monkeypatch.setattr(requests.adapters.HTTPAdapter, "send", fake_send)
+    monkeypatch.setattr(hc, "is_safe_url", lambda url: True)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", hc.TLSVerificationDisabled)
+        session = hc.RetrySession(rate_limit_sec=0, **kwargs)
+    session.get("https://api.example.org/x", respect_robots=False)
+    assert sent["verify"] == expected
+
+
 def test_make_session_passes_the_tls_switch_through():
     with pytest.warns(hc.TLSVerificationDisabled):
         s = hc.make_session(verify=False)

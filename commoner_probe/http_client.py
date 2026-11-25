@@ -628,11 +628,17 @@ if requests is not None:
         def __init__(self, rate_limit_sec: float = DEFAULT_RATE_LIMIT_SEC, *, user_agent: str | None = None,
                      verify: bool = True, ca_bundle: str | None = None) -> None:
             self._session = _make_base_session()
+            # requests lets REQUESTS_CA_BUNDLE / CURL_CA_BUNDLE override
+            # Session.verify, but not a per-request verify. So _request passes
+            # an explicit choice on every call.
+            self._verify: bool | str | None = None
             if not verify:
                 _tls_context(False, None)  # the warning; requests needs only the flag
-                self._session.verify = False
+                self._verify = False
             elif ca_bundle:
-                self._session.verify = ca_bundle
+                self._verify = ca_bundle
+            if self._verify is not None:
+                self._session.verify = self._verify
             self.rate_limit_sec = rate_limit_sec
             self._user_agent = user_agent or USER_AGENT
             if user_agent:
@@ -669,6 +675,8 @@ if requests is not None:
                     raise PermissionError(f"Disallowed by robots.txt: {url}")
             domain = urlparse(url).netloc
             _rate_limit(domain, self.rate_limit_sec)
+            if self._verify is not None:
+                kwargs.setdefault("verify", self._verify)
             last_exc: Exception | None = None
             for attempt in range(MAX_RETRIES):
                 try:
