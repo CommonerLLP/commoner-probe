@@ -15,6 +15,11 @@ Datamart directory listings also bypass it.
   and LGD gram panchayats. Assembly split weights remain in the result.
 - Fellegi–Sunter name scores fitted from labelled pairs, plus a precision check
   for a separate labelled sample. The check reports its sample size.
+- **`aangan_profile`.** A preset and a parser for the Bihar ICDS centre profile
+  page (`ViewAWCProfile.aspx`). `parse_profile` returns the centre record and
+  each inspection: centre open, food cooked, children enrolled, children
+  present, rating, remark, timestamps as printed, and GPS. A missing table or a
+  moved column raises `LookupError`.
 
 ## 0.26.0 — 2026-11-16
 
