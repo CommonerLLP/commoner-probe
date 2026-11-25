@@ -7,6 +7,22 @@
 These adapters now bypass the optional HTTP cache before recording a fresh fetch.
 Datamart directory listings also bypass it.
 
+### Added
+
+- **`verify` and `ca_bundle` on `make_session`, `StdlibSession` and `RetrySession`.**
+  `verify=False` turns certificate checks off for one session and raises a
+  `TLSVerificationDisabled` warning, so the decision appears in the run log.
+  `ca_bundle` points verification at a custom certificate file. The default
+  still verifies.
+
+### Fixed
+
+- **`StdlibSession` now form-encodes a `dict` body.** A dict passed as `data=`
+  reached urllib unencoded and failed inside `http.client` with
+  `can't concat str to bytes`. It is now URL-encoded, and `Content-Type:
+  application/x-www-form-urlencoded` is set unless the caller sent one. The
+  `requests` path already behaved this way.
+
 ## 0.26.0 — 2026-11-16
 
 **This release is a MINOR.** Four subcommands and four manifest kinds are
