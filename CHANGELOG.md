@@ -1,11 +1,16 @@
 # Changelog
 
-## Unreleased
+## 0.27.0 — 2026-11-25
 
 **Snapshot bytes may change on re-run.** Re-run `datamart --refresh`,
 `arcgis-query`, `sec-submissions`, or `portal-page` to replace a cached snapshot.
 These adapters now bypass the optional HTTP cache before recording a fresh fetch.
 Datamart directory listings also bypass it.
+
+**This release is a MINOR.** It adds three modules (`admin_units_spatial`,
+`aangan_profile`, `github_mirror`), new `admin_units` indexes, one manifest kind
+(`github_mirror_file`), the optional `geo` extra, and `verify` / `ca_bundle` on
+the HTTP sessions. Nothing is renamed or removed.
 
 ### Added
 
