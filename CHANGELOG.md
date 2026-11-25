@@ -20,6 +20,19 @@ Datamart directory listings also bypass it.
   each inspection: centre open, food cooked, children enrolled, children
   present, rating, remark, timestamps as printed, and GPS. A missing table or a
   moved column raises `LookupError`.
+- **`verify` and `ca_bundle` on `make_session`, `StdlibSession` and `RetrySession`.**
+  `verify=False` turns certificate checks off for one session and raises a
+  `TLSVerificationDisabled` warning, so the decision appears in the run log.
+  `ca_bundle` points verification at a custom certificate file. The default
+  still verifies.
+
+### Fixed
+
+- **`StdlibSession` now form-encodes a `dict` body.** A dict passed as `data=`
+  reached urllib unencoded and failed inside `http.client` with
+  `can't concat str to bytes`. It is now URL-encoded, and `Content-Type:
+  application/x-www-form-urlencoded` is set unless the caller sent one. The
+  `requests` path already behaved this way.
 - **`github_mirror.fetch`.** Fetches named files from a public GitHub
   repository. The ref is resolved to a commit SHA first, and every file comes
   from that commit. Writes one `github_mirror_file` manifest record per path,

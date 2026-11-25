@@ -861,3 +861,136 @@ def test_get_capped_works_when_requests_is_the_stdlib_stub(monkeypatch):
     assert hc.get_capped(_OneResp(resp), "https://example.gov.in/p") == b"abcd"
     got, body = hc.get_capped_response(_OneResp(resp), "https://example.gov.in/p")
     assert got is resp and body == b"abcd"
+
+
+# ---------------------------------------------------------------------------
+# A dict form body and a named TLS-verification switch.
+#
+# The Bihar ICDS cascade posts a dict. StdlibSession encoded only `str`, so a
+# default install died inside http.client with "can't concat str to bytes",
+# which reads as a transport fault, not a missing encode. Separately, a portal
+# whose certificate lapsed could only be reached by monkeypatching requests,
+# a bypass that left no trace in any log or manifest.
+# ---------------------------------------------------------------------------
+
+
+def _capture_post(monkeypatch):
+    monkeypatch.setattr(hc, "is_safe_url", lambda url: True)
+    monkeypatch.setattr(hc, "_get_robot_parser", lambda url, user_agent: _AllowAll())
+    monkeypatch.setattr(hc, "_rate_limit", lambda domain, interval: None)
+    captured = {}
+
+    def fake(req, timeout=None):
+        captured["data"] = req.data
+        captured["ctype"] = req.get_header("Content-type")
+        return _ok_urlopen(req, timeout=timeout)
+
+    _patch_transport(monkeypatch, fake)
+    return captured
+
+
+def test_stdlib_session_encodes_a_dict_form_body(monkeypatch):
+    captured = _capture_post(monkeypatch)
+    hc.StdlibSession().post("https://example.gov.in/form",
+                            data={"a": "1", "ctl00$x": "y z"})
+    assert captured["data"] == b"a=1&ctl00%24x=y+z"
+    assert captured["ctype"] == "application/x-www-form-urlencoded"
+
+
+def test_stdlib_session_keeps_a_callers_content_type_for_a_dict_body(monkeypatch):
+    captured = _capture_post(monkeypatch)
+    hc.StdlibSession().post("https://example.gov.in/form", data={"a": "1"},
+                            headers={"content-type": "application/x-custom"})
+    assert captured["data"] == b"a=1"
+    assert captured["ctype"] == "application/x-custom"
+
+
+def test_stdlib_session_verifies_certificates_by_default():
+    assert hc.StdlibSession()._ssl_context is None
+
+
+def test_stdlib_session_verify_false_warns_and_disables_checks():
+    import ssl
+    with pytest.warns(hc.TLSVerificationDisabled):
+        s = hc.StdlibSession(verify=False)
+    assert s._ssl_context.verify_mode == ssl.CERT_NONE
+    assert s._ssl_context.check_hostname is False
+
+
+def test_stdlib_session_passes_its_tls_context_to_the_opener(monkeypatch):
+    built = {}
+    real = hc.urllib.request.build_opener
+
+    def spy(*handlers):
+        built["handlers"] = handlers
+        return real(*handlers)
+
+    monkeypatch.setattr(hc.urllib.request, "build_opener", spy)
+    _capture_post(monkeypatch)
+    with pytest.warns(hc.TLSVerificationDisabled):
+        s = hc.StdlibSession(verify=False)
+    s.get("https://example.gov.in/a")
+    https = [h for h in built["handlers"] if isinstance(h, hc.urllib.request.HTTPSHandler)]
+    assert https and https[0]._context is s._ssl_context
+
+
+def test_stdlib_session_ca_bundle_builds_a_verifying_context(monkeypatch):
+    import ssl
+    loaded = {}
+    monkeypatch.setattr(ssl.SSLContext, "load_verify_locations",
+                        lambda self, cafile=None, **kw: loaded.setdefault("cafile", cafile))
+    s = hc.StdlibSession(ca_bundle="/etc/ssl/custom.pem")
+    assert loaded["cafile"] == "/etc/ssl/custom.pem"
+    assert s._ssl_context.verify_mode == ssl.CERT_REQUIRED
+
+
+@pytest.mark.skipif(not hasattr(hc, "RetrySession"), reason="requests not installed")
+def test_retry_session_verify_false_warns_and_reaches_requests():
+    with pytest.warns(hc.TLSVerificationDisabled):
+        s = hc.RetrySession(verify=False)
+    assert s._session.verify is False
+
+
+@pytest.mark.skipif(not hasattr(hc, "RetrySession"), reason="requests not installed")
+def test_retry_session_ca_bundle_reaches_requests():
+    s = hc.RetrySession(ca_bundle="/etc/ssl/custom.pem")
+    assert s._session.verify == "/etc/ssl/custom.pem"
+
+
+@pytest.mark.skipif(not hasattr(hc, "RetrySession"), reason="requests not installed")
+@pytest.mark.parametrize("kwargs,expected", [
+    ({"verify": False}, False),
+    ({"ca_bundle": "/etc/ssl/custom.pem"}, "/etc/ssl/custom.pem"),
+])
+def test_retry_session_tls_choice_beats_environment_ca_bundle(monkeypatch, kwargs, expected):
+    import warnings
+
+    import requests
+
+    sent = {}
+
+    def fake_send(self, request, **send_kwargs):
+        sent["verify"] = send_kwargs.get("verify")
+        response = requests.Response()
+        response.status_code = 200
+        response.request = request
+        return response
+
+    monkeypatch.setenv("REQUESTS_CA_BUNDLE", "/etc/ssl/env.pem")
+    monkeypatch.setattr(requests.adapters.HTTPAdapter, "send", fake_send)
+    monkeypatch.setattr(hc, "is_safe_url", lambda url: True)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", hc.TLSVerificationDisabled)
+        session = hc.RetrySession(rate_limit_sec=0, **kwargs)
+    session.get("https://api.example.org/x", respect_robots=False)
+    assert sent["verify"] == expected
+
+
+def test_make_session_passes_the_tls_switch_through():
+    with pytest.warns(hc.TLSVerificationDisabled):
+        s = hc.make_session(verify=False)
+    inner = getattr(s, "_session", None)
+    if inner is not None:
+        assert inner.verify is False
+    else:
+        assert s._ssl_context is not None
