@@ -7,6 +7,14 @@
 These adapters now bypass the optional HTTP cache before recording a fresh fetch.
 Datamart directory listings also bypass it.
 
+### Added
+
+- Local PMGSY block and habitation indexes, with explicit ambiguity and match grades.
+- Optional spatial assignment from SHRUG village polygons to assembly constituencies
+  and LGD gram panchayats. Assembly split weights remain in the result.
+- Fellegi–Sunter name scores fitted from labelled pairs, plus a precision check
+  for a separate labelled sample. The check reports its sample size.
+
 ## 0.26.0 — 2026-11-16
 
 **This release is a MINOR.** Four subcommands and four manifest kinds are

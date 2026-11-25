@@ -76,6 +76,8 @@ code the index holds, rather than reporting the name absent.
 from __future__ import annotations
 
 import csv
+import difflib
+import math
 import re
 import unicodedata
 from dataclasses import dataclass, field
@@ -86,6 +88,16 @@ __all__ = [
     "AMBIGUOUS",
     "District",
     "DistrictIndex",
+    "Block",
+    "BlockIndex",
+    "Subdistrict",
+    "Habitation",
+    "HabitationIndex",
+    "PlaceResolution",
+    "LinkageScore",
+    "LinkageModel",
+    "fit_linkage",
+    "linkage_precision",
     "RESOLVED",
     "STATE_MISMATCH",
     "Resolution",
@@ -97,6 +109,9 @@ __all__ = [
     "UdiseCode",
     "WEAK_SOURCE",
     "build",
+    "build_blocks",
+    "build_habitations",
+    "read_habitations",
     "district_of_today",
     "norm",
     "parse_shrid",
@@ -510,3 +525,295 @@ def district_of_today(school_code: str, block_districts: dict[str, str]) -> str 
     Andhra district it names the wrong district.
     """
     return block_districts.get(parse_udise_code(school_code).block)
+
+
+DISTRICT_ALIASES = {
+    "saran": "chaprasaran",
+    "chapra": "chaprasaran",
+    "kaimur": "kaimurbhabhua",
+    "bhabhua": "kaimurbhabhua",
+}
+
+
+def _district_key(label: str) -> str:
+    key = norm(label)
+    return DISTRICT_ALIASES.get(key, key)
+
+
+@dataclass(frozen=True)
+class Block:
+    block_id: str
+    name: str
+    district_id: str
+    district_name: str
+    census_subdistrict_code: str | None = None
+
+
+@dataclass(frozen=True)
+class Subdistrict:
+    code: str
+    name: str
+    district_name: str
+
+
+@dataclass(frozen=True)
+class Habitation:
+    hab_id: str
+    name: str
+    block_id: str
+    district_id: str
+    population: int | None = None
+    lon: float | None = None
+    lat: float | None = None
+
+
+@dataclass(frozen=True)
+class PlaceResolution:
+    status: str
+    candidates: tuple[Block | Subdistrict | Habitation, ...] = ()
+    grade: str = "none"
+    score: float = 0.0
+
+    def __bool__(self) -> bool:
+        return self.status == RESOLVED
+
+
+@dataclass(frozen=True)
+class LinkageScore:
+    offered: int
+    resolved: int
+    correct: int
+    precision: float | None
+
+    @property
+    def error_rate(self) -> float | None:
+        return 1 - self.precision if self.precision is not None else None
+
+
+def _name_agreement(left: str, right: str) -> str:
+    left_key, right_key = norm(left), norm(right)
+    if left_key == right_key:
+        return "exact"
+    if difflib.SequenceMatcher(None, left_key, right_key).ratio() >= 0.9:
+        return "near"
+    return "weak"
+
+
+@dataclass(frozen=True)
+class LinkageModel:
+    """Name-agreement likelihood ratios fitted to labelled match and nonmatch pairs."""
+
+    log_ratios: dict[str, float]
+
+    def score(self, left: str, right: str) -> float:
+        return self.log_ratios[_name_agreement(left, right)]
+
+    def resolve(self, index: HabitationIndex, label: str, block_id: str,
+                *, min_log_ratio: float = 0.0) -> PlaceResolution:
+        pool = index._by_block.get(str(block_id), ())
+        if not norm(label) or not pool:
+            return PlaceResolution(UNRESOLVED)
+        scored = [(self.score(label, h.name), h) for h in pool]
+        maximum = max(score for score, _ in scored)
+        best = tuple(h for score, h in scored if score == maximum)
+        if maximum < min_log_ratio:
+            return PlaceResolution(UNRESOLVED, best, "clerical_review", maximum)
+        return PlaceResolution(RESOLVED if len(best) == 1 else AMBIGUOUS,
+                               best, "fellegi_sunter", maximum)
+
+
+def fit_linkage(labelled_pairs: list[tuple[str, str, bool]]) -> LinkageModel:
+    """Fit smoothed m/u agreement rates from independently labelled pairs."""
+    levels = ("exact", "near", "weak")
+    matches = {level: 1 for level in levels}
+    nonmatches = {level: 1 for level in levels}
+    positives = negatives = 0
+    for left, right, same_place in labelled_pairs:
+        level = _name_agreement(left, right)
+        if same_place:
+            matches[level] += 1
+            positives += 1
+        else:
+            nonmatches[level] += 1
+            negatives += 1
+    if not positives or not negatives:
+        raise ValueError("linkage calibration needs matches and nonmatches")
+    return LinkageModel({
+        level: math.log((matches[level] / (positives + len(levels)))
+                        / (nonmatches[level] / (negatives + len(levels))))
+        for level in levels
+    })
+
+
+@dataclass
+class BlockIndex:
+    blocks: dict[str, Block]
+    subdistricts: dict[tuple[str, str], Subdistrict] = field(default_factory=dict)
+
+    def resolve(self, label: str, district: str) -> PlaceResolution:
+        district_keys = {norm(district), _district_key(district)}
+        key = norm(label)
+        if not key:
+            return PlaceResolution(UNRESOLVED)
+        blocks = tuple(b for b in self.blocks.values()
+                       if district_keys & {norm(b.district_id), norm(b.district_name)}
+                       and norm(b.name) == key)
+        if blocks:
+            return PlaceResolution(RESOLVED if len(blocks) == 1 else AMBIGUOUS,
+                                   blocks, "exact_both" if len(blocks) == 1
+                                   and blocks[0].census_subdistrict_code else "exact_pmgsy", 1.0)
+        census = tuple(s for s in self.subdistricts.values()
+                       if _district_key(s.district_name) in district_keys
+                       and norm(s.name) == key)
+        if census:
+            return PlaceResolution(RESOLVED if len(census) == 1 else AMBIGUOUS,
+                                   census, "exact_census", 1.0)
+        return PlaceResolution(UNRESOLVED)
+
+
+@dataclass
+class HabitationIndex:
+    habitations: dict[str, Habitation]
+    _by_block: dict[str, tuple[Habitation, ...]] = field(init=False, repr=False)
+    _keys: dict[str, str] = field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        by_block = {}
+        for habitation in self.habitations.values():
+            by_block.setdefault(habitation.block_id, []).append(habitation)
+        self._by_block = {block: tuple(items) for block, items in by_block.items()}
+        self._keys = {h: norm(h.name) for h in self.habitations.values()}
+
+    def resolve(self, label: str, block_id: str, *, min_score: float = 0.9) -> PlaceResolution:
+        if not 0 <= min_score <= 1:
+            raise ValueError("min_score must be between 0 and 1")
+        key = norm(label)
+        if not key:
+            return PlaceResolution(UNRESOLVED)
+        pool = self._by_block.get(str(block_id), ())
+        exact = tuple(h for h in pool if self._keys[h] == key)
+        if exact:
+            return PlaceResolution(RESOLVED if len(exact) == 1 else AMBIGUOUS,
+                                   exact, "exact", 1.0)
+        contained = tuple(h for h in pool if len(self._keys[h]) >= 6
+                          and self._keys[h] in key)
+        if contained:
+            longest = max(len(self._keys[h]) for h in contained)
+            best = tuple(h for h in contained if len(self._keys[h]) == longest)
+            return PlaceResolution(RESOLVED if len(best) == 1 else AMBIGUOUS,
+                                   best, "contained", 1.0)
+        scored = [(difflib.SequenceMatcher(None, key, self._keys[h]).ratio(), h)
+                  for h in pool if self._keys[h]]
+        if not scored:
+            return PlaceResolution(UNRESOLVED)
+        maximum = max(score for score, _ in scored)
+        if maximum < min_score:
+            best = tuple(h for score, h in scored if score == maximum)
+            return PlaceResolution(UNRESOLVED, best, "below_threshold", maximum)
+        best = tuple(h for score, h in scored if score == maximum)
+        return PlaceResolution(RESOLVED if len(best) == 1 else AMBIGUOUS,
+                               best, "similarity", maximum)
+
+
+def build_blocks(master_xls: str | Path, *, shrid_tab: str | Path | None = None) -> BlockIndex:
+    """Read PMGSY blocks and attach unique Census subdistrict matches when present."""
+    try:
+        import pandas as pd
+    except ImportError as exc:
+        raise ImportError("build_blocks needs commoner-probe[pandas,xls]") from exc
+    rows = pd.read_excel(master_xls)
+    required = {"DISTRICT_ID", "DISTRICT_NAME", "BLOCK_ID", "BLOCK_NAME"}
+    if not required.issubset(rows.columns):
+        raise ValueError(f"PMGSY master lacks columns: {sorted(required - set(rows.columns))}")
+    blocks = {}
+    for row in rows.to_dict("records"):
+        block_id = _code(row["BLOCK_ID"])
+        if (not block_id or block_id == "nan" or pd.isna(row["BLOCK_NAME"])
+                or pd.isna(row["DISTRICT_NAME"])):
+            continue
+        block = Block(block_id, str(row["BLOCK_NAME"]),
+                      _code(row["DISTRICT_ID"]), str(row["DISTRICT_NAME"]))
+        if block_id in blocks and blocks[block_id] != block:
+            raise ValueError(f"PMGSY block id {block_id} names different blocks")
+        blocks[block_id] = block
+    if shrid_tab is not None:
+        census = {}
+        subdistricts = {}
+        with Path(shrid_tab).open(encoding="utf-8", errors="ignore") as fh:
+            for row in csv.DictReader(fh, delimiter="\t"):
+                try:
+                    parts = parse_shrid(_cell(row, "shrid2"))
+                except ValueError:
+                    continue
+                district = _cell(row, "district_name")
+                name = _cell(row, "subdistrict_name")
+                key = (_district_key(district), norm(name))
+                census.setdefault(key, set()).add(parts.subdistrict_code)
+                subdistricts.setdefault((_district_key(district), parts.subdistrict_code),
+                                        Subdistrict(parts.subdistrict_code, name, district))
+        for block_id, block in tuple(blocks.items()):
+            key = (_district_key(block.district_name), norm(block.name))
+            codes = census.get(key, set())
+            if len(codes) == 1:
+                blocks[block_id] = Block(block.block_id, block.name, block.district_id,
+                                         block.district_name, next(iter(codes)))
+    else:
+        subdistricts = {}
+    if not blocks:
+        raise ValueError("PMGSY master yielded no blocks")
+    return BlockIndex(blocks, subdistricts)
+
+
+def build_habitations(rows: list[dict]) -> HabitationIndex:
+    """Index PMGSY habitation rows; callers can read a shapefile with GeoPandas."""
+    required = {"HAB_ID", "HAB_NAME", "BLOCK_ID", "DISTRICT_I"}
+    habitations = {}
+    for row in rows:
+        if not required.issubset(row):
+            raise ValueError(f"PMGSY habitation lacks columns: {sorted(required - set(row))}")
+        hab_id = _code(row["HAB_ID"])
+        if not hab_id:
+            continue
+        geometry = row.get("geometry")
+        population = row.get("TOT_POPULA")
+        habitation = Habitation(
+            hab_id, str(row["HAB_NAME"]), _code(row["BLOCK_ID"]),
+            _code(row["DISTRICT_I"]),
+            int(population) if population not in (None, "")
+            and not (isinstance(population, float) and math.isnan(population)) else None,
+            float(geometry.x) if geometry is not None else None,
+            float(geometry.y) if geometry is not None else None,
+        )
+        feature_key = f"{hab_id}:{habitation.block_id}:{habitation.lon}:{habitation.lat}"
+        if feature_key in habitations and habitations[feature_key] != habitation:
+            raise ValueError(f"PMGSY habitation feature {feature_key} has conflicting fields")
+        habitations[feature_key] = habitation
+    if not habitations:
+        raise ValueError("PMGSY habitation source yielded no rows")
+    return HabitationIndex(habitations)
+
+
+def read_habitations(shapefile: str | Path) -> HabitationIndex:
+    """Read a PMGSY habitation shapefile with the optional geo dependency."""
+    try:
+        import geopandas as gpd
+    except ImportError as exc:
+        raise ImportError("read_habitations needs commoner-probe[geo]") from exc
+    frame = gpd.read_file(shapefile)
+    if frame.crs is None:
+        raise ValueError("PMGSY habitation source has no coordinate reference system")
+    return build_habitations(frame.to_crs("EPSG:4326").to_dict("records"))
+
+
+def linkage_precision(index: HabitationIndex,
+                      labelled: list[tuple[str, str, str | None]], *,
+                      model: LinkageModel | None = None) -> LinkageScore:
+    """Measure precision against labelled (name, block_id, true_hab_id) rows."""
+    correct = resolved = 0
+    for name, block_id, true_id in labelled:
+        match = model.resolve(index, name, block_id) if model else index.resolve(name, block_id)
+        if match:
+            resolved += 1
+            correct += match.candidates[0].hab_id == true_id
+    return LinkageScore(len(labelled), resolved, correct,
+                        correct / resolved if resolved else None)

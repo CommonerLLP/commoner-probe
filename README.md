@@ -547,6 +547,30 @@ See [`docs/GOV_SITE_PLATFORMS.md`](docs/GOV_SITE_PLATFORMS.md) for which
 Union ministry websites are scrapeable (and which are JS-rendered SPAs, WAF-
 blocked, or unreachable) — read before adding a new `ministry-ddg` portal.
 
+### Local place indexes
+
+`commoner_probe.admin_units.build_blocks()` reads a PMGSY master XLS.
+`read_habitations()` reads a PMGSY habitation shapefile.
+Both resolve names within a named district or block.
+Each lookup returns a status, candidate records, a match grade, and a score.
+An ambiguous name returns every candidate and never picks one.
+
+`commoner_probe.admin_units_spatial.SpatialIndex.from_files()` reads local
+SHRUG village polygons and key tables, plus an LGD village extract.
+Pass `state_code` to limit the polygon read to one Census state.
+`assign(lon, lat)` returns the Census village and the SHRUG key.
+It also returns assembly constituency candidates with their published weights.
+It returns one LGD gram panchayat code when the join is unique.
+`primary_constituency` gives the highest-weight candidate.
+Missing and ambiguous joins remain visible.
+
+Install the optional geospatial readers with `commoner-probe[geo]`.
+The default name-linkage score is a similarity score, not a probability.
+`fit_linkage()` fits Fellegi–Sunter name-agreement ratios from labelled pairs.
+Its model returns a log likelihood ratio and exposes low-score candidates for review.
+`linkage_precision()` measures either resolver on a separate labelled sample.
+Keep both samples and their sources with any published error rate.
+
 ---
 
 ## Source freshness
