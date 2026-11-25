@@ -25,6 +25,13 @@ Datamart directory listings also bypass it.
   `TLSVerificationDisabled` warning, so the decision appears in the run log.
   `ca_bundle` points verification at a custom certificate file. The default
   still verifies.
+- **`github_mirror.fetch`.** Fetches named files from a public GitHub
+  repository. The ref is resolved to a commit SHA first, and every file comes
+  from that commit. Writes one `github_mirror_file` manifest record per path,
+  marked `secondary: true` with the caller's `upstream_source`. A path the
+  commit lacks is recorded as `missing`. A Git LFS pointer is recorded as
+  `lfs_pointer` and is not written as data. New schema:
+  `manifest_github_mirror_file.schema.json`.
 
 ### Fixed
 
